@@ -1,0 +1,275 @@
+DESIGN A PROFESSIONAL BOXING RING WALK PRESENTATION FOR CAREER MODE
+
+OVERVIEW
+
+Create a polished pre-fight presentation that plays before every Career Mode fight.
+
+The presentation should build anticipation and make every fight feel like a televised professional boxing event.
+
+The presentation should be smooth, cinematic, and skippable.
+
+The player should be able to skip the presentation at any time by pressing the Skip button.
+
+The entire presentation should last approximately 20-35 seconds if not skipped.
+
+-----------------------------------
+
+PRESENTATION FLOW
+
+The sequence should play in the following order:
+
+1. Arena Introduction
+2. Blue Corner Ring Walk
+3. Blue Corner Fighter Record
+4. Red Corner Ring Walk
+5. Red Corner Fighter Record
+6. Tale Of The Tape
+7. Transition into referee instructions
+8. Opening bell
+9. Fight begins
+
+-----------------------------------
+
+ARENA INTRODUCTION
+
+Before either fighter enters:
+
+Display a wide camera shot of the arena.
+
+Show:
+
+• Ring
+• Crowd
+• Arena lighting
+• Spotlights
+• Camera slowly panning across the arena
+
+Hold this shot for approximately 2-3 seconds.
+
+-----------------------------------
+
+BLUE CORNER RING WALK
+
+The Blue Corner fighter walks toward the ring.
+
+Animation should include:
+
+• Walking down the aisle
+• Confident movement
+• Camera following from different angles
+• Crowd visible in the background
+
+Use multiple cinematic cameras such as:
+
+• Front tracking camera
+• Side tracking camera
+• Slight overhead shot
+• Behind-the-fighter shot
+
+The animation should feel energetic but not overly dramatic.
+
+-----------------------------------
+
+BLUE CORNER RECORD
+
+After the Blue Corner reaches the ring:
+
+Display a professional fighter card.
+
+Display for approximately 3 seconds.
+
+Show:
+
+Fighter Name
+
+Nickname
+
+Country
+
+Current Rank
+
+Career Record
+
+Wins
+
+Losses
+
+Draws
+
+KO Wins
+
+If the fighter is the Undisputed Champion:
+
+Display
+
+UNDISPUTED CHAMPION
+
+beneath their name.
+
+-----------------------------------
+
+RED CORNER RING WALK
+
+Repeat the same sequence for the Red Corner fighter.
+
+Use the same camera system.
+
+The second walk should not feel identical.
+
+Slightly vary:
+
+• Camera angles
+• Timing
+• Camera distance
+
+-----------------------------------
+
+RED CORNER RECORD
+
+Display the same information.
+
+Keep on screen approximately 3 seconds.
+
+-----------------------------------
+
+TALE OF THE TAPE
+
+After both fighters have entered the ring:
+
+Display a full-screen presentation titled:
+
+TALE OF THE TAPE
+
+The Tale Of The Tape should compare both fighters side-by-side.
+
+Include:
+
+Name
+
+Nickname
+
+Country
+
+Age
+
+Height (if available)
+
+Reach (if available)
+
+Current Rank
+
+Record
+
+KO Wins
+
+Fighter Level
+
+Power
+
+Speed
+
+Defense
+
+Stamina
+
+Focus
+
+Display both fighters simultaneously.
+
+The comparison should remain visible for approximately 4-6 seconds.
+
+Use a clean professional broadcast layout.
+
+-----------------------------------
+
+CAMERA WORK
+
+Throughout the presentation:
+
+Use cinematic camera cuts.
+
+Examples:
+
+Wide arena shot
+
+Corner close-up
+
+Walking shot
+
+Low-angle shot
+
+Crowd reaction
+
+Ring ropes
+
+Glove close-up
+
+Face close-up
+
+Do not keep the same camera angle for too long.
+
+-----------------------------------
+
+ANIMATION
+
+Ring walks should feel natural.
+
+The fighter should:
+
+Walk forward naturally.
+
+Occasionally look toward the ring.
+
+Occasionally acknowledge the crowd.
+
+Continue walking without stopping.
+
+Avoid robotic movement.
+
+-----------------------------------
+
+TRANSITION
+
+After the Tale Of The Tape disappears:
+
+Fade smoothly into:
+
+Both fighters inside the ring.
+
+Referee standing between them.
+
+Camera slowly zooms in.
+
+Then:
+
+Bell rings.
+
+Fight begins.
+
+-----------------------------------
+
+SKIP SYSTEM
+
+At any point during the presentation:
+
+Pressing the Skip button immediately skips to:
+
+Both fighters already inside the ring.
+
+Referee ready.
+
+Bell rings.
+
+Fight begins.
+
+-----------------------------------
+
+CAREER IMMERSION
+
+The presentation should make every Career Mode fight feel important.
+
+Even low-ranked fights should receive a professional presentation.
+
+As the player climbs the rankings, the presentation should feel increasingly prestigious without changing the core sequence.
+
+The presentation should feel similar to a modern televised boxing broadcast rather than an arcade game.

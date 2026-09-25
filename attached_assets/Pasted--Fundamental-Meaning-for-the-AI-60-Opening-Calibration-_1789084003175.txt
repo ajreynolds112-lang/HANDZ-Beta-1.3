@@ -1,0 +1,15 @@
+#	Fundamental	Meaning for the AI
+60	Opening Calibration (opening_calibration)	Use early punches partly to establish range and observe defensive reactions.
+61	Finish Discipline (finish_discipline)	When the opponent is hurt, increase exploitation without abandoning defense or blindly rushing.
+62	Recovery Jab (recovery_jab)	When tired, use the jab as a distance-management action that can create recovery time.
+63	Miss Recovery (miss_recovery)	Treat a missed punch as a positional error requiring immediate recovery, defense, or movement.
+64	Back-Foot Invitation (back_foot_invitation)	Yield apparent initiative to encourage the opponent forward, then exploit their forward commitment with footwork and counters.
+65	Double-Jab Disruption (double_jab_disruption)	Use the first jab to provoke/occupy the defense and the second to exploit the resulting reaction while disturbing rhythm.
+66	Check-Hook Intercept (check_hook_intercept)	Punish careless forward rushing before the opponent reaches smothering range.
+67	Close-Miss Countering (close_miss_countering)	Evade by the minimum distance necessary so the fighter remains close enough to counter before the attacking hand recovers.
+68	Lead-Hand Occupation (lead_hand_occupation)	Manipulate or occupy the opponent's lead hand to temporarily remove it as an offensive/defensive option.
+69	Hand-Check Rhythm Disruption (hand_check_disruption)	Use feinted glove contact from appropriate range to interrupt timing while remaining defensively responsible.
+70	Pull Counter (pull_counter)	Bait the straight, evade backward at commitment, fire the cross during recovery, then roll/exit.
+71	Attrition Targeting (attrition_targeting)	Deliberately target areas such as the body or shoulders when the goal is degrading stamina or defensive effectiveness rather than immediate head damage.
+72	Emergency Blocking (emergency_blocking)	Blocking becomes the fallback defensive solution when distance positioning has already failed.
+73	Forced Readjustment (forced_readjustment)	Favor attacks that force the opponent to reposition, re-guard, or otherwise reset before acting again.

@@ -1,0 +1,90 @@
+
+import {
+  GameState, FighterState, PunchType, Archetype, DefenseState,
+  PUNCH_CONFIGS, ARCHETYPE_STATS, AIDifficulty,
+  AiState, TacticalPhase, DifficultyBand, DIFFICULTY_TO_BAND,
+  AiPersonality, AiBrainState, AiDataBank, AiHitRecord, AiWhiffRecord,
+  AiHitPattern, AiHitSummary, AiComboStep, AiCombo,
+} from "./types";
+import { aiRNG } from "./engine";
+import { SITUATION_DB, matchSituation, getDifficultyMultiplier, type SituationMatchResult } from "./situationDB";
+
+const AI_BLOCK_PX = 70;
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * clamp01(t);
+}
+function inverseLerp(a: number, b: number, v: number): number {
+  if (Math.abs(b - a) < 0.0001) return 0;
+  return clamp01((v - a) / (b - a));
+}
+
+// ===== RNG & UTILITIES =====
+
+class AiRNG {
+  private s: number;
+  constructor(seed: number) {
+    this.s = seed >>> 0;
+    if (this.s === 0) this.s = 1;
+  }
+  next01(): number {
+    this.s = (this.s * 1664525 + 1013904223) & 0xFFFFFFFF;
+    return (this.s >>> 0) / 0xFFFFFFFF;
+  }
+  range(min: number, max: number): number {
+    return min + (max - min) * this.next01();
+  }
+  chance(p: number): boolean {
+    return this.next01() < clamp01(p);
+  }
+  rollRange01(min01: number, max01: number): number {
+    return lerp(min01, max01, this.next01());
+  }
+}
+
+let rng: AiRNG = new AiRNG(Date.now());
+
+const LOW_STAMINA_FRAC = 0.25;
+const DEEP_SURVIVAL_FRAC = 0.03;
+const PLAYER_FINISH_FRAC = 0.20;
+const SURVIVAL_FRAC = 0.20;
+const HIT_DETECT_THRESHOLD = 0.5;
+const CONDITION_DECAY_PER_SEC = 0.008;
+const HEAD_HIT_CONDITION_VALUE = 0.04;
+const BODY_HIT_CONDITION_VALUE = 0.04;
+const CONDITION_DAMAGE_GATE_MIN = 30;
+const CONDITION_DAMAGE_GATE_MAX = 200;
+const CONDITION_DAMAGE_GATE = 50;
+const REPEAT_HIT_THRESHOLD = 5;
+const REPEAT_PENALTY_STEP = 0.03;
+const REPEAT_PENALTY_CAP = 0.20;
+const PERFECT_REACT_COOLDOWN = 0.8;
+const PERFECT_REACT_HOLD_TIME = 0.35;
+const PERFECT_REACT_FADE_TICK_SECONDS = 15;
+const PERFECT_REACT_FADE_TICK_AMOUNT = 0.01;
+const STEP_OUT_TARGET_DISTANCE_PX = 120;
+npm run dev
+10s
+ • 
+Just now
+Port :5000 opened on
+Handz 2D Boxing Game Development
+Get rid of the "front, back" that we see under the fighters during the fight, that's unnecessary and make sure it never appears underneath the fighter sprites. Play the crowd cheer 1 after any KD, and play crowd cheer 3 after the towel is thrown, and during the LAST scorecard if the player won.
+
+I've provided the official sound effects for jab, hook, and uppercuts. Pitch them down by 10% for the AI opponent. For blocked hits, pitch them down by 50% and lower the volume of the hit by 50%. The punch sounds shouldn't be louder than the crowd
+
+Make it so the crowd volume jump for hits is only 1.5x instead of 3x
+
+Make sure each of the crowd punch effects fade when there's 0.5 seconds left. The constant backgroudn crowd that overlaps should be replaced with this file and loop back in on itself and overlap gradually 3 seconds into the end of the clip, and repeat as long as the fight is active or a scorecard is onscreen
+
+Make sure ALL crowd sound effects are CUT on the Home Screen and any screen that isn't the ACTUAL FIGHT. Right now it plays on menu screens
+
+Make sure the crowd noises stop when exiting the game from the pause menu. Make sure the crowd PLAYS during the 3-2-1
+
+Raise the continuous loopinig crowd volume by 30%

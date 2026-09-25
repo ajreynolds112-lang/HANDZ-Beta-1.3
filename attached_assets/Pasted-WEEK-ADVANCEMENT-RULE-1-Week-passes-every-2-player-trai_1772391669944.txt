@@ -1,0 +1,216 @@
+WEEK ADVANCEMENT RULE
+
+• 1 Week passes every 2 player training sessions.
+• When week advances → Trigger SimulateWeek().
+
+ROSTER STRUCTURE (151 Fighters)
+
+Each fighter has:
+
+rank
+
+rating_score (ELO-based)
+
+record (W-L)
+
+isChampion (true/false)
+
+isKeyFighter (true/false)
+
+lastFightWeek
+
+activityCooldown (prevents fighting every week)
+
+Less than 8 fighters are isKeyFighter = true.
+
+Key fighters:
+
+Win 100% of simulated fights.
+
+Lose only if they fight the player.
+
+Still gain rating normally from wins.
+
+WEEKLY SIMULATION FLOW
+Step 1 — Build Eligible Pool
+
+Exclude:
+
+Player
+
+Player’s scheduled opponent
+
+Anyone who fought last week (optional cooldown rule)
+
+From remaining fighters:
+
+Randomly select 50 fighters.
+
+These 50 enter matchmaking pool.
+
+If odd number, one random fighter sits out.
+
+Step 2 — Pairing Rules
+
+Loop through selected fighters:
+
+For each unpaired fighter:
+
+Find available opponent within ±5 ranks.
+
+Choose closest rank difference first.
+
+Once paired, remove both from pool.
+
+If no opponent within 5 ranks:
+
+Fighter sits out this week.
+
+Every paired fight guarantees:
+
+One win
+
+One loss
+
+This ensures movement in the system.
+
+Step 3 — Win Probability Calculation
+
+For non-key fighters:
+
+Use rating difference to determine win odds:
+
+Higher rating fighter win chance =
+
+50% base
+
+(rating_difference_scaled)
+
+Example logic:
+
+0–50 rating diff → 55% favorite
+
+50–100 diff → 60%
+
+100–200 diff → 70%
+
+200+ diff → 80% cap
+
+Cap maximum at 85% so randomness always exists.
+
+Then:
+
+Roll RNG (0–100).
+
+Determine winner.
+
+Step 4 — Key Fighter Override
+
+If fighter.isKeyFighter == true:
+
+Auto-win.
+
+Skip RNG.
+
+Apply rating gain.
+
+Opponent receives rating loss.
+
+Key fighters can still climb organically through system.
+
+They are protected, not teleported.
+
+Step 5 — Determine Fight Type
+
+After winner decided:
+
+Roll secondary RNG:
+
+60% Close Decision
+
+25% Clear Decision
+
+10% Dominant
+
+5% KO
+
+This determines performance multiplier in ELO update.
+
+Step 6 — Apply Rating Updates
+
+Use your ELO formula:
+
+Apply difficulty multiplier
+
+Apply champion multiplier if relevant
+
+Update both fighters’ rating_score
+
+Update record
+
+Step 7 — Resort Rankings
+
+After ALL fights conclude:
+
+Sort full roster by rating_score descending.
+
+Reassign ranks 1–151.
+
+Ensure exactly 1 champion:
+
+Rank 1 = Champion
+
+If champion loses:
+
+New rank 1 becomes champion automatically.
+
+SPECIAL CASES
+Champion Fight Frequency
+
+Champion must fight at least every 4 weeks.
+
+If no player challenge:
+
+Auto-schedule vs highest eligible contender within ±5 ranks.
+
+Freak Upset Logic
+
+If champion loses (not key fighter):
+
+Let rating system handle change naturally.
+
+Do not manually swap ranks.
+
+Sorting handles it.
+
+If Key Fighter Becomes Champion
+
+They remain undefeated until player beats them.
+
+They defend normally through simulation.
+
+SYSTEM STABILITY RULES
+
+• No manual rank swapping.
+• No scripted rank jumps.
+• Only rating_score determines rank.
+• Every simulated fight creates one winner and one loser.
+• Rankings evolve weekly from real results.
+
+HIGH-LEVEL INTENT
+
+This creates:
+
+Constant movement.
+
+Realistic churn.
+
+Protected elite threats.
+
+Upsets that matter.
+
+No broken triangle logic.
+
+151 fighters feeling alive.
+
+The system becomes a self-correcting ecosystem.

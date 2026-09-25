@@ -1,0 +1,31 @@
+=== HANDZ INPUT RECORDING (SINGLE ROUND) ===
+Date: 2026-02-21T18:52:44.339Z
+
+--- FIGHT SETTINGS ---
+Player Archetype: BoxerPuncher | Enemy Archetype: Brawler
+Player Level: 100 | Enemy Level: 100
+AI Difficulty: journeyman
+Round Duration: 60s | Timer Speed: double | Total Rounds: 3
+Player Arm: 75" | Enemy Arm: 67"
+Practice Mode: true
+
+=== ROUND 1 === (0.0s)
+
+--- PUNCH SUMMARY ---
+PLAYER:
+ENEMY:
+
+--- MOVEMENT ---
+Player distance traveled: 0px | Avg dist from enemy: 0px
+Time in range: 0s | Out of range: 0s
+
+--- DEFENSE ---
+Player: 0 ducks, 0 full guards, 0 high blocks, 0 low blocks, 0 blocks hit, 0 dodges
+Enemy: 0 ducks, 0 full guards, 0 high blocks, 0 low blocks, 0 blocks hit, 0 dodges
+
+--- KNOCKDOWNS ---
+Player scored: 0 | Enemy scored: 0
+
+--- EVENT LOG ---
+Time(ms) | Actor  | Event      | Details                                  | Positions (P/E) | Dist | Stam(P/E)
+------------------------------------------------------------------------------------------------------------------------

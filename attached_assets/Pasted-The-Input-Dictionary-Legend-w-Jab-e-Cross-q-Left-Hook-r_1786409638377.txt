@@ -1,0 +1,22 @@
+The Input Dictionary (Legend)
+* w = Jab | e = Cross | q = Left Hook | r = Right Hook | s = Left Uppercut | d = Right Uppercut
+* v = Perfect Block | A = Arm Charge Punch (must be followed by a punch)
+* LShift = Duck | RShift = Switch Stance
+* Fwd = Walk Forward | Back = Walk Backward | Left = Circle Left | Right = Circle Right
+* ~ = The Beat. (Your dynamic 0.005s - 0.5s delay. The AI will stretch this on whiffs, or shrink it to 0.005s for rapid-fire success execution).
+Category 1: The Fundamentals (Basic Probes & Poking)
+Used to test the opponent's timing and reaction speeds.
+1. 1-2 Retreat: w ~ e ~ Back
+2. Double Jab Cross: Fwd ~ w ~ w ~ e
+3. Jab, Duck, Cross: w ~ LShift ~ e ~ Back
+4. Circling Jab: Left ~ w ~ w ~ Back
+5. Block & Jab: v ~ w ~ Fwd
+6. Double Jab, Lead Hook: w ~ w ~ q ~ Right
+7. Step In, Hooks: Fwd ~ r ~ q ~ Back
+8. Duck to Lead Hook: LShift ~ q ~ e ~ Back
+9. Uppercut Probe: w ~ d ~ q ~ Back
+10. The Classic 1-2-3: Fwd ~ w ~ e ~ q ~ Back
+Category 2: Counter-Punching Traps
+Wait for the opponent to overcommit, then punish. 11. Mayweather Pull-Counter: Back ~ e ~ Fwd ~ w 12. Slip & Rip: LShift ~ q ~ r ~ Back 13. Block & Uppercut: v ~ d ~ q ~ Fwd 14. Duck & Cross Counter: LShift ~ e ~ w ~ Back 15. Bait Block & Charge: Back ~ v ~ A ~ e 16. Whiff Punish Hook: Back ~ q ~ e ~ Fwd 17. Perfect Block Retaliation: v ~ s ~ r ~ Back 18. Circle & Duck Counter: Right ~ LShift ~ r ~ Left 19. Bait Jab to Charge Uppercut: w ~ LShift ~ A ~ d 20. Stance Confusion Counter: RShift ~ e ~ q ~ Back
+Category 3: In-Fighting & Pressure (Tyson/Frazier)
+High stamina cost, used when the opponent's health/stamina is low. 21. Peek-a-Boo Entry: LShift ~ Fwd ~ LShift ~ Fwd ~ q ~ r 22. Inside Uppercut Flurry: Fwd ~ s ~ d ~ s ~ q 23. Crash the Pocket: v ~ Fwd ~ q ~ r ~ LShift 24. Duck & Dig: LShift ~ q ~ d ~ e ~ Fwd 25. Charged Inside Hook: Fwd ~ A ~ q ~ e ~ Back 26. Smothering Pressure: Fwd ~ w ~ v ~ Fwd ~ q ~ r 27. Bob and Weave Hooks: LShift ~ r ~ q ~ LShift ~ Fwd 28. Shift to Inside Uppercut: RShift ~ Fwd ~ s ~ e ~ Left 29. Brawl Combination: Fwd ~ q ~ d ~ s ~ r ~ LShift 30. Block to Charged Inside: v ~ A ~ r ~ s ~ Fwd

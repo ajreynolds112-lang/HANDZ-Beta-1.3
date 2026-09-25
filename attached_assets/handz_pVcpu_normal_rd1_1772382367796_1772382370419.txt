@@ -1,0 +1,423 @@
+=== HANDZ INPUT RECORDING (SINGLE ROUND) ===
+Date: 2026-03-01T16:26:07.794Z
+Match Type: Player vs CPU | Mode: Normal
+
+--- FIGHT SETTINGS ---
+Player (BoxerPuncher) vs Brett "Chrome Tempest" Reed (OutBoxer)
+Player Level: 100 | Enemy Level: 24
+AI Difficulty: champion
+Round Duration: 60s | Timer Speed: double | Total Rounds: 3
+Player Arm: 60" | Enemy Arm: 60"
+
+=== ROUND 1 === (60.0s)
+
+--- PUNCH SUMMARY ---
+PLAYER:
+  cross: 5 thrown, 2 landed (40%) 3 body
+  rightHook: 14 thrown, 5 landed (36%) 11 body
+ENEMY:
+  cross: 2 thrown, 2 landed (100%)
+  rightHook: 1 thrown, 0 landed (0%) 1 body
+  leftUppercut: 4 thrown, 3 landed (75%) 4 body
+
+--- MOVEMENT ---
+Player distance traveled: 5243px | Avg dist from enemy: 88px
+Time in range: 12.8s | Out of range: 17.5s
+
+--- DEFENSE ---
+Player: 5 ducks, 3 full guards, 0 blocks hit, 0 dodges
+Enemy: 6 ducks, 12 full guards, 5 blocks hit, 0 dodges
+
+--- KNOCKDOWNS ---
+Player scored: 0 | Enemy scored: 0
+
+--- EVENT LOG ---
+Time(ms) | Actor  | Event      | Details                                  | Positions (P/E) | Dist | Stam(P/E)
+------------------------------------------------------------------------------------------------------------------------
+      13 | player | defense    | state=fullGuard prev=none                | (280,260)/(520,260) |  240 | 2500/773
+      13 | enemy  | defense    | state=fullGuard prev=none                | (280,260)/(520,260) |  240 | 2500/773
+      26 | player | defense    | state=duck prev=fullGuard                | (280,260)/(520,260) |  240 | 2500/773
+      67 | enemy  | defense    | state=none prev=fullGuard                | (280,260)/(520,261) |  240 | 2500/773
+     107 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (288,260)/(520,264) |  232 | 2500/773
+     120 | enemy  | defense    | state=fullGuard prev=none                | (290,260)/(520,265) |  230 | 2500/773
+     213 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (309,260)/(510,271) |  201 | 2500/773
+     226 | enemy  | defense    | state=duck prev=fullGuard                | (311,260)/(509,272) |  199 | 2500/773
+     280 | enemy  | defense    | state=none prev=duck                     | (321,260)/(509,275) |  188 | 2500/773
+     307 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (327,260)/(509,277) |  183 | 2500/773
+     333 | enemy  | defense    | state=fullGuard prev=none                | (332,260)/(509,279) |  178 | 2500/773
+     386 | enemy  | defense    | state=none prev=fullGuard                | (342,260)/(509,281) |  168 | 2500/773
+     400 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (345,260)/(509,280) |  165 | 2500/773
+     507 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (366,260)/(504,276) |  140 | 2500/773
+     547 | enemy  | defense    | state=fullGuard prev=none                | (373,260)/(499,278) |  127 | 2500/773
+     600 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (384,260)/(501,282) |  119 | 2500/773
+     600 | player | punch      | punch=rightHook feint=undefined charged= | (386,260)/(503,284) |  119 | 2498/773
+     706 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (404,260)/(521,285) |  119 | 2499/773
+     706 | enemy  | defense    | state=none prev=fullGuard                | (404,260)/(521,285) |  119 | 2499/773
+     760 | enemy  | defense    | state=fullGuard prev=none                | (415,260)/(531,285) |  119 | 2500/773
+     813 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (425,260)/(541,291) |  120 | 2500/773
+     867 | enemy  | defense    | state=none prev=fullGuard                | (436,260)/(550,296) |  120 | 2500/773
+     894 | player | punch      | punch=rightHook feint=undefined charged= | (443,260)/(556,296) |  118 | 2498/773
+     907 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (443,260)/(558,295) |  120 | 2498/773
+    1000 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (462,260)/(575,302) |  121 | 2499/773
+    1080 | enemy  | defense    | state=fullGuard prev=none                | (477,260)/(588,304) |  120 | 2500/773
+    1107 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (482,260)/(585,306) |  113 | 2500/773
+    1134 | enemy  | defense    | state=none prev=fullGuard                | (488,260)/(582,308) |  106 | 2500/773
+    1186 | enemy  | defense    | state=fullGuard prev=none                | (498,260)/(576,312) |   93 | 2500/773
+    1200 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (500,260)/(574,313) |   91 | 2500/773
+    1294 | player | defense    | state=none prev=duck                     | (519,260)/(569,316) |   75 | 2500/773
+    1294 | enemy  | defense    | state=none prev=fullGuard                | (519,260)/(569,316) |   75 | 2500/773
+    1306 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (521,260)/(568,316) |   73 | 2500/773
+    1321 | enemy  | defense    | state=duck prev=none                     | (524,260)/(568,317) |   72 | 2500/773
+    1401 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (538,264)/(566,318) |   61 | 2500/773
+    1481 | player | defense    | state=duck prev=none                     | (549,275)/(565,318) |   47 | 2500/773
+    1507 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (553,278)/(565,319) |   42 | 2500/773
+    1587 | player | punch      | punch=rightHook feint=undefined charged= | (565,291)/(563,319) |   28 | 2498/773
+    1601 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (565,289)/(563,320) |   31 | 2498/773
+    1654 | player | hit        | punch=rightHook damage=163 crit=true stu | (573,291)/(562,320) |   31 | 2499/610
+    1707 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (573,299)/(550,328) |   37 | 2500/610
+    1801 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (571,315)/(543,332) |   32 | 2500/610
+    1841 | enemy  | punch      | punch=leftUppercut feint=false charged=f | (563,320)/(538,335) |   30 | 2500/606
+    1907 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (557,323)/(530,340) |   32 | 2500/606
+    1921 | player | punch      | punch=rightHook feint=undefined charged= | (553,326)/(529,341) |   29 | 2498/606
+    1987 | player | hit        | punch=rightHook damage=163 crit=true stu | (546,330)/(519,347) |   32 | 2499/444
+    2001 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (546,330)/(509,353) |   44 | 2500/444
+    2107 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (528,341)/(503,357) |   30 | 2500/444
+    2107 | enemy  | defense    | state=fullGuard prev=duck                | (528,341)/(503,357) |   30 | 2500/444
+    2201 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (517,348)/(490,363) |   31 | 2500/444
+    2213 | player | punch      | punch=cross feint=undefined charged=fals | (513,350)/(488,364) |   29 | 2499/444
+    2241 | enemy  | defense    | state=duck prev=fullGuard                | (512,351)/(484,366) |   32 | 2499/444
+    2268 | player | hit        | punch=cross damage=110 crit=true stun=fa | (506,355)/(478,367) |   30 | 2499/333
+    2308 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (502,357)/(465,372) |   40 | 2500/333
+    2321 | enemy  | defense    | state=none prev=duck                     | (500,359)/(464,372) |   38 | 2500/333
+    2361 | enemy  | punch      | punch=leftUppercut feint=false charged=f | (491,364)/(458,372) |   33 | 2500/330
+    2374 | enemy  | defense    | state=duck prev=none                     | (491,364)/(458,372) |   33 | 2500/330
+    2401 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (486,367)/(456,372) |   31 | 2500/330
+    2428 | enemy  | hit        | punch=leftUppercut damage=22 crit=false  | (480,371)/(449,375) |   31 | 2478/330
+    2508 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (474,375)/(442,376) |   31 | 2478/331
+    2508 | player | punch      | punch=rightHook feint=undefined charged= | (471,376)/(442,376) |   29 | 2476/331
+    2574 | player | hit        | punch=rightHook damage=163 crit=true stu | (461,383)/(431,374) |   31 | 2476/168
+    2601 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (459,384)/(418,371) |   43 | 2477/168
+    2708 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (442,394)/(409,367) |   43 | 2477/168
+    2801 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (425,395)/(401,362) |   41 | 2477/168
+    2854 | player | punch      | punch=cross feint=undefined charged=fals | (412,395)/(400,357) |   40 | 2474/168
+    2908 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (404,395)/(399,352) |   44 | 2474/168
+    2908 | enemy  | punch      | punch=leftUppercut feint=false charged=f | (401,395)/(400,350) |   45 | 2474/165
+    2908 | player | hit        | punch=cross damage=26 crit=false stun=fa | (401,395)/(400,350) |   45 | 2474/139
+    2975 | enemy  | hit        | punch=leftUppercut damage=19 crit=false  | (388,395)/(400,336) |   60 | 2456/139
+    3001 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (385,401)/(400,335) |   68 | 2456/141
+    3094 | enemy  | defense    | state=fullGuard prev=duck                | (367,400)/(400,325) |   81 | 2456/141
+    3094 | player | punch      | punch=rightHook feint=undefined charged= | (365,398)/(400,325) |   81 | 2452/141
+    3107 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (365,398)/(401,324) |   82 | 2452/141
+    3201 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (351,387)/(407,317) |   90 | 2452/141
+    3308 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (349,367)/(416,311) |   87 | 2452/141
+    3401 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (349,349)/(422,303) |   86 | 2452/141
+    3508 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (358,332)/(429,295) |   80 | 2452/141
+    3601 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (371,319)/(436,289) |   72 | 2452/141
+    3641 | player | defense    | state=none prev=duck                     | (377,315)/(439,286) |   69 | 2452/141
+    3707 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (390,315)/(444,282) |   64 | 2452/141
+    3800 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (408,315)/(453,277) |   58 | 2452/141
+    3854 | player | defense    | state=duck prev=none                     | (418,315)/(457,275) |   56 | 2453/141
+    3908 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (429,315)/(460,270) |   55 | 2453/141
+    4002 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (446,313)/(465,262) |   54 | 2455/142
+    4055 | player | punch      | punch=rightHook feint=undefined charged= | (456,304)/(469,258) |   48 | 2453/142
+    4108 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (461,299)/(472,254) |   46 | 2454/143
+    4122 | enemy  | block      | punch=rightHook damage=18 blocked=true p | (465,295)/(473,251) |   44 | 2455/125
+    4202 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (474,286)/(474,245) |   41 | 2456/125
+    4308 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (478,267)/(473,234) |   33 | 2457/125
+    4402 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (478,252)/(473,221) |   32 | 2458/125
+    4428 | player | punch      | punch=rightHook feint=undefined charged= | (473,247)/(472,218) |   29 | 2457/125
+    4495 | enemy  | block      | punch=rightHook damage=21 blocked=true p | (463,240)/(471,209) |   32 | 2457/104
+    4508 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (463,240)/(471,209) |   32 | 2458/104
+    4602 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (450,227)/(476,200) |   37 | 2459/104
+    4708 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (431,225)/(494,188) |   74 | 2460/104
+    4708 | player | punch      | punch=cross feint=undefined charged=fals | (428,225)/(494,188) |   76 | 2459/104
+    4802 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (416,221)/(508,175) |  103 | 2460/104
+    4908 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (416,200)/(512,169) |  102 | 2461/104
+    5002 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (426,192)/(523,176) |   98 | 2462/104
+    5014 | player | defense    | state=none prev=duck                     | (429,192)/(524,177) |   97 | 2462/104
+    5108 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (439,192)/(536,183) |   97 | 2463/104
+    5202 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (431,192)/(539,186) |  108 | 2464/104
+    5309 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (411,192)/(542,187) |  131 | 2465/104
+    5402 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (392,192)/(539,186) |  147 | 2466/105
+    5509 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (372,192)/(534,182) |  162 | 2467/106
+    5602 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (354,192)/(529,179) |  176 | 2468/106
+    5709 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (343,192)/(527,181) |  184 | 2470/107
+    5802 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (361,192)/(527,186) |  166 | 2471/108
+    5909 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (382,192)/(527,188) |  145 | 2472/109
+    6002 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (400,192)/(532,182) |  133 | 2473/109
+    6109 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (421,192)/(539,186) |  118 | 2474/110
+    6202 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (439,192)/(550,192) |  110 | 2475/111
+    6309 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (460,192)/(552,194) |   92 | 2476/111
+    6402 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (452,192)/(555,195) |  103 | 2477/112
+    6509 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (431,192)/(569,204) |  139 | 2478/113
+    6602 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (413,192)/(569,210) |  157 | 2479/113
+    6709 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (392,192)/(570,205) |  178 | 2481/114
+    6803 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (388,201)/(565,201) |  176 | 2482/115
+    6909 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (409,201)/(558,198) |  149 | 2484/116
+    6949 | enemy  | defense    | state=none prev=fullGuard                | (417,201)/(556,196) |  139 | 2484/116
+    7003 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (427,201)/(553,194) |  126 | 2485/117
+    7043 | enemy  | defense    | state=fullGuard prev=none                | (435,201)/(551,193) |  116 | 2486/117
+    7109 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (448,201)/(552,193) |  104 | 2487/117
+    7149 | player | punch      | punch=rightHook feint=undefined charged= | (458,201)/(552,193) |   94 | 2485/118
+    7203 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (466,201)/(558,197) |   92 | 2486/118
+    7309 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (487,201)/(565,202) |   78 | 2487/119
+    7403 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (505,201)/(566,202) |   61 | 2489/119
+    7510 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (521,212)/(571,206) |   51 | 2490/120
+    7603 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (534,225)/(580,211) |   48 | 2492/121
+    7710 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (549,240)/(585,214) |   45 | 2493/122
+    7803 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (562,253)/(583,213) |   45 | 2494/122
+    7910 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (565,266)/(570,205) |   62 | 2496/123
+    8003 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (565,261)/(550,192) |   70 | 2497/124
+    8110 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (565,241)/(532,181) |   68 | 2499/125
+    8203 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (560,225)/(515,171) |   70 | 2500/125
+    8309 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (543,216)/(497,160) |   72 | 2500/126
+    8403 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (525,216)/(482,151) |   77 | 2500/127
+    8510 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (504,216)/(465,140) |   85 | 2500/128
+    8603 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (486,216)/(454,133) |   88 | 2500/128
+    8710 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (465,216)/(447,129) |   89 | 2500/129
+    8803 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (447,216)/(438,123) |   92 | 2500/130
+    8910 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (426,216)/(433,120) |   96 | 2500/130
+    9003 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (408,216)/(431,119) |   99 | 2500/131
+    9110 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (395,203)/(426,116) |   92 | 2500/132
+    9203 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (395,185)/(424,115) |   76 | 2500/132
+    9310 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (401,166)/(426,116) |   56 | 2500/133
+    9404 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (417,161)/(433,120) |   44 | 2500/134
+    9510 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (434,170)/(429,118) |   52 | 2500/135
+    9604 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (440,174)/(420,113) |   64 | 2500/135
+    9710 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (424,174)/(408,105) |   71 | 2500/136
+    9803 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (424,174)/(408,105) |   71 | 2500/137
+    9910 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (409,174)/(408,105) |   69 | 2500/138
+   10004 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (391,174)/(412,108) |   70 | 2500/138
+   10110 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (370,174)/(423,114) |   80 | 2500/139
+   10204 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (362,174)/(435,121) |   90 | 2500/140
+   10311 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (383,174)/(444,127) |   77 | 2500/141
+   10404 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (401,174)/(449,130) |   65 | 2500/141
+   10511 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (421,174)/(456,134) |   52 | 2500/142
+   10604 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (438,179)/(464,139) |   48 | 2500/143
+   10710 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (452,194)/(470,143) |   54 | 2500/143
+   10804 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (444,199)/(472,144) |   61 | 2500/144
+   10910 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (434,199)/(476,146) |   67 | 2500/145
+   11004 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (447,199)/(481,150) |   60 | 2500/146
+   11111 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (468,199)/(483,151) |   50 | 2500/146
+   11204 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (486,199)/(474,146) |   54 | 2500/147
+   11311 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (507,199)/(465,140) |   72 | 2500/148
+   11404 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (517,199)/(454,133) |   91 | 2500/148
+   11511 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (499,199)/(440,125) |   94 | 2500/149
+   11604 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (480,199)/(431,119) |   94 | 2500/150
+   11711 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (460,199)/(416,110) |   99 | 2500/151
+   11804 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (441,199)/(403,102) |  104 | 2500/151
+   11910 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (421,199)/(391,106) |   98 | 2500/152
+   12003 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (403,199)/(382,111) |   90 | 2500/153
+   12111 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (382,199)/(375,115) |   84 | 2500/153
+   12204 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (364,199)/(373,117) |   83 | 2500/154
+   12311 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (348,199)/(376,115) |   89 | 2500/155
+   12405 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (333,199)/(387,108) |  106 | 2500/156
+   12457 | enemy  | defense    | state=duck prev=fullGuard                | (340,199)/(394,104) |  109 | 2500/156
+   12511 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (351,199)/(397,102) |  108 | 2500/156
+   12551 | enemy  | defense    | state=fullGuard prev=duck                | (359,199)/(400,100) |  107 | 2500/157
+   12604 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (369,199)/(400,100) |  104 | 2500/157
+   12644 | enemy  | defense    | state=duck prev=fullGuard                | (377,199)/(400,103) |   99 | 2500/158
+   12710 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (390,199)/(402,116) |   84 | 2500/158
+   12804 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (408,199)/(409,117) |   82 | 2500/159
+   12871 | enemy  | punch      | punch=cross feint=false charged=false bo | (421,193)/(411,117) |   78 | 2500/158
+   12910 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (425,190)/(410,117) |   75 | 2500/158
+   12937 | enemy  | hit        | punch=cross damage=15 crit=false stun=fa | (426,188)/(408,117) |   73 | 2485/158
+   13005 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (417,192)/(410,116) |   76 | 2485/160
+   13112 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (412,192)/(414,116) |   76 | 2485/160
+   13205 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (430,192)/(412,116) |   78 | 2485/161
+   13311 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (420,192)/(413,120) |   73 | 2485/162
+   13311 | enemy  | punch      | punch=cross feint=false charged=false bo | (417,192)/(413,121) |   71 | 2485/160
+   13378 | enemy  | hit        | punch=cross damage=15 crit=false stun=fa | (404,192)/(411,120) |   73 | 2471/160
+   13405 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (401,197)/(410,118) |   79 | 2471/161
+   13512 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (380,197)/(407,115) |   86 | 2471/162
+   13578 | player | punch      | punch=rightHook feint=undefined charged= | (365,197)/(404,114) |   91 | 2469/163
+   13605 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (362,197)/(403,114) |   92 | 2469/163
+   13712 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (342,197)/(405,106) |  110 | 2469/163
+   13805 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (331,197)/(414,109) |  120 | 2469/164
+   13832 | player | defense    | state=duck prev=none                     | (334,197)/(416,111) |  119 | 2469/164
+   13912 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (349,197)/(428,117) |  112 | 2469/165
+   13951 | player | punch      | punch=rightHook feint=undefined charged= | (360,197)/(430,118) |  105 | 2467/165
+   14005 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (367,197)/(431,119) |  100 | 2467/165
+   14111 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (388,197)/(438,123) |   89 | 2467/166
+   14165 | enemy  | punch      | punch=rightHook feint=false charged=fals | (401,197)/(445,127) |   82 | 2467/164
+   14205 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (406,197)/(447,129) |   79 | 2467/164
+   14312 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (427,197)/(456,135) |   69 | 2467/165
+   14339 | player | punch      | punch=rightHook feint=undefined charged= | (435,197)/(458,136) |   65 | 2465/165
+   14405 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (445,197)/(463,139) |   60 | 2465/166
+   14405 | player | hit        | punch=rightHook damage=35 crit=false stu | (445,197)/(464,139) |   60 | 2466/131
+   14512 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (456,197)/(469,142) |   56 | 2467/131
+   14552 | player | punch      | punch=rightHook feint=undefined charged= | (466,197)/(471,144) |   53 | 2466/131
+   14604 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (474,197)/(474,146) |   51 | 2466/131
+   14618 | player | hit        | punch=rightHook damage=34 crit=false stu | (474,197)/(476,147) |   50 | 2467/97
+   14671 | enemy  | punch      | punch=leftUppercut feint=false charged=f | (474,197)/(474,145) |   51 | 2468/94
+   14711 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (471,197)/(476,147) |   50 | 2468/94
+   14738 | enemy  | hit        | punch=leftUppercut damage=19 crit=false  | (463,197)/(478,148) |   51 | 2449/94
+   14805 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (451,202)/(480,149) |   60 | 2449/95
+   14805 | player | defense    | state=none prev=duck                     | (451,202)/(480,149) |   60 | 2449/95
+   14898 | enemy  | defense    | state=fullGuard prev=duck                | (433,202)/(481,150) |   71 | 2449/95
+   14912 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (431,202)/(480,149) |   72 | 2449/95
+   15005 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (413,202)/(478,148) |   85 | 2449/95
+   15111 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (392,202)/(478,148) |  102 | 2449/95
+   15206 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (374,202)/(479,149) |  118 | 2449/95
+   15311 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (389,202)/(491,156) |  112 | 2449/95
+   15405 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (407,202)/(493,157) |   97 | 2449/95
+   15512 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (428,202)/(503,163) |   84 | 2449/96
+   15605 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (446,202)/(511,168) |   73 | 2450/96
+   15712 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (467,202)/(512,169) |   56 | 2452/97
+   15805 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (485,202)/(514,170) |   43 | 2453/97
+   15912 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (506,202)/(508,167) |   36 | 2454/98
+   15925 | player | punch      | punch=cross feint=undefined charged=fals | (511,202)/(507,166) |   37 | 2453/98
+   15979 | enemy  | block      | punch=cross damage=14 blocked=true punch | (521,202)/(497,160) |   49 | 2454/85
+   16005 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (524,202)/(495,159) |   52 | 2455/85
+   16113 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (514,202)/(477,147) |   66 | 2456/85
+   16205 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (495,202)/(461,137) |   73 | 2457/85
+   16313 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (475,202)/(447,129) |   79 | 2458/85
+   16406 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (457,202)/(438,124) |   81 | 2459/85
+   16513 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (436,202)/(428,117) |   85 | 2460/85
+   16606 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (418,202)/(427,117) |   86 | 2461/85
+   16713 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (397,202)/(423,114) |   92 | 2462/85
+   16806 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (379,202)/(429,118) |   98 | 2463/85
+   16913 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (363,202)/(440,125) |  109 | 2465/86
+   17006 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (381,202)/(451,131) |   99 | 2466/86
+   17113 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (402,202)/(454,133) |   86 | 2467/87
+   17206 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (420,202)/(452,132) |   77 | 2468/88
+   17313 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (441,202)/(447,129) |   73 | 2469/88
+   17406 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (459,202)/(439,124) |   81 | 2470/89
+   17512 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (449,202)/(432,120) |   84 | 2471/90
+   17606 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (430,202)/(425,115) |   87 | 2472/91
+   17713 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (410,202)/(416,110) |   92 | 2473/91
+   17807 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (392,202)/(415,109) |   96 | 2474/92
+   17912 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (386,202)/(424,114) |   95 | 2475/93
+   18006 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (404,202)/(428,118) |   88 | 2476/93
+   18100 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (423,202)/(425,115) |   87 | 2478/94
+   18207 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (443,202)/(418,111) |   95 | 2479/95
+   18300 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (461,202)/(416,110) |  103 | 2480/96
+   18407 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (482,202)/(411,107) |  119 | 2482/96
+   18513 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (467,202)/(402,101) |  120 | 2483/97
+   18606 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (449,202)/(398,101) |  113 | 2485/98
+   18700 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (430,202)/(387,108) |  104 | 2486/99
+   18807 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (410,202)/(376,115) |   94 | 2487/99
+   18900 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (391,202)/(376,115) |   89 | 2489/100
+   19007 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (371,202)/(375,116) |   87 | 2490/101
+   19100 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (352,202)/(379,113) |   93 | 2491/101
+   19207 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (347,210)/(387,108) |  109 | 2493/102
+   19300 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (366,210)/(389,107) |  106 | 2494/103
+   19406 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (386,210)/(393,104) |  106 | 2496/104
+   19501 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (403,206)/(397,102) |  104 | 2497/104
+   19606 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (406,187)/(393,104) |   83 | 2498/105
+   19701 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (406,169)/(395,103) |   66 | 2500/106
+   19807 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (395,157)/(388,107) |   50 | 2500/106
+   19901 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (378,159)/(392,105) |   56 | 2500/107
+   20006 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (363,174)/(404,102) |   82 | 2500/108
+   20101 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (350,186)/(408,105) |  100 | 2500/109
+   20207 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (345,203)/(413,108) |  117 | 2500/109
+   20300 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (359,212)/(424,115) |  117 | 2500/110
+   20407 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (379,214)/(428,117) |  109 | 2500/111
+   20501 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (392,227)/(428,117) |  116 | 2500/111
+   20608 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (406,242)/(424,115) |  128 | 2500/112
+   20701 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (419,255)/(420,114) |  141 | 2500/113
+   20808 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (437,255)/(413,114) |  143 | 2500/114
+   20901 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (434,246)/(413,114) |  133 | 2500/114
+   21008 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (434,225)/(417,111) |  116 | 2500/115
+   21101 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (434,207)/(418,111) |   97 | 2500/116
+   21208 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (434,186)/(415,109) |   79 | 2500/117
+   21301 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (434,168)/(405,103) |   71 | 2500/117
+   21408 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (426,150)/(392,105) |   57 | 2500/118
+   21408 | player | punch      | punch=rightHook feint=undefined charged= | (424,150)/(392,105) |   55 | 2498/118
+   21474 | enemy  | block      | punch=rightHook damage=18 blocked=true p | (411,150)/(388,107) |   48 | 2499/101
+   21501 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (408,150)/(387,108) |   47 | 2500/101
+   21608 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (387,150)/(376,115) |   37 | 2500/101
+   21701 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (369,150)/(371,118) |   32 | 2500/101
+   21714 | player | punch      | punch=cross feint=undefined charged=fals | (364,150)/(370,119) |   32 | 2499/101
+   21768 | enemy  | block      | punch=cross damage=14 blocked=true punch | (354,150)/(371,118) |   37 | 2499/87
+   21808 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (348,150)/(371,118) |   40 | 2500/87
+   21900 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (330,150)/(380,112) |   62 | 2500/87
+   21914 | player | defense    | state=duck prev=none                     | (328,150)/(381,112) |   66 | 2500/87
+   21994 | player | defense    | state=none prev=duck                     | (314,153)/(392,105) |   91 | 2500/87
+   22007 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (313,154)/(393,104) |   95 | 2500/87
+   22101 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (307,169)/(410,106) |  121 | 2500/87
+   22208 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (307,190)/(424,115) |  139 | 2500/87
+   22301 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (316,204)/(430,120) |  141 | 2500/87
+   22408 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (333,213)/(429,120) |  134 | 2500/87
+   22501 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (351,213)/(429,118) |  123 | 2500/87
+   22515 | player | defense    | state=fullGuard prev=none                | (354,213)/(429,118) |  122 | 2500/87
+   22608 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (372,213)/(432,120) |  111 | 2500/87
+   22702 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (390,213)/(433,120) |  102 | 2500/87
+   22808 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (411,213)/(430,119) |   97 | 2500/87
+   22901 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (429,213)/(426,116) |   98 | 2500/87
+   22968 | player | defense    | state=none prev=fullGuard                | (439,213)/(420,112) |  103 | 2500/87
+   23008 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (431,213)/(418,111) |  103 | 2500/87
+   23101 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (413,213)/(419,111) |  102 | 2500/87
+   23208 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (393,213)/(412,108) |  108 | 2500/87
+   23301 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (374,213)/(419,112) |  111 | 2500/87
+   23409 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (354,213)/(430,118) |  122 | 2500/87
+   23502 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (336,213)/(441,125) |  137 | 2500/87
+   23502 | player | defense    | state=fullGuard prev=none                | (336,213)/(441,125) |  137 | 2500/87
+   23609 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (333,213)/(440,125) |  139 | 2500/87
+   23702 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (333,213)/(436,122) |  138 | 2500/88
+   23808 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (343,213)/(432,120) |  129 | 2500/89
+   23902 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (361,213)/(432,120) |  117 | 2500/89
+   24008 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (382,213)/(439,124) |  106 | 2500/90
+   24101 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (400,213)/(447,129) |   96 | 2500/91
+   24208 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (421,213)/(454,133) |   86 | 2500/91
+   24302 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (428,198)/(459,136) |   69 | 2500/92
+   24409 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (428,177)/(464,140) |   52 | 2500/93
+   24501 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (424,163)/(471,144) |   51 | 2500/94
+   24608 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (403,163)/(478,148) |   76 | 2500/94
+   24702 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (408,163)/(492,156) |   84 | 2500/95
+   24808 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (429,163)/(508,166) |   79 | 2500/96
+   24902 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (447,163)/(522,175) |   76 | 2500/97
+   25008 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (458,173)/(540,186) |   83 | 2500/97
+   25102 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (458,191)/(546,190) |   89 | 2500/98
+   25209 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (458,212)/(558,197) |  101 | 2500/99
+   25302 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (458,230)/(567,203) |  113 | 2500/99
+   25409 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (458,251)/(575,208) |  125 | 2500/100
+   25502 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (458,269)/(573,206) |  131 | 2500/101
+   25609 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (478,269)/(562,200) |  108 | 2500/102
+   25702 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (493,262)/(551,193) |   90 | 2500/102
+   25809 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (503,245)/(541,187) |   69 | 2500/103
+   25902 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (503,227)/(537,184) |   54 | 2500/104
+   26009 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (498,211)/(533,182) |   46 | 2500/105
+   26103 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (479,211)/(528,179) |   58 | 2500/105
+   26209 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (459,211)/(534,182) |   80 | 2500/106
+   26303 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (446,211)/(541,187) |   98 | 2500/107
+   26409 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (425,211)/(552,193) |  128 | 2500/107
+   26503 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (422,211)/(562,200) |  140 | 2500/108
+   26609 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (443,211)/(558,197) |  116 | 2500/109
+   26703 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (461,211)/(556,196) |   96 | 2500/109
+   26809 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (482,211)/(564,201) |   83 | 2500/110
+   26903 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (500,211)/(574,207) |   74 | 2500/111
+   27009 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (518,213)/(578,209) |   60 | 2500/112
+   27102 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (518,231)/(575,207) |   61 | 2500/112
+   27210 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (518,239)/(566,202) |   60 | 2500/113
+   27303 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (518,226)/(555,196) |   48 | 2500/114
+   27410 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (518,226)/(543,188) |   46 | 2500/115
+   27503 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (518,245)/(533,182) |   64 | 2500/115
+   27609 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (518,263)/(522,175) |   88 | 2500/116
+   27703 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (510,263)/(508,166) |   97 | 2500/117
+   27810 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (490,263)/(498,160) |  103 | 2500/118
+   27903 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (472,263)/(492,157) |  108 | 2500/118
+   28009 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (451,263)/(479,149) |  118 | 2500/119
+   28104 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (433,263)/(478,148) |  123 | 2500/120
+   28210 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (433,245)/(479,149) |  107 | 2500/120
+   28304 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (433,226)/(481,150) |   91 | 2500/121
+   28410 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (433,206)/(485,153) |   75 | 2500/122
+   28503 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (433,188)/(492,156) |   67 | 2500/122
+   28610 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (442,174)/(497,160) |   57 | 2500/123
+   28703 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (460,174)/(505,165) |   47 | 2500/124
+   28810 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (480,174)/(514,170) |   34 | 2500/125
+   28903 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (488,174)/(519,173) |   31 | 2500/125
+   29010 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (497,174)/(528,179) |   31 | 2500/126
+   29104 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (507,179)/(543,188) |   37 | 2500/127
+   29210 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (502,195)/(557,197) |   56 | 2500/128
+   29303 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (483,195)/(560,198) |   76 | 2500/128
+   29411 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (463,195)/(564,201) |  101 | 2500/129
+   29503 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (447,197)/(577,209) |  130 | 2500/130
+   29610 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (447,218)/(592,218) |  145 | 2500/130
+   29704 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (447,236)/(585,214) |  140 | 2500/131
+   29810 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (447,257)/(585,219) |  143 | 2500/132
+   29904 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (458,265)/(584,215) |  136 | 2500/133
+   30010 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (478,265)/(587,215) |  119 | 2500/133
+   30104 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (496,265)/(589,216) |  104 | 2500/134
+   30210 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (512,265)/(589,216) |   91 | 2500/135
+   30303 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (521,255)/(582,212) |   75 | 2500/136

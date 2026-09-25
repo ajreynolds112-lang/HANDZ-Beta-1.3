@@ -1,0 +1,25 @@
+Rhythm:
+It is a subtle bobbing slightly back and forth motion that looks like an idle bob, small boxing rhythm bounce, fighter switches weight between front foot and back foot constantly till hit cleanly, hit resets rhythm. Rhythm Speed ranges from 0 (off) to 4 (faster bounce). Movement Speed is 7% faster in the direction the weight is on, but 7% slower in the opposite direction.
+
+Beginning frames (0-40%)
+Buffs - Jab is 7%% Stronger, Jab is 7% Faster (fist delay, fist launch retract after contact), + Punches Whiff 7% More Often
+Debuffs - Minus 7% Max punch range, Cross Returns 7% Slower, Movement Speed 7% slower moving opposite direction, Stamina Recovery -7% of max
+
+Middle frames (40%-60%)
+Buffs - Stamina Recovery + 14%, punch speed + 7%
+Debuffs - Getting hit pauses stamina recovery for 0.2 seconds at frame 8 and 9, Getting hit at frame 9 pauses stamina recovery for 1 second
+
+End Frames (60%-100)
+Buffs - Hook is 7% Stronger, Hook is 7% Faster, Cross is 7% Stronger, Cross is 7% Faster, Max Punch Range +7%, Accuracy +7%
+Debuffs - Minus 7% Stamina Recovery
+
+The stat changes at different frames are linear both directions and change dynamically at certain stages of bounce. Getting hit resets this back and forth rhythm above 0, and at zero when not in Balanced, brings you to neutral. Above zero rhythm, pressing a will cycle between Back Foot, off, and Front foot. If punching a fighter on the back foot, Damage increases 7%. If punching a fighter on the front foot, your speed increases.
+
+Movement
+Left and right at a set speed. Rhythm flips direction when players pass each other so that the front foot is always pointed toward the opposite player. Hands do not damage to opponent until contact is made by the punch going through the punch calculations
+
+Punch Mechanics
+Punch speed depends on an overall value that controls 5 variables - 1) fist launch delay (basically a subtle delay of 0.1 seconds so when we add animations and sprites, there will be a telegraph), 2) arm speed: the frames in which the fist reaches the opponent and either "does" or "doesn't" connect, 3) Contact and Damage, 4) punch linger: the fist will be held out for 0.2 seconds at level 1, 0.1 seconds at level 20, and it will divide till level 100; while a punch thrown by the fighter is in lingering phase, the lingering fist cannot do additional damage and another punch cannot be thrown without 50% retraction of initial punch. 5) retraction speed, which scales by level up to level 30, then is at a set speed that can be sped up or slowed down - 
+When a fist is being retracted, at 75% or less the same punch can be thrown again with 0.5x “fist launch delay” and 0.75x power.
+
+ALL NUMERICAL VALUES LISTED are subject to variable adjustments and can be increased or decreased per level. 

@@ -1,0 +1,438 @@
+REPLACE THE CURRENT MOVEMENT SYSTEM WITH A TRUE FOOTWORK-BASED MOVEMENT SYSTEM.
+
+The current implementation causes fighters to slide across the canvas. This should no longer happen.
+
+Fighters should never appear to glide. Every movement across the ring should be driven by visible footwork animations.
+
+Movement must always be synchronized with the fighter's position, rhythm system, and facing direction.
+
+--------------------------------------------------
+
+CORE MOVEMENT RULE
+
+The fighter's body should only translate across the ring because their feet are stepping.
+
+Do NOT move the entire fighter sprite smoothly while the feet remain planted.
+
+Instead:
+
+1. Lift the leading stepping foot.
+2. Move that foot to the new position.
+3. Plant the foot.
+4. Immediately lift the trailing foot.
+5. Move it forward.
+6. Plant it.
+
+Only after these foot placements should the body complete its movement.
+
+Every directional movement should consist of alternating steps.
+
+Every visible movement should contain footwork.
+
+--------------------------------------------------
+
+STEP ORDER
+
+Determine which foot moves first based on:
+
+• movement direction
+• current facing direction
+• stance (orthodox or southpaw)
+
+Never hardcode left foot or right foot.
+
+Always determine:
+
+Front Foot
+
+Back Foot
+
+relative to the opponent.
+
+The Front Foot is always the foot closest to the opponent.
+
+The Back Foot is always the foot furthest from the opponent.
+
+--------------------------------------------------
+
+ORTHODOX STEP LOGIC
+
+Orthodox fighters begin every fight in this stance.
+
+Forward
+
+Front Foot steps first.
+
+Back Foot follows.
+
+Backward
+
+Back Foot steps first.
+
+Front Foot follows.
+
+Move Left
+
+Front Foot steps first.
+
+Back Foot follows.
+
+Move Right
+
+Back Foot steps first.
+
+Front Foot follows.
+
+--------------------------------------------------
+
+SOUTHPAW STEP LOGIC
+
+Southpaw reverses lateral movement.
+
+Forward
+
+Front Foot first.
+
+Backward
+
+Back Foot first.
+
+Move Left
+
+Back Foot first.
+
+Move Right
+
+Front Foot first.
+
+Forward and backward movement remain identical.
+
+Only lateral movement changes.
+
+--------------------------------------------------
+
+FACING DIRECTION
+
+Never assume fighters face left or right.
+
+The game already calculates facing direction.
+
+Continue using the existing directional facing formulas.
+
+Every frame:
+
+Determine
+
+• current facing angle
+
+• opponent position
+
+• stance
+
+Then calculate:
+
+Front Foot
+
+Back Foot
+
+before selecting the walking animation.
+
+This should remain correct regardless of where fighters are located inside the ring.
+
+--------------------------------------------------
+
+STEP ANIMATION
+
+Every step should contain a small lifting motion.
+
+The stepping leg should:
+
+Lift from the floor.
+
+Travel upward.
+
+Move slightly forward.
+
+Return downward.
+
+Land.
+
+The foot should travel along a shallow reverse parabolic arc.
+
+The lift should only be a few pixels.
+
+Never exaggerate.
+
+The movement should resemble realistic boxing footwork rather than walking.
+
+--------------------------------------------------
+
+LEG ANIMATION
+
+When stepping:
+
+Hip moves slightly.
+
+Knee bends.
+
+Lower leg follows.
+
+Foot remains pointed naturally.
+
+The planted foot should stay grounded until it becomes the stepping foot.
+
+Never slide planted feet.
+
+--------------------------------------------------
+
+BODY WEIGHT SHIFT
+
+Every completed step should shift body weight.
+
+Slightly move:
+
+hips
+
+shoulders
+
+head
+
+center of mass
+
+toward the planted foot.
+
+This creates believable balance.
+
+--------------------------------------------------
+
+BOBBING SYNCHRONIZATION
+
+The existing pendulum bobbing animation must continue.
+
+Walking should synchronize with the bobbing.
+
+As each foot lands:
+
+The bob should reach its lowest point.
+
+As each foot lifts:
+
+The bob rises slightly.
+
+This creates natural rhythm.
+
+--------------------------------------------------
+
+RHYTHM INDICATOR INTEGRATION
+
+The rhythm system already exists.
+
+Continue using all existing rhythm buffs and vulnerabilities.
+
+Do not change combat mechanics.
+
+Instead:
+
+While stepping:
+
+Temporarily lock the rhythm indicator to foot placement.
+
+Front Foot
+
+represents
+
+100%
+
+Back Foot
+
+represents
+
+0%
+
+As each step occurs:
+
+The rhythm indicator should smoothly slide toward the stepping foot.
+
+Example:
+
+Front Foot plants
+
+Indicator moves toward 100%.
+
+Back Foot plants
+
+Indicator moves toward 0%.
+
+Walking continuously alternates between both extremes.
+
+Once movement stops:
+
+Return immediately to the normal rhythm logic already implemented.
+
+No UI redesign is needed.
+
+Only the indicator position changes.
+
+--------------------------------------------------
+
+DUCKING MOVEMENT
+
+Walking while ducking should also use stepping.
+
+The fighter should never glide while crouched.
+
+The crouched body should continue stepping using the same rules.
+
+Leg lift height should simply be smaller.
+
+--------------------------------------------------
+
+GETTING HIT
+
+When a fighter absorbs a clean punch:
+
+Perform a reactive recovery step.
+
+The foot opposite the direction of force should step backward.
+
+This should happen before the body fully recovers.
+
+The recovery animation should preserve balance.
+
+Do not allow the fighter to slide backward.
+
+Every backward displacement must come from an actual recovery step.
+
+--------------------------------------------------
+
+MOVEMENT SPEED
+
+Actual movement speed should remain unchanged.
+
+Only the animation method changes.
+
+Distance traveled per second should stay identical.
+
+Movement now appears realistic because it is driven by stepping instead of sliding.
+
+--------------------------------------------------
+
+PIXEL INTERPOLATION
+
+Smoothly interpolate:
+
+Hip
+
+Knee
+
+Ankle
+
+Foot
+
+Body
+
+between animation frames.
+
+Never teleport limbs.
+
+Every step should appear continuous.
+
+--------------------------------------------------
+
+ANIMATION TRANSITIONS
+
+Transitions between:
+
+Idle
+
+Walk
+
+Duck Walk
+
+Punch
+
+Block
+
+Hit Reaction
+
+should blend smoothly.
+
+Never snap between poses.
+
+--------------------------------------------------
+
+NEW TOOL
+
+Inside:
+
+Neural Network
+
+→ Punch Animation Editor
+
+Add a new editor called:
+
+Walk Editor
+
+The Walk Editor should independently edit:
+
+Forward Walk
+
+Backward Walk
+
+Left Walk
+
+Right Walk
+
+Duck Forward
+
+Duck Back
+
+Duck Left
+
+Duck Right
+
+Each movement should expose editable values including:
+
+• Step distance
+
+• Foot lift height
+
+• Hip movement
+
+• Knee curve
+
+• Foot speed
+
+• Step timing
+
+• Body lean
+
+• Vertical bob amount
+
+• Recovery step distance
+
+• Recovery speed
+
+• Curve interpolation
+
+• Animation frame timing
+
+These settings should only affect movement animations and should not modify combat logic.
+
+--------------------------------------------------
+
+FINAL GOAL
+
+The finished result should make fighters feel planted on the canvas instead of floating across it.
+
+Every inch of movement inside the ring should visually originate from proper boxing footwork.
+
+Movement should remain perfectly synchronized with:
+
+• Directional facing formulas
+• Orthodox/Southpaw stance
+• Rhythm indicator
+• Existing rhythm buffs and vulnerabilities
+• Pendulum bobbing animation
+• Hit reactions
+• Ducking movement

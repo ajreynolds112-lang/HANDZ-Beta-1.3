@@ -1,0 +1,50 @@
+Force Bundle - Journeyman grants 10k, Contender 50k, Elite 100K, Champion 250K, Undisputed 1 Million, GOAT 5 Million;
+Warmup Tape - Journeyman Boosts XP gained by 2x for the next training week Refinement Tome - Journeyman grants 2 refinement points, Contender 5 points, Elite 8, Champion 10, Undisputed 15, GOAT 20
+Fight Surge - Journeyman Boosts Earned Force by 2x next fight, Contender 3x, Elite 4x, Champion 6x, GOAT 10x Pre-Workout Powder - Journeyman boosts stat points and xp by 1.5x for next weightlifting session, Contender 2x, Elite 2.5x, Champion 3x, Undisputed 4x, GOAT 7x 
+Combo Tape - Boosts stat points and XP rewards by 1.5x for next heavy bag session, Contender 2x, Elite 2.5x, Champion 3x, Undisputed 4x, GOAT 7x 
+Headgear Strap - Boosts stat points and XP rewards by 1.5x for next heavy bag session, Contender 2x, Elite 2.5x, Champion 3x, Undisputed 4x, GOAT 7x 
+Electrolyte Bottle I - Journeyman improves stamina recovery speed by 5% next fight, Contender 8%, Elite 12%, Champion 15%, Undisputed 20%, GOAT 25%
+ Journeyman Exclusive Items -
+Diamond Chip - Journeyman grants 1 diamond
+Footwork Laces - Rhythm cut has a 20% chance to fail against you
+AC Fan - boosts passive gym income for 24 Hours by 1.2x but lowers stamina by 10% in Career Bouts. (Using any AC boost replaces the current ac with another with confirmation, and resets the 24hr timer.) Gummy Candy I - Boosts Power by 1% for next Career bout but lowers speed by 1%. Can consume up to 20 before the fight.
+Banana - Raises Dodge and Power by 2% for 1 week. Stackable Up to 9999, Can consume up to 10 per week.
+ Contender Items:
+AC Blast I - boosts passive gym income for 24 Hours by 1.5x but lowers stamina by 8% inCareer Bouts; no synergy with other AC boosts.
+Old Bell hammer - Boosts Sparring EXP by 10% Gummy Candy II - Boosts Defense by 1% for next Career bout but lowers focus by 1%. Can consume up to 20 before the fight.
+ Elite Exclusive Items:
+Diamond Jar - Contender Grants
+AC Blast II - boosts passive gym income for 24 Hours by 2x but lowers stamina by 7.5% in Career Bouts; no synergy with other AC boosts.
+Diamond Jar - grants 5 Diamonds, stackable up to 9999
+Electrolyte Bottle III - improves stamina recovery speed by 12.5% next fight. stackable up to 9999
+Veteran’s Footage - Boosts Dodge chance and Focus by 10% in Career Fights and Sparring. one per save, permanent item. Training Frenzy I - 1.5x rewards for one training week (nullified if Simulate Week is used); stackable up to 9999
+
+Champion Exclusive Items:
+Diamond Drawer - grants 15 diamonds, stackable up to 9999
+AC Blast III - boosts passive gym income for 24 Hours by 3x but lowers stamina by 5% in sparring and Career Bouts, no synergy with other AC boosts. Credit Limit Increase - Allows Force Conversion to Diamonds (1 Diamond for 500K Force). (Makes it so clicking the force counter shows “Convert to Stats” and “Convert to Diamonds,” and clicking either shows a confirmation), one per save, permanent item.
+Compression Sleeves - 3% Chance to count a weightlifting session’s rep twice. One Per Save
+Veteran’s Hand Wraps - Boosts Power and Crit Chance by 15% in Career Fights and Sparring. one per save, permanent item.
+Veteran’s Fund I - Grants 50 Diamonds When Consumed, stackable up to 9999
+Heavy Bag of Greatness - Lowers the max string of combos appearing for heavy bag training in Camp by 1 letter; one per save
+Training Frenzy II - 1.5x rewards for one training week (nullified if Simulate Week is used); stackable up to 9999, synergy
+Import Ticket - Next sparring session, spar anybody on the current active roster at their current level
+Gummy Candy III - Boosts Power and Defense by 2% for next Career Bout but lowers dodge Chance and speed by 1%. Stackable up to 9999, can consume up to 20 before the fight.
+ Undisputed Exclusive Items:
+Diamond Vault - grants 25 diamonds, stackable up to 9999
+AC Blast IV - boosts passive gym income for 24 Hours by 4x, no synergy with other AC boosts. Stackable Up to 9999, Sells for 20k Shards Gym Key - Permanently grants +2 stat points to all stat point rewards when training. One Per Save, permanent item Corner Bucket - Raises Stamina Recovery Speed by 10% in Career Bouts and Sparring. One Per Save, permanent item Coach’s Notes - Boosts a random stat permanently by 0.25% every Camp Sparring session, capped at 100%. One Per Save, permanent item Challenge Clause - Bypasses an opponent’s Availability on the Select Opponent Screen and Weeks-Out screen (with confirmation first). One Per Save, permanent item
+Veteran’s Fund II - Grants 100 Diamonds When Consumed, stackable up to 9999, sells for 250k Shards
+Training Frenzy III - 2x rewards for one training week (nullified if Simulate Week is used); stackable up to 9999, synergy, Sells for 60k Shards  GOAT Exclusive Items:
+AC Blast IV - boosts passive gym income for 24 Hours by 5x, no synergy with other AC boosts. Stackable up to 9999, sells for 100k Shards GOAT’s Blessing - 1.5x all Rewards for all Training Camp weeks for 1 camp; stackable up to 9999, one GOAT’s Blessing usable at a time, synergy with other boosters, sells for 200k Shards Training Frenzy IV - 3x rewards for one training week (nullified if Simulate Week is used); stackable up to 9999, synergy, Sells for 120k Shards
+Old Fight Poster - Boosts your stun chance by 50% for the next fight; stackable up to 9999, one per save, permanent item. Lucky Coin - 0.25% chance to duplicate any singular item reward, 5 per save file, permanent item.
+Refined Film - Raises Defense by 25% in Sparring and Career Bouts. One Per Save, permanent item
+2088 Mouthguard - 65% chance to avoid a KD from occurring if a punch were to KD you. One per save, permanent item.
+Veteran’s Amateur Belt - Boosts Speed by 3% in Career Fights and Sparring. One per save, permanent item. Veteran’s Weighted Vest - Boosts Stamina by 15% in Career Fights and Sparring. One per save, permanent item. Veteran’s Fund III - Grants 300 Diamonds When Consumed, stackable up to 9999, Sells for 10 Million Shards
+Sparta’s Trophy - Maxes out any singular refinement category, and Can be sold for 25 diamonds; stackable up to 9999  Crates: Crates work similar to reward chests in idle games, with varying degrees of rarity and rewards. Crates can be rewarded in Training and Career Fights, and provide 10 items each:
+Journeyman’s Crate - Journeyman items 85% of the time, Contender Items 14% of the time, and Elite Items 1% of the time. Colors - Tan Wood Texture with Green Trim
+Contender’s Crate - Journeyman items 10% of the Time, Contender Items 75% Of the time, Elite Items 14% Of the time, and Champion Items 1% of the time. Colors - Tan Wood Texture with Blue Trim
+Elite’s Crate - Contender Items 10% of the time, Elite Items 75% of the time, Champion items 14.75% of the time, Undisputed 0.25% of the time. Colors - Shiny Metallic texture with Purple Trim
+Champion’s Crate - Elite Items 10% of the time, Champion Items 89% Of the time, Undisputed item 1% of the time. Colors -  Shiny Metallic texture with Gold Metallic Trim Undisputed’s Crate - Champion Items 55% Of the time, Undisputed Items 44.99% of the time, GOAT items 0.01% of the time. Colors - Quartz White Texture with Platinum Metallic Trim
+GOAT’s Crate - Champion Items 30% Of the time, Undisputed Items 55% of the time, GOAT Items 15% of the time. Colors - Dark Grey with Sky Blue Metallic Trim.  If an item were to reach 9999, that item’s chance to be given to the player across all crates and rewards is zero. Each Boost active should have its own icon in squares and tooltips on hover that describe the effect of the current boost.
+
+The design for each item should be In the style similar to isometric pixel art as a png. ——  Glove Upgrade - Level 1 Glove adds 5% Power, Level 100 Glove adds 1000% Power, Starting upgrade is 500 Shards and level 1000 is 50 Million Shards
+ Glove Tape Upgrade - Lv 1 Tape adds 5% Accuracy and

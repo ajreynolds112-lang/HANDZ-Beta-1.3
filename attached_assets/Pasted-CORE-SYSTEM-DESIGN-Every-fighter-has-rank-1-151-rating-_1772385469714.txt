@@ -1,0 +1,136 @@
+CORE SYSTEM DESIGN
+Every fighter has:
+
+rank (1–151)
+rating_score (hidden numeric value)
+record
+difficulty_multiplier
+champion_bonus_flag
+
+Ranks are derived from rating_score, not directly swapped.
+
+1️⃣ BASE RATING SYSTEM (ELO-STYLE FOUNDATION)
+Each fighter starts with:
+
+rating_score = 1000 + (151 - rank) * 5
+
+So:
+* Rank 1 ≈ highest rating
+* Rank 151 ≈ lowest rating
+
+2️⃣ DIFFICULTY WEIGHTS
+Career Mode Multiplier:
+
+Easy = 0.75
+Medium = 1.0
+Hard = 1.25
+Hardcore = 1.5
+
+All rating gains/losses are multiplied by this.
+
+3️⃣ FIGHT RESULT FORMULA
+After a fight:
+Step 1 – Calculate Expected Outcome
+
+expected_score_A = 1 / (1 + 10^((rating_B - rating_A)/400))
+
+(Standard rating expectation logic)
+
+Step 2 – Determine Performance Factor
+
+Win (close) = 1.0
+Win (dominant) = 1.25
+KO win = 1.4
+Loss (close) = 0.9 penalty
+Loss (dominant) = 1.1 penalty
+KO loss = 1.25 penalty
+
+
+Step 3 – Apply Champion Weight
+If opponent.rank == 1:
+
+champion_weight = 2.0
+
+Otherwise:
+
+champion_weight = 1.0
+
+This makes beating the champion extremely impactful.
+
+Step 4 – Final Rating Change
+
+K = 25   (base volatility)
+
+rating_change =
+K *
+(result - expected_score) *
+performance_factor *
+difficulty_multiplier *
+champion_weight
+
+Where:
+
+result = 1 for win
+result = 0 for loss
+
+
+4️⃣ RANK UPDATE RULE
+After updating ratings:
+1. Sort entire roster by rating_score.
+2. Assign new ranks 1–151 based on order.
+This automatically resolves triangle logic.
+
+5️⃣ CHAMPION PROTECTION RULES
+To prevent chaos:
+* Only Top 10 can fight Champion.
+* If someone ranked 8–10 beats Champion:
+    * They jump to Rank 1 automatically.
+* If someone ranked 3–7 beats Champion:
+    * They take Rank 1.
+* If Rank 2 beats Champion:
+    * Clean swap.
+If freak upset allowed (special event mode):
+* Apply rating formula normally.
+* Because of 2.0 champion weight, their rating will spike massively.
+* Sorting system handles shift naturally.
+
+6️⃣ LOSS LOGIC NUANCE
+Losing to someone higher rated:
+* Small rating loss.
+Losing to someone lower rated:
+* Larger rating loss.
+Beating someone higher rated:
+* Larger gain.
+Beating someone lower rated:
+* Small gain unless dominant.
+Dominant wins multiply gains.
+
+7️⃣ SIMULATED FIGHT SYSTEM (WEEKLY ENGINE)
+Each week:
+1. Pair fighters within ±5 rank range.
+2. Use rating difference to determine win probability.
+3. Simulate:
+    * Winner
+    * Method (Decision, KO, Dominant, Close)
+4. Update ratings.
+5. Resort rankings.
+6. Update records.
+Champion fights every 4 weeks minimum.
+
+8️⃣ WHY THIS WORKS
+* Triangle conflicts resolve automatically.
+* Champion has strongest upward pull.
+* Good losses barely punish elite fighters.
+* Bad losses hurt.
+* Difficulty scales progression speed.
+* Upsets create meaningful chaos without breaking structure.
+* No manual rank swapping logic needed.
+Summary-
+* Fighter class with rating_score.
+* Global ranking array sorted by rating_score.
+* ELO-style rating update function.
+* Weekly simulation engine.
+* Champion eligibility filter (Top 10 only).
+* Difficulty multiplier system.
+* Performance-based fight outcome modifier.
+Never manually assign ranks. Always derive rank from rating_score.

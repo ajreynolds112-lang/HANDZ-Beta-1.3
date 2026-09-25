@@ -1,0 +1,102 @@
+Build a deterministic EXP progression system for a boxing game using the exact specifications below. Do not reinterpret or redesign anything. Follow the formulas exactly.
+
+1️⃣ Level System
+
+Levels range from 1 to 100.
+
+Total EXP required to reach Level 100 must equal exactly 10,000,000.
+
+Use a cubic scaling curve.
+
+Total EXP formula:
+TotalEXP(L) = 10,000,000 × (L / 100)^3
+
+Where:
+
+L is the level (integer 1–100).
+
+TotalEXP(L) represents cumulative EXP required to reach that level.
+
+Use floating point internally.
+
+Round EXP thresholds to nearest whole number when stored.
+
+2️⃣ EXP Required for Next Level
+EXPToNext(L) = TotalEXP(L + 1) - TotalEXP(L)
+
+If L = 100, EXPToNext should return 0.
+
+Clamp level range between 1 and 100.
+
+Prevent overflow beyond Level 100.
+
+3️⃣ Match EXP Reward Formula
+
+Use this exact formula:
+
+MatchEXP = 1000 × OpponentLevel × DifficultyMultiplier
+
+Where:
+
+OpponentLevel is an integer from 1 to 100.
+
+Result must be rounded to nearest whole number.
+
+No additional hidden scaling.
+
+4️⃣ Difficulty Multipliers
+
+Use these exact values:
+
+Easy      = 0.8
+Medium    = 1.0
+Hard      = 1.15
+Hardcore  = 1.67
+
+No modifications allowed.
+
+5️⃣ Progression Targets (Validation Requirement)
+
+The system must approximately satisfy these long-term averages assuming average opponent level = 50:
+
+250 Easy fights → Level 100
+
+200 Medium fights → Level 100
+
+175 Hard fights → Level 100
+
+120 Hardcore fights → Level 100
+
+Use simulation to validate this.
+
+6️⃣ Required Functions
+
+Generate clean, production-ready code with the following functions:
+
+getTotalEXPForLevel(level)
+
+getEXPToNextLevel(level)
+
+calculateMatchEXP(opponentLevel, difficulty)
+
+addEXP(playerCurrentEXP, amount)
+
+getLevelFromTotalEXP(totalEXP)
+
+Level calculation must:
+
+Work off total cumulative EXP
+
+Scale correctly using the cubic formula
+
+Never exceed Level 100
+
+7️⃣ Safety Requirements
+
+Clamp opponent level between 1 and 100
+
+Clamp player level between 1 and 100
+
+Prevent negative EXP
+
+Prevent EXP overflow past Level 100 cap

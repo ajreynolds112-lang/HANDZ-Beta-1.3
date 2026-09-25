@@ -1,0 +1,220 @@
+
+
+/
+
+
+Fix error that prevented the application from starting
+
+
+
+6 messages & 23 actions
+
+Checkpoint made
+12 days ago
+
+Worked for 2 minutes
+I selected a level 48 fighter while I was level 37, the game instantly set his level to 41 when it is always supposed to keep it at the level I selected the opponent, fix this so it never downsizes the level ever, get rid of the code that downsizes the level, take it out permanently across all relevant code
+
+12 days ago
+
+13 messages & 42 actions
+No, the career hub during camp immediately pushes the higher level fighter's level down soon as I select an available week to fight them
+
+12 days ago
+
+Searching for oppDisplayLevel reference
+There's still a reference to oppDisplayLevel causing an error, and a separate bug where selecting a camp week is reducing the opponent level. Let me find both:
+
+
+3 actions
+Let me read the exact line 2276 area (stale oppDisplayLevel) and the simulateWeek opponent level sections simultaneously:
+
+
+3 actions
+The oppDisplayLevel error was from a cached hot-reload — the grep confirms it's gone. The real bug is the opponent level getting capped when the user picks a camp week. Let me find that code path:
+
+
+3 actions
+The bug is in onInitRoster. Let me find what it does when called with the updated roster state:
+
+
+4 actions
+handleInitRoster itself is fine. The level must be getting capped somewhere after the data is saved and loadSlot re-runs. Let me trace the full flow:
+
+
+5 actions
+I need to see what triggers loadSlot at line 708 — if it fires when fighters updates after mutation:
+
+
+2 actions
+Let me check buildOpponentFromRoster itself for any level cap, and look for any useEffect in CareerMode that auto-calls loadSlot when fighters change:
+
+
+3 actions
+Wait — I see it. Line 441-448 is the key: when fighters refetches after any mutation, it calls setSelectedFighter(updated) with the RAW backend data, bypassing loadSlot. But let me also check the onEndWeek/onSimulateWeek handlers to see if camp week simulation calls something that downsizes:
+
+
+3 actions
+Let me look at how the opponent is initially selected (from the opponents list), and at handleSimulateWeek to see if it redistributes levels:
+
+
+3 actions
+Let me look at CareerMode's initialFighter useEffect and check if setSelectedFighter(updated) at line 445 flows through loadSlot:
+
+
+2 actions
+The initialFighter effect is key. Let me check what initialFighter is in Game.tsx (it might be passed as activeFighter which goes through a different code path), and search for ALL places that can actually lower a fighter's stored level:
+
+
+5 actions
+Let me look at Game.tsx lines 930-942 and 2960-2980, where I saw earlier that handleInitRoster is called directly from the fight-end flow:
+
+
+3 actions
+Let me search comprehensively for every place that renders the opponent level in CareerMode, and also check if there's ANOTHER code path that actually lowers the stored level when camp weeks are confirmed:
+
+
+3 actions
+applyRosterCustomizations — could that be capping the level? Let me check it:
+
+
+4 actions
+applyRosterCustomizations doesn't touch levels. Let me look at the opponents list display (line 2281) and what level variable it uses, plus check if there's a cap in that view:
+
+
+2 actions
+Let me look at the exact JSX that renders the OpponentSelectionView and what rosterState is passed, versus what's used in the hub:
+
+
+4 actions
+Let me look at the hub fight week and camp sections to see if there's any remaining level cap there:
+
+
+2 actions
+Let me do a comprehensive search for all Math.min and level-cap patterns still remaining in both files:
+
+
+3 actions
+Let me check ensureEndgamePool for any level capping, and also look at what the hub "select a week" button does during camp:
+
+
+3 actions
+Let me read ensureEndgamePool to check for any level-lowering logic, since it's called right after redistributeRosterLevels in loadSlot:
+
+
+2 actions
+Let me check whether the post-fight result handler stores/updates the opponent's level in the roster, which could explain the 41 showing up:
+
+
+2 actions
+Let me check if the post-fight handler updates the opponent's level in the roster with enemyLevel, and also check if there's a remaining oppDisplayLevel reference I may have missed by reading the exact area around line 2276 that the browser error cited:
+
+
+3 actions
+Zero cap references remaining — the fix is complete. But I see unused variables from the deleted caps that may produce TypeScript warnings. Let me clean those up too:
+
+
+2 actions
+prepPickCd is still needed (isChampMode). Let me check what rsCd, rsPrepWeeks, hubCd, hubPrepWeeks are now used for after removal:
+
+
+2 actions
+All four are purely orphaned — remove them both at once:
+
+
+3 actions
+Good. Let me do a final verification that the build is clean:
+
+
+2 actions
+Clean build — no errors, only the pre-existing SPARRING_XP_MULT fast-refresh notice. Here's exactly what was removed and why:
+
+The level was never actually stored as 41 — it was always a display/fight-start cap being applied on top of the real stored level (48). Every place that computed Math.min(opp.level, playerLevel + N) was treating the stored level as a ceiling to be clamped, not a value to trust.
+
+Changes made across 2 files:
+
+Game.tsx (fight-start paths):
+
+Both handleStartFight calls (career fight + handleSelectCareerFighter) had cappedEnemyLevel = Math.min(opp.level, activeFighter.level + levelCap). Removed entirely — fight now starts at the opponent's actual stored level.
+CareerMode.tsx (display-only caps, all 3 locations):
+
+Fight Camp view: prepPickCappedLevel removed → shows real level
+Reschedule view: rsCappedLevel removed → shows real level
+Hub "Selected Opponent" card: oppDisplayLevel removed → shows real level
+Also cleaned up orphaned rsCd, rsPrepWeeks, hubCd, hubPrepWeeks variables that only existed to compute the now-deleted caps.
+
+The opponent you see at level 48 will now show as 48 everywhere — opponents list, fight camp, reschedule view, hub card — and the fight will run at level 48. No more invisible ceiling following playerLevel + 4.
+
+
+3 actions
+All done. Here's the full picture of what was changed:
+
+Root cause: The displayed/fight level was being silently clamped to playerLevel + N in 5 places — 2 that affected the actual fight, and 3 that were display-only. A level 48 opponent for a level 37 champion-mode player would show and fight as 41 (37 + 4).
+
+All caps removed:
+
+Location	What was removed
+Game.tsx fight start (career hub → fight)	cappedEnemyLevel = Math.min(opp.level, playerLevel + cap)
+Game.tsx fight start (handleSelectCareerFighter)	cappedEnemyLevel2 = Math.min(opp.level, playerLevel + cap2)
+CareerMode.tsx Fight Camp view	prepPickCappedLevel display cap
+CareerMode.tsx Reschedule view	rsCappedLevel display cap
+CareerMode.tsx Hub "Selected Opponent" card	oppDisplayLevel display cap
+The opponent's stored roster level was never actually being lowered — it was always 48 in the data. The caps were just silently overriding it at display and fight-start time. Now all 5 locations use the real level directly, so a level 48 opponent stays at 48 everywhere.
+
+
+4 actions
+
+Checkpoint made
+40 minutes ago
+
+Worked for 40 seconds
+Change the hit effects colors so that if a fighter blocks a punch, the blocking fighter's Block text appears as their own trunks color and not the puncher's color as this doesn't amke sense
+
+36 minutes ago
+
+3 messages & 18 actions
+
+Checkpoint made
+35 minutes ago
+
+Worked for 1 minute
+The opponent's stats are not being brought past 200 after postgame, fix this immediately and take out whatever is blocking it
+
+32 minutes ago
+
+12 messages & 46 actions
+
+Checkpoint made
+22 minutes ago
+
+Worked for 10 minutes
+The Start application artifact crashed with a runtime error, please debug and fix it.
+
+16 minutes ago
+
+2 messages & 9 actions
+
+Checkpoint made
+15 minutes ago
+
+Worked for 34 seconds
+Force the game's official career fights to always listen to the fight round selected in the settings gear in the career hub once it's changed, force this so it always applies
+
+13 minutes ago
+
+10 messages & 38 actions
+Stop all tasks, I don't want to continue this edit
+
+8 minutes ago
+
+1 message & 1 action
+
+Worked for 5 minutes
+Make it so for all gamemodes, the block refinements and all block chance is actve when guard is up, if guard is deactivated for any amount of time then all attacks at the non-guarding defender will bypass block, but the dodge component should be used and show "dodge" when a punch is dodged
+
+4 minutes ago
+
+1 message & 6 actions
+
+Worked for 15 seconds
+Make it so for all gamemodes, when defender's guard is deactivated, then all attacks at the non-guarding defender will bypass block, but the dodge component should be used and show "dodge" when a punch is dodged and dodge should negate all damage. Replace non-perfect block text that pops up with the blocked punch's blocked damage, only use the word Block for a perfect block

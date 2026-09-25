@@ -1,0 +1,375 @@
+1. Every boxer has an Elo
+
+Everyone starts with a hidden Elo.
+
+Example starting distribution for 651 fighters:
+
+Career Player: 1000
+Lowest generated fighter: 1020
+Average regional boxer: 1200–1400
+Good prospects: 1450–1600
+Contenders: 1650–1800
+Champions: 1850–2050
+Key Fighters: 2100–2400
+
+Notice the player starts literally at the bottom.
+
+2. Rank is recalculated every Monday
+
+Every simulated week:
+
+Simulate every fight.
+Update Elo.
+Sort everyone by Elo.
+Apply "ranking modifiers."
+Produce rankings.
+
+This keeps the rankings moving constantly.
+
+3. Elo updates normally
+
+Expected win chance:
+
+P=
+1+10
+(OpponentElo−YourElo)/400
+1
+	​
+
+
+Then
+
+New Elo
+
+New=Old+K(Result−P)
+
+Where
+
+Result
+
+Win = 1
+Draw = 0.5
+Loss = 0
+4. Variable K-factor
+
+Don't make every fight worth the same.
+
+Fight	K
+Debut	45
+Journeyman fight	32
+Prospect fight	28
+Top 50	24
+Top 15	20
+Title fight	18
+
+This keeps veterans from bouncing wildly.
+
+5. Upsets matter
+
+Example:
+
+1600 beats 2000
+
+Expected chance ≈ 9%
+
+He gains around
+
++29
+
+Favorite loses
+
+-29
+
+Meanwhile
+
+2000 beats 1600
+
+Only
+
++3
+
+This naturally creates realistic rankings.
+
+6. Key Fighters
+
+This is where I'd cheat a little.
+
+Each Key Fighter gets:
+
+Elite AI
+High Elo
+Weekly fight priority
+Cannot retire early
+Reduced chance of injuries
+Hidden "Champion Aura"
+
+Champion Aura means:
+
+If simulation is
+
+70-30
+
+Make it
+
+80-20
+
+If
+
+85-15
+
+Make it
+
+93-7
+
+Not impossible to lose.
+
+Just very rare.
+
+Eventually another Key Fighter may beat them.
+
+Or the player.
+
+7. Activity matters
+
+Every inactive week:
+
+No penalty for first 3 weeks.
+
+After that:
+
+Lose
+
+1 Elo
+
+per week.
+
+After 8 weeks
+
+Lose
+
+2 Elo/week.
+
+After 20 weeks
+
+Lose
+
+4 Elo/week.
+
+This prevents retired boxers from staying ranked forever.
+
+8. Ranking score
+
+Instead of
+
+Ranking = Elo
+
+I'd calculate
+
+Ranking Score
+
+Ranking Score =
+Elo
+
+Activity Bonus
+Win Streak Bonus
+Title Bonus
+
+Example
+
+1800 Elo
+
++18 activity
+
++22 win streak
+
++50 champion
+
+=1890 Ranking Score
+
+This mimics boxing organizations.
+
+9. Win streak bonus
+
+Current streak
+
+0 = 0
+
+3 wins = +8
+
+5 wins = +15
+
+10 wins = +30
+
+15 wins = +40
+
+Cap around +50.
+
+10. Strength of schedule
+
+Beating cans shouldn't impress anyone.
+
+Average opponent Elo over last 5 fights
+
+Top quality schedule
+
++15 ranking
+
+Weak schedule
+
+0
+
+11. Dominance bonus
+
+Decision
+
++0
+
+Split Decision
+
+-2
+
+Majority Decision
+
+-1
+
+KO
+
++2
+
+TKO
+
++2
+
+Doctor Stoppage
+
++1
+
+Makes punchers rise a bit faster.
+
+12. The player's climb
+
+Start
+
+651
+
+↓
+
+Beat
+
+640
+
+↓
+
+631
+
+↓
+
+610
+
+↓
+
+585
+
+↓
+
+551
+
+↓
+
+510
+
+↓
+
+475
+
+↓
+
+430
+
+↓
+
+390
+
+↓
+
+340
+
+↓
+
+290
+
+↓
+
+250
+
+↓
+
+190
+
+↓
+
+140
+
+↓
+
+100
+
+↓
+
+75
+
+↓
+
+50
+
+↓
+
+30
+
+↓
+
+15
+
+↓
+
+10
+
+↓
+
+5
+
+↓
+
+Champion
+
+The climb should feel noticeably faster early on and then slow dramatically once you're in the top 50.
+
+Weekly simulation
+
+Every Monday:
+
+Pair fights.
+Simulate.
+Update records.
+Update Elo.
+Update activity.
+Update injuries.
+Update retirement chance.
+Update streaks.
+Update rankings.
+Generate news headlines.
+Schedule next week.
+One addition I'd strongly recommend: "Career Momentum"
+
+Pure Elo is excellent for determining who is strongest, but it doesn't capture who is hot right now. Add a hidden Momentum value (say, -100 to +100) that changes quickly:
+
+Win by KO: +15 to +25
+Win by decision: +8 to +12
+Upset victory: additional +15
+Loss by KO: -20
+Decision loss: -10
+Inactive week: -2
+
+Momentum decays by about 10% each week. Then, when matchmaking and rankings are close, use a small fraction of Momentum (for example, Ranking Score = Elo + 0.2 × Momentum + other bonuses). This lets a fighter who has rattled off six impressive wins climb faster than someone with the same Elo who's been inactive or barely edging out opponents.
+
+Over a long career, Elo still determines the best fighters. Momentum creates believable hot streaks, surprise contenders, and "everyone's talking about this guy" moments, making the simulated boxing world feel much more dynamic.

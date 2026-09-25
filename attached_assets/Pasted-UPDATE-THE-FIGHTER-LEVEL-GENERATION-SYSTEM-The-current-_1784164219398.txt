@@ -1,0 +1,292 @@
+UPDATE THE FIGHTER LEVEL GENERATION SYSTEM
+
+The current fighter level generation is too random.
+
+Fix the system so fighter levels are loosely determined by ranking.
+
+IMPORTANT:
+
+Rank should NOT directly equal level.
+
+Do NOT make:
+
+Rank 100 = Level 100
+Rank 500 = Level 500
+
+Instead, rankings determine allowed level ranges.
+
+The goal:
+
+- Lower ranked fighters should generally be lower level.
+- Higher ranked fighters should generally be higher level.
+- There should be subtle variation within each rank range.
+- A Level 1 Career Player should never encounter extremely high-level opponents early.
+- The Champion remains the only guaranteed Level 1000 fighter.
+
+-----------------------------------
+
+LEVEL RULES
+
+Maximum Fighter Level:
+
+1000
+
+Minimum Fighter Level:
+
+1
+
+Champion:
+
+Rank #1
+
+Level 1000 exactly.
+
+-----------------------------------
+
+RANK 700
+
+The worst fighter.
+
+Level range:
+
+1-5
+
+Example:
+
+Level 2
+Level 4
+Level 5
+
+-----------------------------------
+
+RANKS 699-651
+
+Very low-level fighters.
+
+Level range:
+
+5-25
+
+These fighters should represent beginners and inexperienced professionals.
+
+No fighter in this range should exceed Level 25.
+
+-----------------------------------
+
+RANK 650
+
+First fighter with refinement access.
+
+Level range:
+
+25-40
+
+-----------------------------------
+
+RANKS 649-600
+
+Low-level professionals.
+
+Level range:
+
+40-100
+
+Important:
+
+Do not allow fighters below Rank 600 to randomly appear as Level 100+.
+
+The player should not encounter triple-digit level fighters immediately.
+
+-----------------------------------
+
+RANKS 599-500
+
+Developing professionals.
+
+Level range:
+
+100-180
+
+-----------------------------------
+
+RANKS 499-400
+
+Established fighters.
+
+Level range:
+
+160-280
+
+-----------------------------------
+
+RANKS 399-300
+
+Strong professional fighters.
+
+Level range:
+
+250-400
+
+-----------------------------------
+
+RANKS 299-200
+
+High-level contenders.
+
+Level range:
+
+380-550
+
+-----------------------------------
+
+RANKS 199-100
+
+Elite fighters.
+
+Level range:
+
+550-750
+
+-----------------------------------
+
+RANKS 99-50
+
+World-class fighters.
+
+Level range:
+
+700-900
+
+-----------------------------------
+
+RANKS 49-10
+
+Near-legendary fighters.
+
+Level range:
+
+850-980
+
+-----------------------------------
+
+RANKS 9-2
+
+Elite of the elite.
+
+Level range:
+
+950-999
+
+-----------------------------------
+
+RANK #1
+
+Champion.
+
+Level:
+
+1000
+
+The Champion is the only fighter guaranteed to be level 1000.
+
+-----------------------------------
+
+LEVEL RANDOMIZATION
+
+Within each rank range:
+
+Do NOT always generate the same level.
+
+Example:
+
+Rank 600 fighters should not all be Level 50.
+
+Use random variation.
+
+Example:
+
+Rank 600 range:
+
+40-100
+
+Possible results:
+
+44
+62
+77
+91
+
+-----------------------------------
+
+RANKING DOES NOT DIRECTLY CONTROL MATCHMAKING
+
+Do not match the player based only on level.
+
+The opponent selection system already uses rankings.
+
+However, level ranges must prevent unrealistic matchups.
+
+A Level 1 player should primarily see:
+
+- Rank 700
+- Rank 699
+- Rank 698
+- Nearby opponents
+
+They should not see:
+
+Level 200 fighters while still ranked near 700.
+
+-----------------------------------
+
+OPPONENT SELECTION RULE
+
+The player sees 7 available opponents.
+
+The maximum allowed opponent rank is:
+
+Player Rank - 10
+
+Example:
+
+Player Rank 651:
+
+Available opponents may only be:
+
+651-700
+
+Cannot fight:
+
+Rank 640
+
+or higher.
+
+Example:
+
+Player Rank 500:
+
+Maximum opponent rank:
+
+490
+
+Available opponents:
+
+500-490 range plus lower-ranked options.
+
+-----------------------------------
+
+FINAL VALIDATION
+
+After generating fighter levels:
+
+Check:
+
+- Rank 700 fighters are Level 1-5.
+- Rank 651-699 fighters are Level 5-25.
+- No low-ranked fighter has an extremely high level.
+- Rank 1 Champion is Level 1000.
+- Levels increase generally upward through the rankings.
+- Variation exists inside each rank bracket.
+- The Career Player's early progression is fair.
+
+The final system should create a natural difficulty curve where the player climbs through increasingly stronger opponents instead of randomly encountering elite fighters at the bottom of the rankings.

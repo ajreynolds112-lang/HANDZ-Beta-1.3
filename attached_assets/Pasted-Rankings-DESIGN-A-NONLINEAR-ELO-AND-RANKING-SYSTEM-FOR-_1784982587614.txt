@@ -1,0 +1,125 @@
+Rankings
+DESIGN A NONLINEAR ELO AND RANKING SYSTEM FOR MY BOXING CAREER MODE
+OVERVIEW
+The game contains 704 AI fighters plus 1 Career Player.
+The Career Player always starts at Rank 705.
+Rank 1 is the protected top spot and represents the undefeated champion.
+The player cannot become Rank 1 unless the player defeats the current Rank 1 fighter.
+Do not make rank changes automatic based on who was beaten. Wins should change Elo first, and rankings should update from Elo after that, with special rules for Rank 1.
+Do not use weight classes, fighter categories, or title divisions. This system is only for raw global rankings.
+
+CORE RULES
+Every fighter has:
+* Rank
+* Hidden Elo
+* Career Record
+* Current Win Streak
+* Current Loss Streak
+* Current Draw Streak
+Rank should be based on Elo, but rank movement should feel controlled and nonlinear.
+Beating a fighter should increase Elo, but it should not automatically steal that fighter’s exact rank.
+Instead, the fighter gains Elo, then the ranking list is recalculated with movement limits.
+The closer the opponent is to the player’s rank, the smaller the rank jump should be.
+The higher-ranked the opponent is above the player, the larger the Elo reward and rank jump should be.
+Beating a lower-ranked opponent should usually move the player only 1 to 2 ranking spots.
+Beating a fighter near the player’s rank should still be a small gain.
+Beating a much higher-ranked fighter should give a bigger Elo boost and can cause a much larger rank jump.
+
+SPECIAL RULE FOR RANK 1
+Rank 1 is special.
+Rank 1 is the top fighter in the game and must stay protected unless defeated by the player.
+Do not allow normal Elo sorting to displace Rank 1 automatically.
+Only a direct win over Rank 1 should allow the player to take Rank 1.
+If any AI fighter somehow surpasses Rank 1 in Elo, do not move them above Rank 1 unless they defeat Rank 1 in a sanctioned top-level fight.
+This keeps Rank 1 as the true endgame target.
+
+INITIAL ROSTER ELO GENERATION
+When creating the initial roster, generate Elo for every fighter based on rank.
+Use a nonlinear curve, not a straight line.
+The Elo difference between ranks should be smaller in some areas and much larger in others.
+Rank 1 should be the strongest fighter in the game.
+The player begins with a low Elo relative to the roster.
+Suggested starting bands:
+Rank 1: 2400-2600 Elo, undefeated
+Ranks 2-10: 2200-2390 Elo
+Ranks 11-50: 2000-2190 Elo
+Ranks 51-100: 1800-1990 Elo
+Ranks 101-200: 1600-1790 Elo
+Ranks 201-350: 1400-1590 Elo
+Ranks 351-500: 1200-1390 Elo
+Ranks 501-650: 1050-1190 Elo
+Ranks 651-705: 900-1040 Elo
+The Career Player should start somewhere in the lower end of the roster, with an Elo that makes sense for a fresh career file.
+Use subtle randomness inside each band so fighters do not feel identical.
+Do not make the roster look like every rank is evenly spaced.
+
+ELO GAIN RULE
+After every fight, calculate Elo change using opponent strength and rank gap.
+Use the standard Elo expected score formula:
+ExpectedScore = 1 / (1 + 10 ^ ((OpponentElo - YourElo) / 400))
+Then apply:
+Win: NewElo = OldElo + K * (1 - ExpectedScore)
+Loss: NewElo = OldElo + K * (0 - ExpectedScore)
+Draw: NewElo = OldElo + K * (0.5 - ExpectedScore)
+Use variable K values if needed, but the rank-gap multiplier matters too.
+
+RANK-GAP MULTIPLIER
+Add a multiplier based on how far the opponent is from the fighter’s current rank.
+The bigger the rank gap, the more Elo should be rewarded for a win.
+The smaller the rank gap, the smaller the reward should be.
+Example scaling:
+* Beating an opponent 1 to 10 ranks away gives a very small bonus
+* Beating an opponent 11 to 25 ranks away gives a small bonus
+* Beating an opponent 26 to 50 ranks away gives a moderate bonus
+* Beating an opponent 51+ ranks away gives a large bonus
+This multiplier should make climbing feel slow against nearby opponents and much faster against significantly stronger opponents.
+Do not make this bonus extreme enough to skip half the roster in one fight.
+
+RANK MOVEMENT RULES
+Do not directly swap the player into the defeated opponent’s rank.
+Do not use a simple “winner takes loser’s spot” system.
+Instead:
+1. Apply Elo gain or loss.
+2. Re-sort the roster by Elo.
+3. Apply rank movement smoothing.
+Rank movement should be limited by opponent strength and rank gap.
+Suggested behavior:
+* Beating a lower-ranked opponent: move up 1 to 2 spots maximum
+* Beating a near-equal opponent: move up 2 to 4 spots maximum
+* Beating a higher-ranked opponent: move up several spots, scaling with the gap
+* Beating a much higher-ranked opponent: move up significantly more, but still not unrealistically far
+The system should feel gradual at low and middle ranks, then more explosive when the player starts defeating elite fighters.
+
+RANKING REASSIGNMENT
+After all Elo changes are applied:
+* Sort everyone from highest Elo to lowest Elo
+* Keep Rank 1 locked as the protected top spot unless defeated by the player
+* Assign the remaining fighters ranks based on Elo and smoothing rules
+* Make sure rank changes remain believable and not random
+The ranking list should evolve naturally from fight results, not from fixed rank swaps.
+
+FIGHT OUTCOME IMPACT
+Opponent strength should matter a lot.
+A fighter should gain only a little from beating someone far below them.
+A fighter should gain a lot more from beating someone near or above them.
+A loss to a much lower-ranked fighter should hurt badly.
+A loss to a much higher-ranked fighter should hurt less.
+This should make upset wins feel huge and routine wins feel modest.
+
+VALIDATION
+After generating the initial roster, confirm:
+* There are exactly 704 AI fighters plus 1 player
+* The player starts at Rank 705
+* Rank 1 is the undefeated protected top fighter
+* Rank 1 is not displaced by normal Elo sorting
+* Elo values follow a nonlinear progression
+* Lower ranks have lower Elo on average
+* Higher ranks have higher Elo on average
+* Rank movement is smoothed and not a direct rank steal
+* Beating a low-ranked opponent usually only moves the player 1 to 2 slots
+* Beating a much higher-ranked opponent gives a much bigger reward
+* The player can only become Rank 1 by defeating the current Rank 1 fighter
+GOAL
+The finished system should create a believable boxing ladder where progress feels earned.
+The player should climb slowly through the early ranks, then start gaining more ground as the opponents get stronger.
+Rank 1 should remain the ultimate target until the player earns the right to take it.

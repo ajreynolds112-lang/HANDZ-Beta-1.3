@@ -1,0 +1,157 @@
+**Instruction Set for Career Mode Fighter Stat Generation**
+
+Generate a roster of **151 fighters** (150 AI + player).
+Each AI fighter receives stat values for:
+
+* Power
+* Speed
+* Defense
+* Stamina
+* Focus
+
+Stat range: **0–200**
+
+The **player begins at Rank 151 with stats around 10–20** before training.
+
+The **#1 ranked champion fighter must have 200 in every stat**.
+
+Ranks are **NOT tied to AI difficulty**, and **style distribution is handled elsewhere**.
+This system only determines **stat values per rank**.
+
+---
+
+# 1. Base Stat Strength by Rank
+
+Each fighter receives a **BaseStat** determined by rank.
+
+Use the following formula:
+
+BaseStat = 20 + (180 × (1 − ((Rank − 1) / 150)^1.25))
+
+Clamp result to **20–200**.
+
+Expected results:
+
+| Rank | BaseStat |
+| ---- | -------- |
+| 1    | ~200     |
+| 10   | ~190     |
+| 25   | ~175     |
+| 50   | ~150     |
+| 75   | ~125     |
+| 100  | ~100     |
+| 125  | ~75      |
+| 140  | ~55      |
+| 150  | ~35      |
+
+Rank 151 should land around **20–30** which matches beginner-level opponents.
+
+---
+
+# 2. Apply Style Modifiers
+
+After BaseStat is calculated, apply the fighter’s style multipliers to produce final stat values.
+
+Style is already assigned externally. Use these multipliers:
+
+### Boxer-Puncher (Balanced)
+
+Power = BaseStat × 1.05
+Speed = BaseStat × 1.00
+Defense = BaseStat × 1.00
+Stamina = BaseStat × 1.00
+Focus = BaseStat × 1.00
+
+---
+
+### Outboxer
+
+Power = BaseStat × 0.85
+Speed = BaseStat × 1.20
+Defense = BaseStat × 1.15
+Stamina = BaseStat × 1.00
+Focus = BaseStat × 1.05
+
+---
+
+### Brawler
+
+Power = BaseStat × 1.25
+Speed = BaseStat × 0.80
+Defense = BaseStat × 0.90
+Stamina = BaseStat × 1.00
+Focus = BaseStat × 0.95
+
+---
+
+### Swarmer
+
+Power = BaseStat × 1.10
+Speed = BaseStat × 1.15
+Defense = BaseStat × 0.85
+Stamina = BaseStat × 0.85
+Focus = BaseStat × 0.95
+
+---
+
+# 3. Add Stat Variation
+
+To prevent fighters from having identical stats, add **random variation** after style modifiers.
+
+Variation range:
+
+±12% of BaseStat
+
+Example:
+
+BaseStat = 120
+
+Possible stat range after variation:
+≈ **105 – 135**
+
+Clamp all stats between **0 and 200**.
+
+---
+
+# 4. Champion Exception
+
+The fighter ranked **#1** must have:
+
+Power = 200
+Speed = 200
+Defense = 200
+Stamina = 200
+Focus = 200
+
+No variation or modifiers apply.
+
+This fighter represents the **undisputed champion**.
+
+---
+
+# 5. Ranking Integrity Check
+
+After all stats are generated:
+
+Calculate **OverallRating = average of the five stats**.
+
+Ensure that a **lower-ranked fighter never has a higher OverallRating than the fighter ranked directly above them**.
+
+If this occurs, reduce the lower fighter’s stats slightly until ranking order is preserved.
+
+---
+
+# 6. Final Output Per Fighter
+
+Each generated AI fighter should store:
+
+* Rank
+* Style
+* Power
+* Speed
+* Defense
+* Stamina
+* Focus
+* OverallRating
+
+This system produces a **smooth statistical curve from beginner fighters (~20–40 stats) up to elite fighters approaching 200**, while allowing natural variation between opponents.

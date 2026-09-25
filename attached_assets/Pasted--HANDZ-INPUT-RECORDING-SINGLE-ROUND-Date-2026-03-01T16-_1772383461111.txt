@@ -1,0 +1,73 @@
+=== HANDZ INPUT RECORDING (SINGLE ROUND) ===
+Date: 2026-03-01T16:37:48.552Z
+Match Type: Player vs CPU | Mode: Normal
+
+--- FIGHT SETTINGS ---
+Player (BoxerPuncher) vs Andre "Velcro Jab" Hudson (Swarmer)
+Player Level: 100 | Enemy Level: 43
+AI Difficulty: champion
+Round Duration: 60s | Timer Speed: double | Total Rounds: 3
+Player Arm: 60" | Enemy Arm: 60"
+
+=== ROUND 1 === (60.0s)
+
+--- PUNCH SUMMARY ---
+PLAYER:
+  jab: 12 thrown, 4 landed (33%) 1 charged 9 body
+  cross: 17 thrown, 2 landed (12%) 1 charged 10 body
+  rightHook: 4 thrown, 1 landed (25%) 4 body
+  leftUppercut: 6 thrown, 3 landed (50%) 2 body
+  rightUppercut: 4 thrown, 2 landed (50%) 1 body
+ENEMY:
+  jab: 5 thrown, 0 landed (0%)
+  cross: 3 thrown, 0 landed (0%)
+  leftHook: 5 thrown, 0 landed (0%) 3 body
+  rightHook: 13 thrown, 2 landed (15%) 1 charged 6 body
+  leftUppercut: 6 thrown, 1 landed (17%) 6 body
+  rightUppercut: 4 thrown, 1 landed (25%) 4 body
+
+--- MOVEMENT ---
+Player distance traveled: 4390px | Avg dist from enemy: 89px
+Time in range: 13.2s | Out of range: 17.2s
+
+--- DEFENSE ---
+Player: 11 ducks, 11 full guards, 9 blocks hit, 3 dodges
+Enemy: 48 ducks, 46 full guards, 8 blocks hit, 6 dodges
+
+--- KNOCKDOWNS ---
+Player scored: 0 | Enemy scored: 0
+
+--- EVENT LOG ---
+Time(ms) | Actor  | Event      | Details                                  | Positions (P/E) | Dist | Stam(P/E)
+------------------------------------------------------------------------------------------------------------------------
+      13 | player | defense    | state=fullGuard prev=none                | (280,260)/(520,260) |  240 | 2500/1193
+      13 | enemy  | defense    | state=fullGuard prev=none                | (280,260)/(520,260) |  240 | 2500/1193
+      26 | player | defense    | state=none prev=fullGuard                | (280,260)/(520,260) |  240 | 2500/1193
+     106 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (280,260)/(498,253) |  219 | 2500/1193
+     186 | enemy  | defense    | state=duck prev=fullGuard                | (280,260)/(498,243) |  219 | 2500/1193
+     213 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (280,260)/(498,239) |  219 | 2500/1193
+     239 | enemy  | defense    | state=fullGuard prev=duck                | (280,260)/(488,244) |  208 | 2500/1193
+     293 | enemy  | defense    | state=none prev=fullGuard                | (280,260)/(477,245) |  197 | 2500/1193
+     306 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (280,260)/(477,243) |  197 | 2500/1193
+     359 | player | defense    | state=duck prev=none                     | (280,260)/(477,246) |  198 | 2500/1193
+     412 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(478,253) |  198 | 2500/1193
+     453 | enemy  | defense    | state=fullGuard prev=none                | (280,260)/(478,251) |  198 | 2500/1193
+     506 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(478,251) |  198 | 2500/1193
+     506 | enemy  | defense    | state=duck prev=fullGuard                | (280,260)/(478,251) |  198 | 2500/1193
+     559 | enemy  | defense    | state=none prev=duck                     | (280,260)/(467,259) |  187 | 2500/1193
+     613 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(456,266) |  176 | 2500/1193
+     613 | enemy  | defense    | state=duck prev=none                     | (280,260)/(456,266) |  176 | 2500/1193
+     667 | enemy  | defense    | state=fullGuard prev=duck                | (280,260)/(456,266) |  177 | 2500/1193
+     706 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(451,261) |  171 | 2500/1193
+     720 | enemy  | defense    | state=none prev=fullGuard                | (280,260)/(446,259) |  166 | 2500/1193
+     813 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(435,264) |  155 | 2500/1193
+     826 | enemy  | defense    | state=duck prev=none                     | (280,260)/(435,266) |  155 | 2500/1193
+     906 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(436,262) |  156 | 2500/1193
+     987 | enemy  | defense    | state=fullGuard prev=duck                | (280,260)/(436,265) |  156 | 2500/1193
+    1013 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(436,262) |  156 | 2500/1193
+    1039 | enemy  | defense    | state=none prev=fullGuard                | (280,260)/(425,258) |  145 | 2500/1193
+    1107 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (293,260)/(414,249) |  121 | 2500/1193
+    1199 | enemy  | defense    | state=duck prev=none                     | (311,260)/(414,251) |  104 | 2500/1193
+    1213 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (314,260)/(414,249) |  101 | 2500/1193
+    1253 | enemy  | defense    | state=none prev=duck                     | (321,260)/(424,243) |  104 | 2500/1193
+    1306 | player | move       | pDef=duck pStance=neutral pRhythm=2 ...

@@ -1,0 +1,21 @@
+
+Tier 1 — Governing Fight Philosophy
+#	Fundamental	Meaning for the AI
+1	Continuous Advantage (continuous_advantage)	Every action should gain position, information, initiative, stamina advantage, damage, or momentum. There is no truly neutral action. This combines your “gaining ground,” “small victories,” and momentum ideas.
+2	Defensive Responsibility (defensive_responsibility)	Offense should never abandon defense, distance management, balance, or awareness of the return shot.
+3	Decision Quality Under Pressure (pressure_decision_quality)	Winning ultimately means choosing the highest-value action while threatened, tired, hurt, or rushed.
+4	Combat Composure (combat_composure)	Calmness improves perception, timing, patience, and opportunity recognition.
+5	Constraint Control (constraint_control)	Control increases as the opponent loses viable options: movement, rhythm, timing, preferred punches, safe exits, etc.
+6	Active Patience (active_patience)	Patience does not mean inactivity. Create reactions, gather information, threaten, and wait for favorable commitments.
+7	Style Plasticity (style_plasticity)	The AI should be able to change style rather than remain permanently aggressive, defensive, counter-oriented, or evasive.
+8	Layered Adaptation (layered_adaptation)	Continuously make small adjustments, and when the opponent adapts, answer with multiple interacting adaptations rather than one predictable response.
+Tier 2 — Fight Intelligence & Prediction
+#	Fundamental	Meaning for the AI
+9	Information Harvesting (information_harvesting)	Early actions should reveal range, reactions, habits, defensive preferences, counters, and tendencies.
+10	Predictive Timing (predictive_timing)	Timing is pattern recognition plus prediction: determine when the opponent is likely to commit, move, punch, defend, or reset. This absorbs “timing beats speed.”
+11	Habit Exploitation (habit_exploitation)	Detect repeated behaviors, bad habits, predictable counters, and overcommitments and construct punishments for them.
+12	Threat Assumption (threat_assumption)	Behave as though the opponent is always attempting to set up a counter or trap until evidence says otherwise.
+13	Impact Diagnosis (impact_diagnosis)	After getting hit, identify the cause: range error, timing error, careless offense, wrong defense, bad defensive timing, etc., then alter behavior.
+14	Defense Vulnerability Modeling (defense_vulnerability_model)	Every defensive system exposes something. Identify what the opponent's chosen defense gives up.
+15	Counter-Threat Mapping (counter_threat_mapping)	Predict which counter is most dangerous given your intended punch, position, distance, and opponent tendencies, then select defense accordingly.
+16	Risk-Reward Counter Selection (counter_expected_value)	Prefer counters that maximize damage and positional gain relative to the danger accepted.

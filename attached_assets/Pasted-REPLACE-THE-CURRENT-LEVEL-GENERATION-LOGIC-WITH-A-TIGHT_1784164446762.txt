@@ -1,0 +1,249 @@
+REPLACE THE CURRENT LEVEL GENERATION LOGIC WITH A TIGHTER EARLY-GAME LEVEL CURVE
+
+The previous level ranges create opponents that are too strong too early.
+
+The goal is:
+
+- Early career opponents should be close to the player's level.
+- Level differences should increase gradually.
+- High-level fighters should be rare until the player climbs significantly.
+- Ranking determines level ranges, but rank alone should not create huge level gaps.
+- Variation should be subtle, not extreme.
+
+Do NOT use large random ranges.
+
+-----------------------------------
+
+LEVEL GENERATION RULE
+
+Every fighter's level should be generated from:
+
+1. Their rank bracket.
+2. A small random variation inside that bracket.
+3. A slight chance of being unusually strong or weak within reason.
+
+Do NOT allow extreme outliers.
+
+Example:
+
+A Rank 680 fighter should not randomly become Level 50.
+
+-----------------------------------
+
+LEVEL BRACKETS
+
+RANK 700
+
+Level:
+
+1-2
+
+-----------------------------------
+
+RANKS 699-675
+
+Level:
+
+1-5
+
+-----------------------------------
+
+RANKS 674-650
+
+Level:
+
+3-10
+
+-----------------------------------
+
+RANKS 649-600
+
+Level:
+
+8-25
+
+-----------------------------------
+
+RANKS 599-500
+
+Level:
+
+20-60
+
+-----------------------------------
+
+RANKS 499-400
+
+Level:
+
+50-120
+
+-----------------------------------
+
+RANKS 399-300
+
+Level:
+
+100-220
+
+-----------------------------------
+
+RANKS 299-200
+
+Level:
+
+200-350
+
+-----------------------------------
+
+RANKS 199-100
+
+Level:
+
+350-550
+
+-----------------------------------
+
+RANKS 99-50
+
+Level:
+
+550-750
+
+-----------------------------------
+
+RANKS 49-10
+
+Level:
+
+750-950
+
+-----------------------------------
+
+RANKS 9-2
+
+Level:
+
+950-999
+
+-----------------------------------
+
+RANK #1 CHAMPION
+
+Level:
+
+1000
+
+No randomization.
+
+-----------------------------------
+
+RANDOMIZATION RULES
+
+Use weighted randomization.
+
+Do NOT randomly choose any value equally.
+
+Example:
+
+Rank 650:
+
+Bad:
+Level 3, 5, 10, 25, 40
+
+Good:
+Level 6, 7, 8, 9, 10
+
+The majority of fighters should be close to the middle of their bracket.
+
+Only a small percentage should be near the maximum.
+
+-----------------------------------
+
+OPPONENT MATCHING SAFETY
+
+Add an additional matchmaking check:
+
+When generating available opponents:
+
+Compare player level and opponent level.
+
+If:
+
+Opponent Level > Player Level + 15
+
+Reduce their chance of appearing.
+
+If:
+
+Opponent Level > Player Level + 30
+
+Do not show that opponent.
+
+Exception:
+
+The player may face large level gaps only after reaching higher rankings.
+
+-----------------------------------
+
+EARLY CAREER EXAMPLES
+
+Career Player:
+
+Level 1
+
+Available opponents should usually be:
+
+Level 1-10
+
+Not:
+
+Level 30+
+Not:
+Level 50+
+
+-----------------------------------
+
+MID CAREER EXAMPLES
+
+Player:
+
+Level 100
+
+Opponents:
+
+Level 80-150
+
+-----------------------------------
+
+LATE CAREER EXAMPLES
+
+Player:
+
+Level 800
+
+Opponents:
+
+Level 750-1000
+
+-----------------------------------
+
+FINAL VALIDATION
+
+Check the generated roster:
+
+Rank 700:
+
+Should almost always be Level 1-2.
+
+Rank 650:
+
+Should usually be Level 5-10.
+
+Rank 600:
+
+Should usually be below Level 25.
+
+The player should not encounter elite-level fighters during the first portion of Career Mode.
+
+The level curve should feel like a mountain climb, not a random lottery.

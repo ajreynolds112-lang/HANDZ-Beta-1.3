@@ -1,0 +1,22 @@
+HANDZ — Boxing Game
+Build timestamp : Fri, 25 Sep 2026 12:49:26 GMT
+Node version    : v20.20.0
+
+Key features in this build:
+  - Canvas-based top-down boxing engine, 8-directional movement
+  - 5-phase punch system with telegraph animations (scales with level)
+  - Rhythm-based combat, stamina management, feint-whiff punishment
+  - Career Mode: ELO rankings, 204-fighter roster, XP/stat progression
+  - AI state machines with tactical phases and personality archetypes
+  - Adaptive AI engine (learns player micro- and macro-patterns mid-fight)
+  - Neural network editor: global, default, and per-fighter overrides
+  - Knockdown system with ref mercy and corner towel stoppages
+  - Ring walk overlay and decision ceremony animations
+  - Procedural audio engine (Web Audio API)
+  - Quick Fight mode: difficulty sliders, roster picker, nightmare mode
+  - Tutorial mode (Stage 1: basics, Stage 2: advanced techniques)
+  - Input recording system for AI training analysis
+  - Opponent level cap (player level +4), career stamina tuning
+
+Included in archive : client/src, server, shared, config files at root
+Excluded            : node_modules, dist, .git, .cache, .local, .agents, .config

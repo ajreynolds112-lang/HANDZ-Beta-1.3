@@ -1,0 +1,139 @@
+
+
+Library
+
+File tree
+Search
+
+New
+Other
+Start application
+Website
+
+
+
+Canvas
+
+
+
+/
+
+
+Add early finish option and improve training game progression
+
+
+
+Show previous messages
+
+4 messages & 61 actions
+
+Checkpoint made
+2 months ago
+
+Worked for 5 minutes
+There's a runtime error, fix it. Make it so after entering any career training or quick fight or career mode fight, the fighters on the home menu have their skin colors changed and all gear changed. Get rid of the controls panel on the home screen and put it intothe settings gear so it comes up as a popup. There's this dark vignette effect over the fight scenes and the homepage fight scene, get rd of that vignette.
+
+2 months ago
+
+10 messages & 39 actions
+Does the home screen look the way you want it?
+
+
+Checkpoint made
+2 months ago
+
+Worked for 2 minutes
+Make it so in the duck portion of the tutorial mode, the user has to perform a duck 3 times
+
+2 months ago
+
+4 messages & 21 actions
+
+Checkpoint made
+2 months ago
+
+Worked for 1 minute
+It says duck with shift + dowon key but duck is just "shift", no down key required, fix this
+
+2 months ago
+
+2 messages & 4 actions
+
+Checkpoint made
+2 months ago
+
+Worked for 12 seconds
+Make sure the source code download button requires the passcode 007342 (no hints or anything), and make sure it actually downloads the entire source code.
+
+2 months ago
+
+4 messages & 14 actions
+
+Checkpoint made
+2 months ago
+
+Worked for 44 seconds
+The source code prompt should be in game not in browser
+
+2 months ago
+
+Deciding on passcode prompt UI
+I'll replace the window.prompt() with an in-game modal. Let me read the current button code to make the precise edit:
+
+
+4 actions
+I'll add state for the in-game modal and replace the window.prompt with it:
+
+
+2 actions
+Now replace the button's onClick and add the modal UI in one go:
+
+
+4 actions
+All done. Clicking the download button now opens a clean in-game dark overlay with a password field — no browser dialog. Enter the passcode and press OK or Enter to trigger the download; Cancel or Escape closes it. Wrong code just clears the field silently.
+
+
+4 messages & 11 actions
+No, ignore the weave state as I literally didn't ever ask for it
+
+10 hours ago
+
+3 messages & 4 actions
+
+Worked for 5 minutes
+Show the fight music option in career mode and show it as "unlocked after x wins."
+
+52 minutes ago
+
+8 messages & 25 actions
+
+Checkpoint made
+50 minutes ago
+
+Worked for 1 minute
+Raise the player's base defense by 20% in career mode
+
+42 minutes ago
+
+9 messages & 25 actions
+
+Checkpoint made
+39 minutes ago
+
+Worked for 3 minutes
+Change the base heavy bag combos to 1 skill point per 3 combos. Make it so during Weight Lifting and Heavy Bag Training, every rep adds a 1.2x final exp multiplier after 30 reps. In the pause menu for weight lifting and heavy bag, add a "Finish Early" button option with confirmation, show the option but make it so this will be unlocked after 12 wins
+
+22 minutes ago
+
+6 messages & 22 actions
+The finish early function should calculate exp points and stat points regularly as if the training has been completed in full time, continue your task
+
+18 minutes ago
+
+15 messages & 41 actions
+
+Checkpoint made
+11 minutes ago
+
+Worked for 11 minutes
+Unlock all sparring levels after reaching 15 wins. Multiply sparring exp by 1.3x

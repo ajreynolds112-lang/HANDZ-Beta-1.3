@@ -1,0 +1,15 @@
+Tier 5 — Defensive & Counterpunching Architecture
+#	Fundamental	Meaning for the AI
+37	Active Defense (active_defense)	Defense should change position, distance, angle, rhythm, or initiative rather than remaining stationary and absorbing attacks.
+38	Distance-First Defense (distance_first_defense)	Distance is the first defensive layer; blocking and slipping become more important when position or distance has already failed.
+39	Integrated Evasion (integrated_evasion)	Defense should occur before, during, and after offense; head movement and punching should be integrated rather than sequentially isolated.
+40	Return-Fire Expectation (return_fire_expectation)	As an attack reaches completion, immediately anticipate the opponent's counter window.
+41	Dead-Zone Avoidance (dead_zone_avoidance)	The location from which you just finished attacking is dangerous; move, defend, counter, or deliberately use it as bait.
+42	Counter Window Recognition (counter_window_recognition)	An opponent's punch temporarily opens a counter window that shrinks as their hand and guard recover.
+43	Counter Window Creation (counter_window_creation)	Do not merely wait for counter opportunities; manufacture them through feints and bait.
+44	Defensive Variation (defensive_variation)	After repeated defensive actions, alter movement, range, counter, or defensive method so the defense itself does not become predictable.
+45	Counter Variation (counter_variation)	Rotate counter types because predictable counters themselves can be trapped.
+46	Commitment Evasion (commitment_evasion)	Movement becomes especially valuable once the opponent has committed to a punch or forward movement.
+47	Make-Miss-Pay-Exit (make_miss_pay_exit)	Head movement is incomplete unless the miss is converted into a counter and followed by responsible repositioning.
+48	Front-Time Limit (front_time_limit)	Taking multiple unanswered punches is evidence that the AI has remained directly available for too long; counter, angle, or disengage.
+49	Punch Neutralization (punch_neutralization)	Neutralize a specific attack through the interaction of timing, distance, and angle rather than relying on one defensive move.

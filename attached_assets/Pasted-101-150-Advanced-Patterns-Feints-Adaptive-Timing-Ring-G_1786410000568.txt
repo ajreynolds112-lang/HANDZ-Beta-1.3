@@ -1,0 +1,108 @@
+101–150: Advanced Patterns, Feints, Adaptive Timing & Ring Generalship (7–14 Segments)
+
+Full Classic Combination: w - e - q - e - q - e
+Jab-Feint-Cross-Feint-Hook: w - e - q (long variable beats)
+Pull-Counter into Pressure: bck - e - fwd - w - e - q
+Duck Series + Uppercuts: duck - s - duck - d - q
+Block-Counter-Pressure: v - w - e - fwd - q - e
+Circle Left while Punching: sl - w - sl - e - sl - q
+Circle Right while Punching: sr - e - sr - q - sr - e
+Mayweather Shoulder-Roll Style: bck - e - bck - q - bck - e
+Tyson-style Peekaboo Burst: duck - s - q - d - e - q
+Stance Switch Angle Change: w - e - sw - q - e - r
+Charge Power Sequence: w - w - A - e - A - q
+Body-Head-Body-Head: q (body) - e - r (body) - q
+Long Feint then Explode: w - w - A - d - q - e
+Defensive Shell then Counter: v - v - duck - e - q - e
+Forward Pressure 8-punch: fwd - w - e - w - e - q - e - w - e
+Retreat + Re-engage: bck - w - bck - e - fwd - q - e
+Lateral then Straight: sl - sr - w - e - q
+Uppercut Heavy Inside: fwd - s - d - s - q - d
+Perfect Block + Full Reply: v - w - e - q - e - s
+Switch + New Lead Combo: sw - w - e - q - r - e
+Double Pull-Counter: bck - e - bck - q - e
+Duck-Block-Duck-Uppercut: duck - v - duck - s - d
+Jab-Cross-Hook-Uppercut-Hook: w - e - q - s - q
+Step-in Body then Head: fwd - q (body) - e - q - r
+Outfighter Cycle: w - bck - w - e - bck - q
+Pressure Fighter Cycle: fwd - w - e - fwd - q - e - fwd - s
+Counter-Puncher Cycle: bck - e - q - bck - e - w
+Feint-Charge-Feint-Charge: w - A - e - w - A - d
+Side-step + Switch + Combo: sl - sw - w - e - q
+Full Ring Cut-off: fwd - sl - w - e - sr - q - e
+10-punch Pressure String: fwd - w - e - q - e - w - e - q - e - w - e
+Defensive then Explosive: v - duck - bck - A - e - q - e
+Continuous Lateral Attack: sl - w - sr - e - sl - q - sr - e
+Inside Control: fwd - s - q - d - s - q - e
+Long Range Control: w - w - e - bck - w - e - q
+Adaptive Pull after Whiff: bck - e - bck - q - e - w
+Stance Switch twice mid-fight: w - e - sw - q - e - sw - r
+Charge after Opponent Fatigue: w - e - A - d - q
+Body Attack to Set up Head: q (body) - r (body) - e - q - s
+Full Counter after Opponent Combo: v - duck - e - q - e - s
+12-segment Pressure: fwd - w - e - w - e - q - e - w - e - q - e - s - e
+Circle + Pull + Counter: sl - bck - e - sr - q - e
+Peekaboo to Outside: duck - s - q - bck - e - w
+Switch + Body-Head Mix: sw - q (body) - e - r - q
+Double Charge Setup: w - A - e - w - A - q
+High-volume Jab then Power: w - w - w - w - e - q - e
+Defensive Movement + Counter: bck - sl - v - e - q
+Forward Uppercut Barrage: fwd - s - d - s - d - q
+Retreat to Center then Attack: bck - bck - w - e - fwd - q - e
+Complex Feint String: w - e - w - A - d - q - e
+
+151–200: Elite / Hyper-Adaptive Strings (10–30 Segments)
+These are longer pattern libraries the AI can run when it has memorized the opponent’s tendencies, or when it needs to break rhythm, cut the ring, or finish.
+
+Extended Classic: w - e - q - e - q - e - w - e - q - e
+Full Mayweather Cycle: bck - e - bck - q - bck - e - w - bck - q - e
+Tyson Peekaboo Pressure: duck - s - q - d - e - q - duck - s - d - q - e
+Ring-cutting Sequence: fwd - sl - w - e - fwd - sr - q - e - fwd - w - e - q
+High-volume Outfighter: w - w - e - bck - w - w - e - bck - q - e - w
+Inside Control 12: fwd - s - q - d - s - q - e - s - d - q - r - e
+Defensive Mastery then Counter: v - duck - bck - v - e - q - e - s - q
+Stance-Switch Angle Attack: w - e - sw - q - e - r - sw - w - e - q
+Double Charge Power: w - w - A - e - q - A - d - e - q
+Lateral Dominance: sl - w - sr - e - sl - q - sr - e - sl - w - e
+Pull-Counter into Pressure (14): bck - e - q - fwd - w - e - q - e - w - e - q - e
+Body Destruction then Head: q (body) - r (body) - q (body) - e - q - r - e - s
+15-punch Pressure Storm: fwd - w - e - w - e - q - e - w - e - q - e - w - e - s - e
+Adaptive Whiff Punishment: bck - e - bck - q - e - fwd - w - e - q
+Full Circle Left Attack: sl - w - sl - e - sl - q - sl - e - sl - w - e - q
+Full Circle Right Attack: sr - e - sr - q - sr - e - sr - w - sr - e - q
+Peekaboo to Outside to Inside: duck - s - q - bck - e - fwd - s - d - q
+Switch-heavy Unorthodox: sw - w - e - sw - q - e - sw - r - e - q
+Long Feint then Kill Shot: w - e - w - e - A - d - q - e
+Defensive Shell  to Explosive Finish: v - v - duck - bck - A - e - q - e - s
+18-segment Ring General: fwd - w - e - sl - w - e - sr - q - e - bck - e - q - fwd - w - e - q - e - s
+Continuous Lateral + Straight: sl - w - sr - e - sl - q - sr - e - sl - w - sr - e - q
+Inside Uppercut Factory: fwd - s - d - s - q - d - s - e - q - d
+Counter-Puncher Mastery: bck - e - q - bck - e - w - bck - q - e - bck - e
+Pressure + Reset + Pressure: fwd - w - e - q - e - bck - w - e - fwd - q - e - s
+20-punch High Output: fwd - w - e - w - e - q - e - w - e - q - e - w - e - q - e - w - e - s - e - q
+Complex Pull + Switch + Attack: bck - e - sw - q - e - bck - r - e - q
+Duck Series Heavy: duck - s - duck - d - duck - q - duck - e - s - d
+Charge after Long Setup: w - e - w - e - q - A - d - e - q - A - e
+Full Defensive to Offensive Transition: v - duck - bck - sl - v - e - q - e - fwd - s - d
+22-segment Adaptive Pattern: w - e - bck - e - q - fwd - w - e - sl - q - e - sr - w - e - q - e - bck - e - q - fwd - s - e
+Body-Head Oscillation: q (body) - e - r (body) - q - e - q (body) - r - e - s
+Stance Switch + Lateral + Power: sw - sl - w - e - sr - q - A - d - e
+Ring Cut + Finish: fwd - sl - w - e - fwd - sr - q - e - fwd - A - e - q
+25-segment Hyper Pattern (rhythm breaker): w - e - w - e - q - e - bck - e - q - fwd - w - e - sl - q - e - sr - w - e - q - e - duck - s - d - q - e
+Elite Pull-Counter Library: bck - e - bck - q - e - bck - w - e - q - bck - e - q - e
+Elite Pressure Library: fwd - w - e - fwd - q - e - fwd - s - d - fwd - w - e - q - e
+Elite Counter Library: v - e - q - duck - s - e - bck - e - q - v - e
+Mixed Range Control (26): w - e - bck - w - e - fwd - q - e - sl - w - e - sr - q - e - bck - e - q - fwd - s - d - q - e - w - e
+Long Feint + Multiple Charges: w - e - w - A - e - w - e - A - d - q - e - A - e
+28-segment Comprehensive: fwd - w - e - q - e - bck - e - q - fwd - w - e - sl - q - e - sr - w - e - duck - s - d - q - e - sw - q - e - r - e
+Defensive Mastery  (long): v - duck - bck - v - sl - v - e - q - e - bck - duck - e - q
+Offensive Mastery (long): fwd - w - e - w - e - q - e - s - d - q - e - w - e - q - e - A - e
+Hybrid Adaptive 29: w - e - bck - e - q - fwd - w - e - sl - q - e - sr - w - e - duck - s - d - q - e - sw - e - q - r - e - bck - e
+Full Cycle Outfighter to Pressure: w - w - e - bck - w - e - q - fwd - w - e - q - e - s - e
+Full Cycle Pressure to Counter: fwd - w - e - q - e - bck - e - q - v - e - q - e
+30-segment Maximum Complexity String (rhythm destroyer + finish):
+w - e - w - e - q - e - bck - e - q - fwd - w - e - sl - q - e - sr - w - e - duck - s - d - q - e - sw - q - e - A - d - e - q
+Emergency Defensive Reset: v - duck - bck - bck - v - sl - sr - v
+Emergency Finishing Burst: fwd - A - e - q - A - d - e - s - q
+Ultimate Adaptive String (reads scorecard + stamina + patterns):
+bck - e - q - fwd - w - e - sl - q - e - sr - w - e - duck - s - d - v - e - q - sw - e - A - d - q - e - fwd - s - e

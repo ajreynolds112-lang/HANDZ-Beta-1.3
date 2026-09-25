@@ -1,0 +1,491 @@
+GENERATE THE COMPLETE STARTING STAT SYSTEM FOR ALL BOXERS IN MY BOXING CAREER MODE
+
+OVERVIEW
+
+The game contains:
+
+- 700 AI fighters
+- 1 Career Player
+
+Every fighter has:
+
+1. Fighter Level
+2. Five Main Stats (Stat Points)
+3. Fourteen Refinements
+
+Do NOT generate any weekly growth, training systems, progression systems, or stat increases. This instruction is ONLY for generating starting stats.
+
+Do NOT use fighter categories, archetypes, classes, weight classes, or playstyles.
+
+Every fighter should be generated individually using the ranking system and stat rules below.
+
+-----------------------------------
+
+FIGHTER LEVEL SYSTEM
+
+Every fighter has a Fighter Level.
+
+Maximum Fighter Level:
+
+1000
+
+The #1 ranked fighter begins:
+
+Level 1000
+
+The lowest ranked fighter begins:
+
+Level 1
+
+The rest of the roster should have fighter levels distributed logically based on ranking.
+
+Higher ranked fighters should generally have higher levels.
+
+Lower ranked fighters should generally have lower levels.
+
+The Career Player begins:
+
+Level 1
+
+-----------------------------------
+
+MAIN STAT SYSTEM
+
+Every fighter has five Main Stats:
+
+1. Power
+2. Speed
+3. Defense
+4. Stamina
+5. Focus
+
+Each stat has:
+
+Minimum:
+1
+
+Maximum:
+1000
+
+The five stats are called Stat Points.
+
+Total Stat Points:
+
+Power + Speed + Defense + Stamina + Focus
+
+must be calculated for every fighter.
+
+-----------------------------------
+
+REFINEMENT SYSTEM
+
+There are exactly 14 Refinements.
+
+Each refinement:
+
+Minimum:
+0
+
+Maximum:
+100
+
+Refinements should only affect fighters who are ranked 650 or higher.
+
+Rank 651-700:
+
+All Refinements are locked.
+
+Every refinement value must equal:
+
+0
+
+Rank 650 and above:
+
+Refinements become available.
+
+The amount of refinement should scale upward with fighter quality.
+
+-----------------------------------
+
+CHAMPION GENERATION
+
+The #1 ranked fighter is the Undisputed Champion.
+
+The Champion must be generated as a legendary final boss.
+
+Requirements:
+
+Rank:
+1
+
+Level:
+1000
+
+Record:
+Undefeated
+
+The Champion should have:
+
+Four of five Main Stats extremely close to 1000.
+
+Example:
+
+Power:
+1000
+
+Speed:
+1000
+
+Defense:
+998
+
+Stamina:
+1000
+
+Focus:
+995
+
+The fifth stat should also be extremely high.
+
+No Champion stat should be below 950.
+
+Most Refinements:
+
+90-100
+
+The Champion should have nearly every refinement mastered.
+
+The Champion is not defeated during simulation.
+
+The Champion only loses when defeated by the Career Player.
+
+-----------------------------------
+
+GENERAL STAT GENERATION RULES
+
+Stats must become weaker as ranking decreases.
+
+The ranking order should directly influence:
+
+- Fighter Level
+- Total Stat Points
+- Main Stats
+- Refinement Levels
+
+Higher ranked fighters should almost always have stronger stats than lower ranked fighters.
+
+However, stats should not be identical.
+
+Every fighter should feel unique.
+
+-----------------------------------
+
+STAT BALANCE RULES
+
+Stat distribution must follow these rules:
+
+Calculate:
+
+Highest Stat - Lowest Stat = Stat Gap
+
+The maximum allowed Stat Gap depends on total Stat Points.
+
+RULE 1:
+
+If Total Stat Points are:
+
+3000 or higher
+
+Maximum Stat Gap:
+
+100 points
+
+Example allowed:
+
+Power 900
+Speed 850
+Defense 950
+Stamina 875
+Focus 925
+
+Example not allowed:
+
+Power 1000
+Speed 700
+Defense 950
+Stamina 850
+Focus 900
+
+because the gap is over 100.
+
+-----------------------------------
+
+RULE 2:
+
+If Total Stat Points are:
+
+2999 or lower
+
+Maximum Stat Gap:
+
+75 points
+
+-----------------------------------
+
+RULE 3:
+
+If Total Stat Points are:
+
+1999 or lower
+
+Maximum Stat Gap:
+
+60 points
+
+-----------------------------------
+
+RULE 4:
+
+If Total Stat Points are:
+
+999 or lower
+
+Maximum Stat Gap:
+
+30 points
+
+-----------------------------------
+
+LOW RANK STAT GENERATION
+
+Rank 700:
+
+Worst fighter in the world.
+
+Generate:
+
+Level:
+1
+
+Main Stats:
+
+10-20 range
+
+Example:
+
+Power 14
+Speed 18
+Defense 12
+Stamina 16
+Focus 11
+
+Total:
+
+71
+
+Refinements:
+
+All 0
+
+-----------------------------------
+
+RANKS 651-699
+
+These fighters are below refinement unlock.
+
+Generate:
+
+Level:
+
+1-50
+
+Main Stats:
+
+20-75
+
+Refinements:
+
+All 0
+
+-----------------------------------
+
+RANK 650
+
+This is the first fighter where refinements are unlocked.
+
+Typical stats:
+
+75-120
+
+Generate:
+
+Level:
+
+50-100
+
+Main Stats:
+
+75-120
+
+Refinements:
+
+Random values:
+
+0-5
+
+-----------------------------------
+
+RANKS 649-100
+
+Gradually increase:
+
+- Fighter Level
+- Main Stats
+- Refinement Levels
+
+Do not use sudden jumps.
+
+Refinements should slowly become more common and higher.
+
+Examples:
+
+Rank 600:
+
+Stats:
+90-140
+
+Refinements:
+0-10
+
+Rank 500:
+
+Stats:
+150-250
+
+Refinements:
+5-20
+
+Rank 300:
+
+Stats:
+300-450
+
+Refinements:
+15-40
+
+Rank 100:
+
+Stats:
+650-800
+
+Refinements:
+50-80
+
+-----------------------------------
+
+TOP 100 GENERATION
+
+Rank 100-10:
+
+Generate elite fighters.
+
+Stats should generally range:
+
+650-950
+
+Refinements:
+
+50-95
+
+Levels:
+
+700-950
+
+These fighters should be dangerous but not equal to the Champion.
+
+-----------------------------------
+
+TOP 10 GENERATION
+
+Ranks 10-2:
+
+Generate near-legendary fighters.
+
+Levels:
+
+950-999
+
+Stats:
+
+900-999
+
+Refinements:
+
+85-100
+
+They should be the strongest fighters besides the Champion.
+
+-----------------------------------
+
+STAT RANDOMIZATION
+
+Do not make every fighter have identical stats.
+
+For every fighter:
+
+1. Determine their target power level based on rank.
+
+2. Generate a total stat point range.
+
+3. Randomly distribute points across the five stats.
+
+4. Check the Stat Gap rule.
+
+5. If the gap is too large, reroll until valid.
+
+6. Save the final values.
+
+-----------------------------------
+
+REFINEMENT RANDOMIZATION
+
+There are 14 refinements.
+
+For fighters with refinements unlocked:
+
+Generate every refinement independently.
+
+Lower ranked fighters:
+
+Mostly low values.
+
+Higher ranked fighters:
+
+More consistent high values.
+
+The Champion should have nearly all refinements at 100.
+
+-----------------------------------
+
+FINAL VALIDATION
+
+After generating all 700 fighters:
+
+Run a validation check.
+
+Confirm:
+
+- Exactly 700 AI fighters exist.
+- Exactly 1 Champion exists.
+- Champion is rank #1.
+- Champion level is 1000.
+- Champion has undefeated record.
+- No fighter has a stat above 1000.
+- No fighter has a stat below 1.
+- No refinement is above 100.
+- Rank 651-700 have no refinements.
+- Rank 650+ can have refinements.
+- Every fighter follows the Stat Gap rules.
+- Ranking order generally matches fighter strength.
+
+The final output should create a believable boxing universe where the player starts at the absolute bottom and the Champion represents the ultimate endgame challenge.

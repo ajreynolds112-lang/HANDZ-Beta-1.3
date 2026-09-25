@@ -1,0 +1,486 @@
+This is not just “if distance < X then punch.”
+This is layered cognition: state → phase → movement → attack → defense → adaptation → conditioning → momentum → personality bias.
+
+We build it top-down.
+
+1️⃣ Core Architecture Overview
+
+The AI Brain is composed of:
+
+State Machine Layer (macro positioning intent)
+
+Tactical Phase Layer (strategic behavior intent)
+
+Movement Controller
+
+Attack Engine
+
+Defense Engine
+
+Stamina & Risk Management
+
+DataBank (opponent modeling + momentum)
+
+Difficulty Scaling + Personality Bias
+
+Each layer runs at different think intervals.
+Nothing runs every frame except timers and locomotion smoothing.
+
+2️⃣ State Machine Layer (Macro Positioning Intent)
+
+This decides where the AI wants to be relative to the opponent.
+
+States:
+
+Approach
+
+Maintain
+
+Retreat
+
+Panic
+
+What it evaluates:
+
+Distance to opponent
+
+Ideal range (derived from tactical phase)
+
+Stamina fraction (AI + Player)
+
+Score bias (who is ahead)
+
+Aggression bias
+
+Survival flags
+
+Logic Summary:
+
+If:
+
+AI stamina critically low → Panic
+
+Player stamina critically low → shift to Finish phase and push
+
+AI ahead on score → slightly more conservative
+
+AI behind on score → slightly more aggressive
+
+It compares:
+
+distance vs idealRange ± width
+
+
+And selects:
+
+Too far → Approach
+
+Too close → Retreat
+
+Within band → Maintain
+
+The state machine does not punch.
+It only determines spatial intent.
+
+3️⃣ Tactical Phase Layer (Strategic Behavior Intent)
+
+The Phase defines how the AI wants to win right now.
+
+Phases include:
+
+Probe
+
+Download
+
+Pressure
+
+WhiffPunish
+
+Counter
+
+BodyHunt
+
+Finish
+
+Panic
+
+This layer reads:
+
+Momentum (from DataBank)
+
+Player aggression history
+
+AI stamina
+
+Player stamina
+
+Conditioning stats (head/body damage accumulation)
+
+Difficulty band
+
+Clean-hit preference bias
+
+Example behaviors:
+
+Losing + player aggressive → WhiffPunish
+
+Winning + good stamina → Pressure
+
+Player low stamina → Finish
+
+Body more damaged than head → BodyHunt
+
+Low stamina → Panic
+
+Counter mode active → Counter
+
+Phase changes less frequently than movement.
+
+4️⃣ Ideal Range Computation
+
+Ideal range is derived from phase.
+
+Each phase has a base ideal distance:
+
+Pressure → closer
+WhiffPunish → slightly outside
+Counter → specific counter band
+Panic → long range
+Finish → close
+
+
+Then modify:
+
+Score bias shifts closer/farther
+
+Clean-hit preference increases spacing
+
+Class bias shifts baseline range
+
+Final clamp:
+
+0.35f – 2.25f
+
+
+Movement state reads this value.
+
+5️⃣ Movement Controller
+
+Movement reacts to current state:
+
+Approach → move forward
+
+Retreat → move back
+
+Maintain → micro-adjust
+
+Panic → hard retreat + defensive bias
+
+Movement speed scales with:
+
+Stamina fraction
+
+Difficulty level
+
+Phase aggression
+
+Movement does NOT decide strategy.
+It executes spatial intent.
+
+6️⃣ Attack Engine
+
+This is where layered decision logic lives.
+
+Attack Think Interval evaluates:
+
+1) Can we attack?
+
+Cooldown
+
+Stamina sufficient
+
+Not currently blocking/ducking
+
+Within allowed range
+
+2) What type of attack?
+
+Decision influenced by:
+
+Tactical phase
+
+Conditioning (head vs body)
+
+Player recent behavior
+
+Momentum
+
+Clean-hit preference
+
+Counter opportunity flags
+
+Examples:
+
+Pressure:
+
+Higher combo frequency
+
+Shorter gaps
+
+Mix head/body
+
+WhiffPunish:
+
+Wait for player whiff window
+
+Single sharp combo
+
+Counter:
+
+Delay attack until player input window
+
+Fire 1–2 punch precision combo
+
+BodyHunt:
+
+Increase body target weight
+
+Finish:
+
+Higher combo probability
+
+Reduced hesitation
+
+Increased power selection
+
+Panic:
+
+Rarely attacks
+
+Mostly defensive
+
+7️⃣ Defense Engine
+
+Defense is layered, not reactive spam.
+
+It evaluates:
+
+Player aggression score
+
+Incoming punch likelihood
+
+AI stamina
+
+Difficulty band
+
+Clean-hit preference
+
+Defense options:
+
+High block
+
+Low block
+
+Auto-guard
+
+Duck
+
+Step out
+
+Counter mode increases defensive readiness.
+Survival mode increases block bias and reduces attack frequency.
+
+8️⃣ Stamina-As-Health Model
+
+There is no HP.
+Stamina is life.
+
+AI continuously evaluates:
+
+My stamina fraction
+
+Player stamina fraction
+
+Thresholds:
+
+lowStaminaFraction
+
+deepSurvivalFraction
+
+playerFinishFraction
+
+Effects:
+
+Low stamina:
+
+Reduced aggression
+
+More retreat states
+
+Longer combo gaps
+
+Higher block usage
+
+Player low stamina:
+
+Enter Finish phase
+
+Increase pressure
+
+Reduce spacing
+
+9️⃣ Momentum & DataBank
+
+DataBank tracks:
+
+Player aggression over N seconds
+
+AI momentum score
+
+Hit/whiff ratios
+
+Recent exchanges
+
+Momentum affects:
+
+Phase switching
+
+Aggression bias
+
+Risk tolerance
+
+Example:
+
+If AI momentum > 0.6 → more pressure
+If < 0.4 → more whiff punish
+
+Momentum is smoothed, not binary.
+
+🔟 Conditioning System
+
+Tracks cumulative damage bias:
+
+Head condition fraction
+
+Body condition fraction
+
+If body significantly more damaged:
+→ enter BodyHunt phase
+
+This simulates strategic target selection.
+
+1️⃣1️⃣ Difficulty Scaling
+
+Difficulty band affects:
+
+Reaction speed
+
+Counter timing precision
+
+Combo complexity
+
+Attack frequency
+
+Defensive reads
+
+Range discipline
+
+Easy:
+
+More Download phase
+
+Slower reactions
+
+Less adaptive
+
+Hard:
+
+Faster state transitions
+
+Better counter windows
+
+More adaptive targeting
+
+1️⃣2️⃣ Personality Bias Controls
+
+AI personality is shaped by:
+
+preferCleanHitsOverVolume
+
+rangeShiftPerAggressionBias
+
+approachReluctanceBlocksWhenAhead
+
+retreatReluctanceBlocksWhenBehind
+
+classRangeBias
+
+These make two level-5 AIs behave differently.
+
+1️⃣3️⃣ Think Interval Separation
+
+Each subsystem runs on its own timer:
+
+State think interval
+
+Phase reevaluation interval
+
+Movement think interval
+
+Attack think interval
+
+Defense think interval
+
+This prevents robotic instant decisions.
+
+1️⃣4️⃣ Decision Hierarchy Summary
+
+Every cycle:
+
+Update stamina + distance
+
+Tick State Machine
+
+Tick Tactical Phase
+
+Compute ideal range
+
+Move toward/away
+
+Evaluate defense
+
+Evaluate attack
+
+Apply personality modifiers
+
+Execute chosen action
+
+1️⃣5️⃣ Design Philosophy
+
+This AI is not reactionary.
+
+It is:
+
+Momentum-aware
+
+Stamina-aware
+
+Distance-disciplined
+
+Conditioning-adaptive
+
+Personality-biased
+
+Score-aware
+
+It simulates:
+
+A boxer protecting a lead
+
+A boxer chasing a finish
+
+A tired fighter surviving
+
+A counter specialist waiting
+
+A pressure fighter overwhelming

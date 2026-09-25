@@ -1,0 +1,147 @@
+1. Core Blocking System (Directional Guard)
+The AI has 3 defensive states:
+High block (head)
+Low block (body)
+No block / neutral
+Default bias: 75% high block, 25% low block
+This bias is not fixed — it is continuously modified by:
+recent damage location
+player punch patterns
+fatigue level
+difficulty tier constraints
+2. Conditioning / Adaptation Logic (Memory Window)
+
+AI tracks a rolling short-term combat memory:
+
+Last N hits taken (recommended 8–15 interactions)
+Each hit stores:
+target zone (head/body)
+time between hits
+damage severity
+whether block succeeded or failed
+
+From this, the AI builds:
+
+Damage bias score
+If more head damage → increase high-block probability
+If more body damage → increase low-block probability
+
+Adjustment rule:
+
+shift probability in small increments (smooth adaptation, not jumps)
+cap extreme bias (never fully 0% or 100%)
+3. Prediction System (Pre-Input Read)
+
+AI attempts to predict incoming punch direction using:
+
+player stance / animation telegraph
+prior punch sequence patterns
+rhythm consistency (timing habits)
+distance-based tendencies (range-dependent shot selection)
+
+Output:
+
+probability head punch vs body punch
+used to pre-select block direction before reaction window
+4. Reaction Timing System (Humanization Layer)
+
+Each AI has a reaction delay range:
+
+It does NOT block instantly.
+Instead, it reacts within a timing window (in seconds):
+
+Difficulty tuning:
+
+Journeyman: slower + higher variance delay
+Contender: moderate delay variance
+Elite: tight delay window
+Champion: minimal delay variance + near-optimal timing
+
+All difficulties must support:
+
+timing drift adjustment in 0.1s increments or finer
+occasional “late block” or “early block” errors scaled by difficulty
+5. Difficulty Scaling Rules
+
+Each tier modifies:
+
+Journeyman
+
+high mistake rate
+slow adaptation to conditioning
+large reaction delay variance
+overcommits to default 75% high block bias
+
+Contender
+
+moderate adaptation speed
+noticeable conditioning response
+occasional wrong-direction prediction
+
+Elite
+
+fast adaptation
+accurate prediction most of the time
+tight reaction timing
+small but realistic defensive errors under pressure
+
+Champion
+
+near-optimal decision-making
+fastest conditioning updates
+minimal prediction error
+still beatable due to:
+fatigue degradation
+forced randomness floor (never perfect)
+6. Fatigue System (Universal Modifier)
+
+Fatigue affects all AI tiers:
+
+As fatigue increases:
+
+reaction speed slows
+prediction accuracy decreases
+block direction becomes more conservative (over-defensive bias)
+timing drift increases
+probability of “late block” rises
+
+At high fatigue:
+
+AI starts repeating defensive habits (predictable guard patterns)
+7. Adaptive Block Adjustment Rules
+
+At runtime, continuously adjust:
+
+High/low block probability (base 75/25 modified by conditioning)
+Reaction timing offset (± small increments based on fatigue + difficulty)
+Prediction confidence threshold
+
+Important constraint:
+
+adjustments must be gradual, never instant flips
+8. Knockdown Reset Rule
+
+When AI is knocked down:
+
+Reset ONLY learning-related memory:
+
+clear recent hit history
+reset conditioning bias
+reset prediction pattern memory
+
+Keep:
+
+difficulty tier
+base stats (reaction range, stamina, etc.)
+
+Effect:
+
+AI returns to “neutral unreadable state” post-knockdown
+9. Behavioral Intent (Important for feel)
+
+AI should always feel like it is:
+
+“learning you during the fight”
+slightly overcorrecting after being hit repeatedly in one zone
+becoming more defensive in that zone over time
+but never fully eliminating vulnerability

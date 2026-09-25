@@ -1,0 +1,137 @@
+201–300: Pure Defense Adaptive Strings (3–30 Segments)
+No punches. No charge. Only defensive tools: Perfect Block (v), Duck (duck), Footwork (bck, fwd, sl, sr), and Stance Switch (sw).
+These are built for real defensive situations — absorbing pressure, creating distance, resetting, circling out of danger, changing angles under fire, and surviving when stamina or the scorecard is against you. Beats remain fully dynamic (0.005–0.5 s adjustments based on success/whiff, opponent aggression, range, and health).
+Short & Immediate Defense (3–6 Segments)
+
+Basic Block Reset: v - bck - v
+Duck & Retreat: duck - bck - bck
+Side-step Left Escape: sl - sl - bck
+Side-step Right Escape: sr - sr - bck
+Double Block: v - v - bck
+Block-Duck-Block: v - duck - v
+Pull Straight Back: bck - bck - bck
+Quick Stance Change: sw - bck - v
+Duck into Side-step: duck - sl - bck
+Duck into Opposite Side-step: duck - sr - bck
+Block then Circle Left: v - sl - sl
+Block then Circle Right: v - sr - sr
+High Guard Retreat: v - bck - v - bck
+Lateral Slip Left: sl - duck - sl
+Lateral Slip Right: sr - duck - sr
+Emergency Shell: v - duck - v
+Stance Switch + Block: sw - v - bck
+Double Duck Retreat: duck - duck - bck
+Side-step + Block: sl - v - bck
+Opposite Side-step + Block: sr - v - bck
+
+Medium Defensive Cycles (7–12 Segments)
+
+Classic Mayweather Pull Defense: bck - v - bck - duck - bck - v
+Continuous Side-step Circle Left: sl - sl - duck - sl - v - sl
+Continuous Side-step Circle Right: sr - sr - duck - sr - v - sr
+Block-Duck-Retreat Loop: v - duck - bck - v - duck - bck
+High-volume Blocking under Pressure: v - v - duck - v - bck - v
+Angle Change under Fire: sw - bck - sl - v - sr - bck
+Full Retreat to Center: bck - bck - sl - bck - sr - bck
+Duck Series + Lateral: duck - sl - duck - sr - duck - bck
+Shell then Create Space: v - duck - v - bck - bck - sl
+Stance Switch Defensive Cycle: sw - v - bck - sw - duck - bck
+Pressure Absorption Left: sl - v - duck - sl - v - bck
+Pressure Absorption Right: sr - v - duck - sr - v - bck
+Double Pull + Block: bck - bck - v - bck - duck - v
+Circle Out Left under Fire: sl - duck - sl - v - sl - bck
+Circle Out Right under Fire: sr - duck - sr - v - sr - bck
+Defensive Reset Sequence: v - bck - duck - bck - v - sl
+Tight Guard Movement: v - duck - v - bck - v - duck
+Lateral then Deep Retreat: sl - sr - bck - bck - v - bck
+Switch + Full Retreat: sw - bck - bck - v - duck - bck
+Emergency Multi-Block: v - v - v - duck - bck - v
+
+Longer Survival & Ring-General Defense (13–20 Segments)
+
+Extended Pull Defense: bck - v - bck - duck - bck - v - bck - duck - bck - v
+Full Circle Left Survival: sl - duck - sl - v - sl - duck - sl - v - sl - bck
+Full Circle Right Survival: sr - duck - sr - v - sr - duck - sr - v - sr - bck
+High Guard under Sustained Pressure: v - duck - v - bck - v - duck - v - bck - v - duck
+Angle-Changing Defense: sw - bck - sl - v - sw - sr - bck - duck - v - bck
+Deep Retreat + Reposition: bck - bck - bck - sl - bck - sr - v - duck - bck - v
+Mixed Lateral + Shell: sl - v - sr - duck - sl - v - sr - bck - v - duck
+Continuous Duck & Move: duck - bck - duck - sl - duck - sr - duck - bck - v - duck
+Stance Switch Heavy Defense: sw - v - bck - sw - duck - bck - sw - v - sl - bck
+Survival Shell Cycle: v - duck - v - bck - v - duck - v - bck - v - duck - v
+Ring-Cutting Escape Left: sl - bck - sl - v - sl - duck - sl - bck - v - sl
+Ring-Cutting Escape Right: sr - bck - sr - v - sr - duck - sr - bck - v - sr
+Long Pull-Counter Defense (no punch): bck - v - bck - duck - bck - v - bck - duck - bck - v - bck
+Pressure Sponge Left-Heavy: sl - v - duck - sl - v - bck - sl - duck - v - sl - bck
+Pressure Sponge Right-Heavy: sr - v - duck - sr - v - bck - sr - duck - v - sr - bck
+Full Defensive Reposition: bck - sl - bck - sr - v - duck - bck - sw - v - bck
+Tight Phillies Shell Movement: v - duck - v - bck - v - duck - v - bck - v - duck - bck
+Extended Lateral Defense: sl - sr - duck - sl - v - sr - duck - sl - v - sr - bck
+Switch + Circle Defense: sw - sl - v - sw - sr - duck - sw - bck - v - bck
+Maximum Distance Creation: bck - bck - bck - sl - bck - sr - bck - v - duck - bck
+
+Elite / Hyper-Adaptive Pure Defense (21–30 Segments)
+
+21-segment Survival Shell:
+v - duck - v - bck - v - duck - v - bck - v - duck - v - bck - v - duck - v - bck - v - duck - v - bck - v
+Extended Mayweather-style Defense:
+bck - v - bck - duck - bck - v - bck - duck - bck - v - bck - duck - bck - v - bck - duck - bck - v - bck
+Full Circle Left under Heavy Fire:
+sl - duck - sl - v - sl - duck - sl - v - sl - duck - sl - v - sl - duck - sl - v - sl - bck - v
+Full Circle Right under Heavy Fire:
+sr - duck - sr - v - sr - duck - sr - v - sr - duck - sr - v - sr - duck - sr - v - sr - bck - v
+Angle Master Defense:
+sw - bck - sl - v - sw - sr - duck - sw - bck - v - sw - sl - duck - sw - sr - bck - v - bck
+Deep Ring Escape + Reset:
+bck - bck - bck - sl - bck - sr - v - duck - bck - sl - bck - sr - v - duck - bck - v - bck
+Continuous Pressure Absorption:
+v - duck - sl - v - duck - sr - v - bck - v - duck - sl - v - duck - sr - v - bck - v
+Lateral Dominance Defense:
+sl - v - sr - duck - sl - v - sr - duck - sl - v - sr - duck - sl - v - sr - bck - v
+Stance-Switch Survival Loop:
+sw - v - bck - sw - duck - bck - sw - v - sl - sw - duck - sr - sw - v - bck - sw - duck
+Maximum Shell under Fire:
+v - v - duck - v - bck - v - duck - v - bck - v - duck - v - bck - v - duck - v - bck - v
+24-segment Adaptive Retreat:
+bck - v - duck - bck - sl - v - bck - sr - duck - bck - v - bck - sl - duck - bck - sr - v - bck - duck - bck - v - bck
+Hyper Circle + Shell Left:
+sl - duck - v - sl - duck - v - sl - bck - v - sl - duck - v - sl - duck - v - sl - bck - v - sl
+Hyper Circle + Shell Right:
+sr - duck - v - sr - duck - v - sr - bck - v - sr - duck - v - sr - duck - v - sr - bck - v - sr
+Full Defensive Reposition Master:
+bck - sl - bck - sr - v - duck - bck - sw - v - bck - sl - duck - bck - sr - v - bck - duck - v
+26-segment Pressure Sponge:
+v - duck - sl - v - duck - sr - v - bck - v - duck - sl - v - duck - sr - v - bck - v - duck - sl - v - duck - sr - v - bck
+Elite Pull Defense Extended:
+bck - v - bck - duck - bck - v - bck - duck - bck - v - bck - duck - bck - v - bck - duck - bck - v - bck - duck - bck
+Mixed Movement Fortress:
+sl - v - sr - duck - bck - v - sl - duck - sr - v - bck - duck - sl - v - sr - bck - v - duck
+Stance + Lateral + Shell:
+sw - sl - v - sw - sr - duck - sw - bck - v - sw - sl - duck - sw - sr - v - sw - bck - duck
+28-segment Ultimate Survival:
+v - duck - bck - v - sl - duck - bck - v - sr - duck - bck - v - sl - duck - bck - v - sr - duck - bck - v - duck - bck - v - sl - sr - bck - v - duck
+29-segment Ring General Defense:
+bck - v - duck - bck - sl - v - bck - sr - duck - bck - v - sw - bck - sl - duck - bck - sr - v - bck - duck - bck - v - sl - sr - bck - v - duck - bck
+30-segment Maximum Defensive String (last-resort survival):
+v - duck - v - bck - v - duck - v - bck - sl - v - duck - sr - v - bck - v - duck - v - bck - sw - v - duck - bck - sl - v - sr - duck - bck - v - duck - bck
+Emergency Double Shell: v - v - duck - v - v - bck
+Quick Angle Escape: sw - sl - bck - sw - sr - bck
+Tight Guard Lateral: v - sl - v - sr - v - bck
+Deep Duck Retreat: duck - duck - bck - duck - bck - bck
+Block-Circle-Block: v - sl - v - sr - v - bck
+Stance Reset under Fire: sw - v - bck - sw - v - bck
+Side-step Fortress Left: sl - v - sl - duck - sl - bck
+Side-step Fortress Right: sr - v - sr - duck - sr - bck
+Pull + Shell Loop: bck - v - bck - v - bck - duck
+Mixed Slip Defense: duck - sl - duck - sr - duck - bck
+High Guard Reposition: v - bck - v - sl - v - sr
+Continuous Small Circles: sl - sr - duck - sl - sr - v
+Emergency Distance: bck - bck - bck - bck - v - duck
+Switch + Deep Guard: sw - v - duck - bck - v - bck
+Lateral then Shell: sl - sr - v - duck - v - bck
+Double Stance Change Defense: sw - bck - sw - v - duck - bck
+Pressure Absorb Short: v - duck - v - sl - v - sr
+Final Reset String: v - duck - bck - bck - v - sw
+Absolute Last-Resort Shell: v - v - duck - v - v - duck - v - bck - v - duck
+
+These 100 pure-defense strings give the AI a complete survival toolkit: immediate blocks and ducks, circling out, deep retreats, stance-angle changes, and long adaptive shells that can be selected when the AI is hurt, low on stamina, behind on the scorecards, or simply reading heavy incoming pressure.

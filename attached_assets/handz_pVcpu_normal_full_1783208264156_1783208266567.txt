@@ -1,0 +1,611 @@
+=== HANDZ INPUT RECORDING ===
+Date: 2026-07-04T23:37:44.154Z
+Match Type: Player vs CPU | Mode: Normal
+
+--- FIGHT SETTINGS ---
+Player (BoxerPuncher) vs Rafael "Cinder King" Alvarez (OutBoxer)
+Player Level: 100 | Enemy Level: 23
+AI Difficulty: champion
+Round Duration: 60s | Timer Speed: normal | Total Rounds: 3
+Player Arm: 65" | Enemy Arm: 65"
+
+=== ROUND 1 === (20.7s)
+
+--- PUNCH SUMMARY ---
+PLAYER:
+  leftUppercut: 3 thrown, 1 landed (33%) 3 body
+  rightUppercut: 10 thrown, 7 landed (70%) 10 body
+ENEMY:
+  jab: 2 thrown, 0 landed (0%)
+  cross: 1 thrown, 1 landed (100%) 1 body
+  leftHook: 2 thrown, 0 landed (0%) 2 body
+  rightHook: 6 thrown, 0 landed (0%) 6 body
+  leftUppercut: 1 thrown, 1 landed (100%) 1 body
+  rightUppercut: 1 thrown, 0 landed (0%) 1 body
+
+--- MOVEMENT ---
+Player distance traveled: 602px | Avg dist from enemy: 156px
+Time in range: 0.5s | Out of range: 5.2s
+
+--- DEFENSE ---
+Player: 1 ducks, 3 full guards, 0 blocks hit, 1 dodges
+Enemy: 10 ducks, 14 full guards, 0 blocks hit, 0 dodges
+
+--- KNOCKDOWNS ---
+Player scored: 3 | Enemy scored: 0
+
+--- EVENT LOG ---
+Time(ms) | Actor  | Event      | Details                                  | Positions (P/E) | Dist | Stam(P/E)
+------------------------------------------------------------------------------------------------------------------------
+      13 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(520,260) |  240 | 2750/750
+      13 | player | defense    | state=fullGuard prev=none                | (280,260)/(520,260) |  240 | 2750/750
+      13 | enemy  | defense    | state=fullGuard prev=none                | (280,260)/(520,260) |  240 | 2750/750
+      27 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(520,260) |  240 | 2750/750
+      27 | player | defense    | state=none prev=fullGuard                | (280,260)/(520,260) |  240 | 2750/750
+      41 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(520,260) |  240 | 2750/750
+      54 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(520,260) |  240 | 2750/750
+      67 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(520,259) |  240 | 2750/750
+      81 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(520,258) |  240 | 2750/750
+      94 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(520,257) |  240 | 2750/750
+     107 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(520,256) |  240 | 2750/750
+     107 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (280,260)/(520,256) |  240 | 2750/750
+     121 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(520,256) |  240 | 2750/750
+     133 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(520,255) |  240 | 2750/750
+     147 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(520,254) |  240 | 2750/750
+     161 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(520,253) |  240 | 2750/750
+     174 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(518,252) |  238 | 2750/750
+     188 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(516,251) |  236 | 2750/750
+     200 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(514,250) |  234 | 2750/750
+     213 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(512,249) |  232 | 2750/750
+     213 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (280,260)/(512,249) |  232 | 2750/750
+     228 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(512,249) |  232 | 2750/750
+     241 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(512,248) |  232 | 2750/750
+     254 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(512,247) |  232 | 2750/750
+     268 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(512,246) |  232 | 2750/750
+     281 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(512,245) |  232 | 2750/750
+     294 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(512,244) |  232 | 2750/750
+     308 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(512,243) |  232 | 2750/750
+     308 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (280,260)/(512,243) |  232 | 2750/750
+     321 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(512,242) |  232 | 2750/750
+     334 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(512,241) |  232 | 2750/750
+     348 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(511,240) |  232 | 2750/750
+     361 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(511,239) |  232 | 2750/750
+     375 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(511,239) |  232 | 2750/750
+     375 | player | defense    | state=fullGuard prev=none                | (280,260)/(511,239) |  232 | 2750/750
+     388 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(511,238) |  232 | 2750/750
+     388 | enemy  | defense    | state=duck prev=fullGuard                | (280,260)/(511,238) |  232 | 2750/750
+     400 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(511,237) |  232 | 2750/750
+     400 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (280,260)/(511,237) |  232 | 2750/750
+     414 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(511,236) |  232 | 2750/750
+     428 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(511,235) |  232 | 2750/750
+     441 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(511,234) |  232 | 2750/750
+     455 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(511,233) |  232 | 2750/750
+     468 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(511,232) |  232 | 2750/750
+     468 | player | defense    | state=none prev=fullGuard                | (280,260)/(511,232) |  232 | 2750/750
+     468 | enemy  | punch      | punch=rightUppercut feint=false charged= | (280,260)/(511,231) |  232 | 2750/746
+     481 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(511,231) |  232 | 2750/746
+     494 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(509,231) |  230 | 2750/746
+     507 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(507,230) |  229 | 2750/746
+     507 | player | move       | pDef=none pStance=neutral pRhythm=2 pPun | (280,260)/(507,230) |  229 | 2750/746
+     521 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(505,229) |  227 | 2750/746
+     535 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(503,229) |  225 | 2750/746
+     548 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(502,229) |  224 | 2750/746
+     548 | player | defense    | state=fullGuard prev=none                | (280,260)/(502,229) |  224 | 2750/746
+     561 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(501,229) |  223 | 2750/747
+     575 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(500,229) |  222 | 2750/747
+     587 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(499,229) |  221 | 2750/747
+     601 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(498,229) |  220 | 2750/747
+     601 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (280,260)/(498,229) |  220 | 2750/747
+     615 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(496,230) |  219 | 2750/747
+     628 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(495,230) |  218 | 2750/747
+     641 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(494,230) |  216 | 2750/747
+     654 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=1 pGu | (280,260)/(493,230) |  215 | 2750/747
+     667 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(492,230) |  214 | 2750/747
+     667 | enemy  | defense    | state=fullGuard prev=duck                | (280,260)/(492,230) |  214 | 2750/747
+     681 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(491,230) |  213 | 2750/747
+     695 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(490,231) |  212 | 2750/747
+     707 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(489,231) |  211 | 2750/747
+     707 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (280,260)/(489,231) |  211 | 2750/747
+     720 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(488,231) |  210 | 2750/748
+     734 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(486,231) |  208 | 2750/748
+     748 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(485,231) |  207 | 2750/748
+     761 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(484,231) |  206 | 2750/748
+     775 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(483,232) |  205 | 2750/748
+     788 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(482,232) |  204 | 2750/748
+     801 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(480,232) |  202 | 2750/748
+     801 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (280,260)/(480,232) |  202 | 2750/748
+     814 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(479,232) |  201 | 2750/748
+     828 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(478,232) |  200 | 2750/748
+     841 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(477,232) |  198 | 2750/748
+     854 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(475,233) |  197 | 2750/748
+     868 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(474,233) |  196 | 2750/748
+     881 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(473,233) |  194 | 2750/748
+     881 | enemy  | defense    | state=none prev=fullGuard                | (280,260)/(473,233) |  194 | 2750/748
+     895 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(471,233) |  193 | 2750/749
+     908 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(470,233) |  192 | 2750/749
+     908 | player | move       | pDef=fullGuard pStance=neutral pRhythm=2 | (280,260)/(470,233) |  192 | 2750/749
+     921 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(469,234) |  190 | 2750/749
+     935 | player | pos        | pFacing=1 eFacing=-1 pDuck=0 eDuck=0 pGu | (280,260)/(467,234) |  189 | 2750/749
+     935 | enemy  | defense    | state=fullGuard prev=none                | (280,260)/(467,234) |  189 | 2750/749
+     947 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(466,234) |  188 | 2750/749
+     947 | player | defense    | state=duck prev=fullGuard                | (280,260)/(466,234) |  188 | 2750/749
+     960 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(465,234) |  186 | 2750/749
+     975 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(463,234) |  185 | 2750/749
+     988 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(462,235) |  183 | 2750/749
+    1001 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(460,235) |  182 | 2750/749
+    1001 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(460,235) |  182 | 2750/749
+    1015 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(459,235) |  181 | 2750/749
+    1028 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(457,235) |  179 | 2750/749
+    1041 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(456,235) |  177 | 2750/749
+    1054 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(454,236) |  176 | 2750/749
+    1067 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(453,236) |  175 | 2750/750
+    1081 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(451,236) |  173 | 2750/750
+    1094 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(450,236) |  171 | 2750/750
+    1107 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(448,236) |  170 | 2750/750
+    1107 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(448,236) |  170 | 2750/750
+    1121 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(447,237) |  168 | 2750/750
+    1134 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(445,237) |  167 | 2750/750
+    1148 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(444,237) |  165 | 2750/750
+    1161 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(442,237) |  163 | 2750/750
+    1175 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(440,238) |  162 | 2750/750
+    1188 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(439,238) |  160 | 2750/750
+    1201 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(437,238) |  159 | 2750/750
+    1201 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(437,238) |  159 | 2750/750
+    1215 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(435,238) |  157 | 2750/750
+    1227 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(434,238) |  155 | 2750/750
+    1241 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(432,239) |  154 | 2750/750
+    1255 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(430,239) |  152 | 2750/750
+    1268 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(429,239) |  150 | 2750/750
+    1281 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(427,239) |  148 | 2750/750
+    1295 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(425,240) |  147 | 2750/750
+    1308 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(423,240) |  145 | 2750/750
+    1308 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(423,240) |  145 | 2750/750
+    1322 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(422,240) |  143 | 2750/750
+    1335 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(420,240) |  141 | 2750/750
+    1348 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(418,241) |  140 | 2750/750
+    1361 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(416,241) |  138 | 2750/750
+    1374 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(415,241) |  136 | 2750/750
+    1388 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(413,241) |  134 | 2750/750
+    1401 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(411,242) |  132 | 2750/750
+    1401 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(411,242) |  132 | 2750/750
+    1415 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(409,242) |  130 | 2750/750
+    1428 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(407,242) |  129 | 2750/750
+    1442 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(405,242) |  127 | 2750/750
+    1455 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (284,260)/(404,243) |  121 | 2750/750
+    1468 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (288,260)/(402,243) |  115 | 2750/750
+    1482 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (292,260)/(400,243) |  109 | 2750/750
+    1495 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (296,260)/(398,244) |  104 | 2750/750
+    1508 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (299,260)/(396,244) |   98 | 2750/750
+    1508 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (299,260)/(396,244) |   98 | 2750/750
+    1508 | enemy  | punch      | punch=rightHook feint=false charged=fals | (303,260)/(394,244) |   92 | 2750/747
+    1522 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (303,260)/(394,244) |   92 | 2750/748
+    1522 | enemy  | defense    | state=duck prev=fullGuard                | (303,260)/(394,244) |   92 | 2750/748
+    1535 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (307,260)/(392,244) |   86 | 2750/748
+    1548 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (311,260)/(390,245) |   80 | 2750/748
+    1562 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(388,245) |   75 | 2750/748
+    1575 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(386,246) |   73 | 2750/748
+    1588 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(384,246) |   71 | 2750/748
+    1602 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(382,246) |   69 | 2750/748
+    1602 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (315,260)/(382,246) |   69 | 2750/748
+    1615 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(380,247) |   67 | 2750/748
+    1628 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (315,260)/(378,247) |   65 | 2750/748
+    1628 | enemy  | defense    | state=none prev=duck                     | (315,260)/(378,247) |   65 | 2750/748
+    1642 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (315,260)/(376,248) |   63 | 2750/748
+    1654 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (315,260)/(374,248) |   61 | 2750/748
+    1667 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (315,260)/(372,248) |   59 | 2750/749
+    1682 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (315,260)/(371,249) |   57 | 2750/749
+    1682 | player | punch      | punch=rightUppercut feint=false charged= | (315,260)/(371,249) |   57 | 2747/749
+    1695 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(373,248) |   59 | 2747/749
+    1695 | enemy  | defense    | state=duck prev=none                     | (315,260)/(373,248) |   59 | 2747/749
+    1708 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(375,248) |   61 | 2747/749
+    1708 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (315,260)/(375,248) |   61 | 2747/749
+    1722 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(377,248) |   63 | 2747/749
+    1722 | enemy  | punch      | punch=cross feint=false charged=false bo | (315,260)/(379,247) |   65 | 2747/747
+    1735 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(379,247) |   65 | 2748/747
+    1748 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(381,247) |   67 | 2748/747
+    1762 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(382,246) |   69 | 2748/747
+    1762 | player | hit        | punch=rightUppercut damage=136 crit=fals | (315,260)/(384,246) |   71 | 2748/611
+    1774 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(396,244) |   83 | 2749/611
+    1787 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(399,243) |   86 | 2749/611
+    1787 | enemy  | hit        | punch=cross damage=16 crit=false stun=fa | (315,260)/(402,242) |   89 | 2734/611
+    1802 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (310,261)/(402,242) |   94 | 2734/612
+    1802 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (310,261)/(402,242) |   94 | 2734/612
+    1815 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (309,261)/(405,242) |   98 | 2734/612
+    1828 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (309,261)/(408,241) |  101 | 2734/612
+    1842 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (308,261)/(411,241) |  105 | 2734/612
+    1854 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (307,262)/(414,240) |  109 | 2734/612
+    1867 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (307,262)/(417,239) |  112 | 2734/612
+    1882 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (306,262)/(419,239) |  115 | 2734/612
+    1895 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (306,262)/(422,238) |  118 | 2734/612
+    1907 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (306,262)/(425,238) |  121 | 2734/612
+    1907 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (306,262)/(425,238) |  121 | 2734/612
+    1907 | enemy  | defense    | state=fullGuard prev=duck                | (306,262)/(425,238) |  121 | 2734/612
+    1922 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (306,262)/(423,238) |  120 | 2734/612
+    1935 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (305,262)/(421,239) |  118 | 2734/612
+    1948 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (305,262)/(418,239) |  116 | 2734/612
+    1962 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (305,262)/(416,240) |  114 | 2734/612
+    1975 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (305,262)/(414,240) |  111 | 2734/612
+    1988 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (305,262)/(412,240) |  110 | 2734/612
+    1988 | enemy  | punch      | punch=rightHook feint=false charged=fals | (305,262)/(410,241) |  108 | 2734/609
+    2002 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (305,262)/(410,241) |  108 | 2734/609
+    2002 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (305,262)/(410,241) |  108 | 2734/609
+    2002 | enemy  | defense    | state=none prev=fullGuard                | (305,262)/(410,241) |  108 | 2734/609
+    2015 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (305,262)/(409,241) |  106 | 2734/609
+    2015 | player | punch      | punch=rightUppercut feint=false charged= | (305,262)/(409,241) |  106 | 2731/609
+    2028 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(407,241) |  104 | 2731/609
+    2042 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(405,242) |  102 | 2731/609
+    2055 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(403,242) |  101 | 2731/609
+    2068 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(401,243) |   99 | 2731/609
+    2082 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(399,243) |   97 | 2731/609
+    2095 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(397,243) |   95 | 2731/609
+    2108 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(395,244) |   93 | 2731/609
+    2108 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (304,262)/(395,244) |   93 | 2731/609
+    2108 | enemy  | defense    | state=duck prev=none                     | (304,262)/(395,244) |   93 | 2731/609
+    2108 | player | hit        | punch=rightUppercut damage=202 crit=fals | (304,262)/(393,244) |   91 | 2731/408
+    2122 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(405,242) |  103 | 2732/408
+    2135 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(404,242) |  102 | 2732/408
+    2148 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(403,242) |  101 | 2732/408
+    2162 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(402,242) |  100 | 2732/408
+    2175 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(400,243) |   98 | 2732/408
+    2188 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(398,243) |   96 | 2732/408
+    2201 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(397,243) |   94 | 2732/408
+    2201 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (304,262)/(397,243) |   94 | 2732/408
+    2201 | enemy  | punch      | punch=leftHook feint=false charged=false | (304,262)/(394,244) |   92 | 2732/406
+    2215 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(395,244) |   92 | 2732/406
+    2228 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(393,244) |   90 | 2732/406
+    2242 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(390,245) |   88 | 2732/406
+    2254 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(388,245) |   86 | 2732/406
+    2268 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(386,246) |   84 | 2732/406
+    2282 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(384,246) |   82 | 2732/406
+    2295 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(382,246) |   79 | 2732/406
+    2308 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (304,262)/(380,247) |   77 | 2732/406
+    2308 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (304,262)/(380,247) |   77 | 2732/406
+    2321 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(378,247) |   75 | 2732/406
+    2321 | enemy  | defense    | state=fullGuard prev=duck                | (304,262)/(378,247) |   75 | 2732/406
+    2321 | player | punch      | punch=rightUppercut feint=false charged= | (304,262)/(376,248) |   73 | 2729/406
+    2335 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(376,248) |   73 | 2729/406
+    2349 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(374,248) |   71 | 2729/406
+    2361 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(372,248) |   69 | 2729/406
+    2374 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(370,249) |   67 | 2729/406
+    2389 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(368,249) |   65 | 2729/406
+    2402 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(366,250) |   63 | 2729/406
+    2402 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (304,262)/(366,250) |   63 | 2729/406
+    2402 | enemy  | punch      | punch=jab feint=false charged=false body | (304,262)/(364,250) |   61 | 2729/404
+    2415 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(364,250) |   61 | 2729/404
+    2415 | player | hit        | punch=rightUppercut damage=227 crit=fals | (304,262)/(365,248) |   63 | 2729/177
+    2429 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(377,246) |   75 | 2730/177
+    2442 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(380,244) |   78 | 2730/177
+    2455 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(382,242) |   80 | 2730/177
+    2455 | player | dodge      | punch=jab method=duck                    | (304,262)/(384,241) |   83 | 2730/177
+    2469 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(384,241) |   83 | 2730/177
+    2482 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(386,239) |   85 | 2730/177
+    2495 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(388,237) |   87 | 2730/177
+    2509 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(390,235) |   90 | 2730/177
+    2509 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (304,262)/(390,235) |   90 | 2730/177
+    2522 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(391,233) |   92 | 2730/177
+    2535 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(393,231) |   94 | 2730/177
+    2548 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(394,229) |   96 | 2730/177
+    2562 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(396,227) |   98 | 2730/177
+    2562 | enemy  | defense    | state=none prev=fullGuard                | (304,262)/(396,227) |   98 | 2730/177
+    2575 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(397,225) |  101 | 2730/177
+    2575 | enemy  | defense    | state=fullGuard prev=none                | (304,262)/(397,225) |  101 | 2730/177
+    2589 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(399,222) |  103 | 2730/177
+    2602 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(400,220) |  104 | 2730/177
+    2602 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (304,262)/(400,220) |  104 | 2730/177
+    2614 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(401,218) |  106 | 2730/177
+    2628 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(402,216) |  108 | 2730/177
+    2628 | player | punch      | punch=rightUppercut feint=false charged= | (304,262)/(403,215) |  110 | 2727/177
+    2642 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(403,214) |  110 | 2727/177
+    2654 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(404,213) |  111 | 2728/177
+    2669 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(405,211) |  113 | 2728/177
+    2681 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(405,209) |  114 | 2728/177
+    2695 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(406,207) |  116 | 2728/177
+    2708 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(407,205) |  117 | 2728/177
+    2708 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (304,262)/(407,205) |  117 | 2728/177
+    2722 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(408,204) |  119 | 2728/177
+    2735 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(408,202) |  120 | 2728/177
+    2749 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(409,200) |  122 | 2729/177
+    2762 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(410,198) |  123 | 2729/177
+    2775 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(410,196) |  125 | 2729/177
+    2788 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(411,195) |  126 | 2729/177
+    2802 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(411,192) |  128 | 2729/177
+    2802 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (304,262)/(411,192) |  128 | 2729/177
+    2815 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(412,190) |  130 | 2729/177
+    2829 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(411,192) |  127 | 2729/177
+    2842 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(409,194) |  125 | 2730/177
+    2855 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(408,196) |  123 | 2730/177
+    2869 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(406,198) |  120 | 2730/177
+    2882 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(404,200) |  118 | 2730/177
+    2895 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(403,202) |  116 | 2730/177
+    2909 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(401,204) |  113 | 2730/177
+    2909 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (304,262)/(401,204) |  113 | 2730/177
+    2922 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(400,206) |  111 | 2730/177
+    2935 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(398,208) |  108 | 2731/177
+    2935 | player | punch      | punch=rightUppercut feint=false charged= | (304,262)/(397,210) |  106 | 2726/177
+    2949 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(397,210) |  106 | 2726/177
+    2962 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(395,211) |  104 | 2726/177
+    2975 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(394,213) |  103 | 2726/177
+    2989 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(393,215) |  101 | 2727/177
+    3002 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(391,216) |   99 | 2727/177
+    3002 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (304,262)/(391,216) |   99 | 2727/177
+    3015 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(390,218) |   97 | 2727/177
+    3029 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (304,262)/(388,219) |   95 | 2727/177
+    3029 | enemy  | defense    | state=none prev=fullGuard                | (304,262)/(388,219) |   95 | 2727/177
+    3029 | enemy  | punch      | punch=rightHook feint=false charged=fals | (304,262)/(387,221) |   93 | 2727/172
+    3029 | player | hit        | punch=rightUppercut damage=171 crit=fals | (304,262)/(387,221) |   93 | 2727/1
+    3029 | player | knockdown  | punch=rightUppercut defenderStamina=1 kd | (304,262)/(398,216) |  105 | 2729/1
+    3041 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(520,260) |  240 | 2750/525
+    3054 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(520,261) |  240 | 2750/525
+    3068 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(519,262) |  239 | 2750/525
+    3082 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(519,263) |  239 | 2750/525
+    3095 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(518,265) |  238 | 2750/525
+    3109 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(517,266) |  237 | 2750/525
+    3109 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(517,266) |  237 | 2750/525
+    3122 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(516,267) |  236 | 2750/525
+    3135 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(515,269) |  235 | 2750/525
+    3149 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(514,270) |  234 | 2750/525
+    3149 | enemy  | punch      | punch=leftHook feint=false charged=false | (280,260)/(514,270) |  234 | 2750/520
+    3162 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(513,271) |  233 | 2750/520
+    3162 | enemy  | defense    | state=duck prev=none                     | (280,260)/(513,271) |  233 | 2750/520
+    3175 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(512,273) |  232 | 2750/520
+    3189 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(511,274) |  231 | 2750/520
+    3202 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(509,276) |  230 | 2750/520
+    3202 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(509,276) |  230 | 2750/520
+    3215 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(508,277) |  229 | 2750/520
+    3229 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(507,279) |  228 | 2750/520
+    3242 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(506,280) |  226 | 2750/520
+    3255 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(504,282) |  225 | 2750/520
+    3269 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (284,260)/(503,283) |  220 | 2750/520
+    3282 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (288,260)/(502,285) |  215 | 2750/520
+    3295 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (292,260)/(500,286) |  210 | 2750/520
+    3308 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (295,260)/(499,288) |  205 | 2750/520
+    3308 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (295,260)/(499,288) |  205 | 2750/520
+    3322 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (299,260)/(498,289) |  201 | 2750/520
+    3336 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (303,260)/(496,291) |  195 | 2750/520
+    3348 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (307,260)/(495,293) |  190 | 2750/520
+    3361 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (311,260)/(493,294) |  186 | 2750/520
+    3361 | enemy  | punch      | punch=rightHook feint=false charged=fals | (315,260)/(493,294) |  182 | 2750/507
+    3376 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (315,260)/(492,296) |  181 | 2750/507
+    3388 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (319,260)/(491,297) |  176 | 2750/507
+    3402 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (322,260)/(489,299) |  171 | 2750/507
+    3402 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (322,260)/(489,299) |  171 | 2750/507
+    3415 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (327,260)/(488,300) |  166 | 2750/507
+    3429 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (330,260)/(486,302) |  162 | 2750/507
+    3442 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (334,260)/(485,304) |  157 | 2695/507
+    3456 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (338,260)/(484,305) |  152 | 2695/507
+    3456 | player | punch      | punch=leftUppercut feint=false charged=f | (342,260)/(484,305) |  149 | 2689/507
+    3468 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (342,260)/(482,307) |  148 | 2689/507
+    3481 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (348,260)/(481,308) |  142 | 2689/507
+    3495 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (353,260)/(479,310) |  136 | 2689/507
+    3509 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (359,260)/(478,311) |  129 | 2689/507
+    3509 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (359,260)/(478,311) |  129 | 2689/507
+    3522 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (365,260)/(476,313) |  123 | 2689/507
+    3536 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (371,260)/(475,315) |  117 | 2689/507
+    3549 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (377,260)/(474,316) |  112 | 2689/507
+    3549 | player | hit        | punch=leftUppercut damage=392 crit=true  | (383,260)/(472,318) |  106 | 2689/115
+    3562 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (383,260)/(482,324) |  118 | 2692/115
+    3576 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (389,260)/(482,325) |  113 | 2692/115
+    3589 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (392,260)/(481,326) |  110 | 2692/115
+    3589 | enemy  | punch      | punch=rightHook feint=false charged=fals | (396,260)/(481,326) |  107 | 2692/95
+    3602 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (396,260)/(480,326) |  107 | 2692/95
+    3602 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (396,260)/(480,326) |  107 | 2692/95
+    3616 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (400,260)/(480,327) |  104 | 2692/95
+    3628 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (404,260)/(479,328) |  101 | 2692/95
+    3641 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (408,260)/(478,329) |   98 | 2692/95
+    3656 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (412,260)/(477,330) |   96 | 2692/95
+    3669 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (416,260)/(476,331) |   93 | 2692/95
+    3682 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (420,260)/(475,332) |   91 | 2692/95
+    3696 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (423,260)/(475,333) |   89 | 2692/95
+    3709 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (429,260)/(474,334) |   86 | 2692/95
+    3709 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (429,260)/(474,334) |   86 | 2692/95
+    3722 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (435,260)/(473,335) |   84 | 2692/95
+    3722 | enemy  | defense    | state=fullGuard prev=duck                | (435,260)/(473,335) |   84 | 2692/95
+    3736 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (441,260)/(472,336) |   82 | 2692/95
+    3749 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (447,260)/(471,337) |   80 | 2692/95
+    3762 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (452,260)/(470,337) |   79 | 2692/95
+    3762 | player | punch      | punch=rightUppercut feint=false charged= | (458,260)/(470,338) |   79 | 2681/95
+    3776 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (458,260)/(470,338) |   79 | 2681/95
+    3789 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (464,260)/(469,339) |   79 | 2681/95
+    3801 | player | pos        | pFacing=-1 eFacing=1 pDuck=1 eDuck=0 pGu | (470,260)/(468,340) |   80 | 2681/95
+    3801 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (470,260)/(468,340) |   80 | 2681/95
+    3801 | enemy  | punch      | punch=jab feint=false charged=false body | (474,260)/(468,341) |   81 | 2681/81
+    3816 | player | pos        | pFacing=-1 eFacing=1 pDuck=1 eDuck=0 pGu | (474,260)/(468,341) |   81 | 2681/81
+    3829 | player | pos        | pFacing=-1 eFacing=1 pDuck=1 eDuck=0 pGu | (478,260)/(467,341) |   82 | 2681/81
+    3841 | player | pos        | pFacing=-1 eFacing=1 pDuck=1 eDuck=0 pGu | (480,263)/(466,342) |   81 | 2681/81
+    3855 | player | pos        | pFacing=-1 eFacing=1 pDuck=1 eDuck=0 pGu | (483,265)/(465,343) |   80 | 2681/81
+    3855 | player | hit        | punch=rightUppercut damage=80 crit=true  | (486,268)/(465,344) |   79 | 2681/1
+    3855 | player | knockdown  | punch=rightUppercut defenderStamina=1 kd | (486,268)/(462,355) |   91 | 2685/1
+    3868 | player | pos        | pFacing=-1 eFacing=1 pDuck=1 eDuck=0 pGu | (280,260)/(520,260) |  240 | 2750/375
+    3868 | enemy  | defense    | state=none prev=fullGuard                | (280,260)/(520,260) |  240 | 2750/375
+    3868 | enemy  | punch      | punch=rightHook feint=false charged=fals | (280,260)/(520,260) |  240 | 2750/331
+    3868 | player | punch      | punch=leftUppercut feint=false charged=f | (280,260)/(519,261) |  239 | 2737/331
+    3880 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(519,261) |  239 | 2737/331
+    3880 | enemy  | defense    | state=duck prev=none                     | (280,260)/(519,261) |  239 | 2737/331
+    3894 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(519,262) |  239 | 2737/331
+    3908 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(518,262) |  238 | 2737/331
+    3908 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(518,262) |  238 | 2737/331
+    3921 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(519,263) |  239 | 2737/331
+    3935 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(519,264) |  239 | 2737/331
+    3948 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(520,264) |  240 | 2682/331
+    3961 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(521,265) |  241 | 2682/331
+    3974 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(521,266) |  241 | 2682/331
+    3988 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(522,266) |  242 | 2682/331
+    4001 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(523,267) |  243 | 2682/331
+    4001 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(523,267) |  243 | 2682/331
+    4015 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(523,268) |  244 | 2682/331
+    4028 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(524,268) |  244 | 2682/331
+    4041 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(525,269) |  245 | 2682/331
+    4054 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(526,270) |  246 | 2682/331
+    4067 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(527,271) |  247 | 2682/331
+    4081 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(527,272) |  248 | 2682/331
+    4081 | enemy  | defense    | state=fullGuard prev=duck                | (280,260)/(527,272) |  248 | 2682/331
+    4095 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(528,272) |  249 | 2682/331
+    4108 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(529,273) |  250 | 2682/331
+    4108 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(529,273) |  250 | 2682/331
+    4122 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(530,274) |  250 | 2682/331
+    4135 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(531,275) |  251 | 2682/331
+    4135 | enemy  | defense    | state=none prev=fullGuard                | (280,260)/(531,275) |  251 | 2682/331
+    4148 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(532,276) |  252 | 2682/331
+    4148 | enemy  | defense    | state=fullGuard prev=none                | (280,260)/(532,276) |  252 | 2682/331
+    4161 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(532,277) |  253 | 2682/331
+    4174 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(533,277) |  254 | 2682/331
+    4174 | player | punch      | punch=leftUppercut feint=false charged=f | (280,260)/(533,277) |  254 | 2663/331
+    4188 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(534,278) |  254 | 2663/331
+    4202 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(534,279) |  255 | 2663/331
+    4202 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(534,279) |  255 | 2663/331
+    4215 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(535,279) |  256 | 2663/331
+    4228 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(536,280) |  256 | 2663/331
+    4241 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(536,281) |  257 | 2663/331
+    4255 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(537,281) |  258 | 2663/331
+    4268 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(538,282) |  259 | 2663/331
+    4282 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(538,283) |  259 | 2663/331
+    4295 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(539,283) |  260 | 2663/331
+    4295 | enemy  | defense    | state=none prev=fullGuard                | (280,260)/(539,283) |  260 | 2663/331
+    4308 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(540,284) |  261 | 2663/331
+    4308 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(540,284) |  261 | 2663/331
+    4308 | enemy  | defense    | state=duck prev=none                     | (280,260)/(540,284) |  261 | 2663/331
+    4322 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(540,285) |  261 | 2663/331
+    4335 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(541,286) |  262 | 2663/331
+    4348 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(542,286) |  263 | 2663/331
+    4362 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(542,287) |  264 | 2663/331
+    4375 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(543,288) |  265 | 2664/331
+    4388 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (280,260)/(544,289) |  265 | 2664/331
+    4402 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(543,288) |  264 | 2664/331
+    4402 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(543,288) |  264 | 2664/331
+    4402 | enemy  | defense    | state=fullGuard prev=duck                | (280,260)/(543,288) |  264 | 2664/331
+    4415 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(542,288) |  263 | 2664/331
+    4428 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(540,287) |  262 | 2664/331
+    4442 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(539,287) |  261 | 2664/331
+    4454 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(538,286) |  259 | 2609/331
+    4468 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(537,286) |  258 | 2610/331
+    4482 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(536,285) |  257 | 2610/331
+    4482 | player | punch      | punch=rightUppercut feint=false charged= | (280,260)/(535,285) |  256 | 2575/331
+    4495 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(535,285) |  256 | 2576/331
+    4508 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(534,284) |  255 | 2576/331
+    4508 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (280,260)/(534,284) |  255 | 2576/331
+    4522 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(533,284) |  254 | 2576/331
+    4535 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(532,283) |  253 | 2576/331
+    4535 | enemy  | defense    | state=none prev=fullGuard                | (280,260)/(532,283) |  253 | 2576/331
+    4548 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(531,283) |  252 | 2576/331
+    4562 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (280,260)/(530,282) |  251 | 2576/331
+    4575 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (284,260)/(529,282) |  246 | 2576/331
+    4588 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (288,260)/(528,282) |  241 | 2577/331
+    4601 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (292,260)/(527,281) |  236 | 2577/331
+    4601 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (292,260)/(527,281) |  236 | 2577/331
+    4614 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (295,260)/(526,281) |  232 | 2577/331
+    4628 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (299,260)/(525,280) |  227 | 2577/331
+    4628 | enemy  | defense    | state=fullGuard prev=none                | (299,260)/(525,280) |  227 | 2577/331
+    4642 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (303,260)/(524,280) |  222 | 2577/331
+    4655 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (307,260)/(523,279) |  217 | 2577/331
+    4668 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (311,260)/(522,279) |  212 | 2577/331
+    4682 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (315,260)/(521,278) |  207 | 2578/331
+    4695 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (319,260)/(520,278) |  202 | 2578/331
+    4707 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (323,260)/(519,277) |  197 | 2578/332
+    4707 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (323,260)/(519,277) |  197 | 2578/332
+    4721 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (326,260)/(517,277) |  192 | 2578/332
+    4734 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (330,260)/(516,276) |  187 | 2578/332
+    4748 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (334,260)/(515,276) |  182 | 2578/332
+    4761 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (338,260)/(514,275) |  176 | 2578/332
+    4774 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (342,260)/(513,275) |  172 | 2579/332
+    4788 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (346,260)/(512,274) |  167 | 2579/332
+    4802 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (350,260)/(511,274) |  161 | 2579/332
+    4802 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (350,260)/(511,274) |  161 | 2579/332
+    4815 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (354,260)/(510,273) |  157 | 2579/332
+    4828 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (358,260)/(509,273) |  152 | 2579/332
+    4842 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (361,260)/(508,272) |  147 | 2579/332
+    4855 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (365,260)/(507,272) |  142 | 2579/333
+    4868 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (369,260)/(506,271) |  137 | 2580/333
+    4868 | enemy  | defense    | state=none prev=fullGuard                | (369,260)/(506,271) |  137 | 2580/333
+    4882 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (373,260)/(505,271) |  132 | 2580/333
+    4895 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (377,260)/(504,271) |  127 | 2580/333
+    4895 | player | punch      | punch=rightUppercut feint=false charged= | (381,260)/(504,271) |  124 | 2529/333
+    4908 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (381,260)/(503,270) |  123 | 2529/333
+    4908 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (381,260)/(503,270) |  123 | 2529/333
+    4922 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (385,260)/(502,270) |  118 | 2529/333
+    4935 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (389,260)/(501,269) |  113 | 2529/333
+    4948 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (392,260)/(500,269) |  108 | 2529/333
+    4948 | enemy  | defense    | state=fullGuard prev=none                | (392,260)/(500,269) |  108 | 2529/333
+    4962 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (396,260)/(501,269) |  105 | 2474/333
+    4975 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (400,260)/(502,269) |  102 | 2474/334
+    4989 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (404,260)/(503,269) |   99 | 2475/334
+    4989 | player | hit        | punch=rightUppercut damage=129 crit=fals | (408,260)/(504,269) |   97 | 2475/205
+    5002 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (408,260)/(516,270) |  109 | 2495/205
+    5002 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (408,260)/(516,270) |  109 | 2495/205
+    5015 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (412,260)/(518,270) |  107 | 2495/205
+    5028 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (416,260)/(520,271) |  105 | 2496/205
+    5041 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (419,260)/(522,271) |  103 | 2496/205
+    5055 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (423,260)/(523,271) |  101 | 2496/205
+    5068 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(525,271) |   99 | 2496/205
+    5082 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(527,271) |  100 | 2496/205
+    5095 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(529,272) |  102 | 2496/205
+    5109 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(530,272) |  103 | 2496/205
+    5109 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (427,260)/(530,272) |  103 | 2496/205
+    5122 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(532,272) |  105 | 2497/205
+    5135 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(533,272) |  106 | 2497/205
+    5148 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(534,272) |  108 | 2497/205
+    5162 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(536,272) |  109 | 2497/205
+    5175 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(537,273) |  111 | 2497/205
+    5189 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(539,273) |  112 | 2497/205
+    5202 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(540,273) |  113 | 2497/205
+    5202 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (427,260)/(540,273) |  113 | 2497/205
+    5215 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(541,273) |  114 | 2498/205
+    5215 | player | punch      | punch=rightUppercut feint=false charged= | (427,260)/(541,273) |  114 | 2421/205
+    5229 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(542,273) |  115 | 2421/205
+    5241 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(543,273) |  117 | 2421/205
+    5254 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(544,273) |  118 | 2421/205
+    5268 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(545,273) |  119 | 2421/205
+    5281 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(546,274) |  120 | 2421/205
+    5281 | enemy  | defense    | state=none prev=fullGuard                | (427,260)/(546,274) |  120 | 2421/205
+    5294 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(547,274) |  121 | 2421/205
+    5308 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(546,273) |  120 | 2422/205
+    5308 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (427,260)/(546,273) |  120 | 2422/205
+    5322 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(545,273) |  119 | 2422/205
+    5335 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(544,272) |  118 | 2422/205
+    5349 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (427,260)/(543,272) |  117 | 2422/205
+    5349 | enemy  | defense    | state=duck prev=none                     | (427,260)/(543,272) |  117 | 2422/205
+    5361 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (427,260)/(543,271) |  116 | 2422/205
+    5375 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (427,260)/(542,271) |  115 | 2422/205
+    5389 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (427,260)/(540,270) |  114 | 2422/205
+    5402 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (427,260)/(539,270) |  112 | 2423/205
+    5402 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (427,260)/(539,270) |  112 | 2423/205
+    5414 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (427,260)/(538,269) |  111 | 2423/205
+    5429 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (427,260)/(537,269) |  110 | 2423/205
+    5442 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(536,268) |  109 | 2423/205
+    5442 | enemy  | defense    | state=fullGuard prev=duck                | (427,260)/(536,268) |  109 | 2423/205
+    5455 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(535,268) |  108 | 2423/205
+    5469 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(534,267) |  106 | 2368/205
+    5482 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(532,267) |  105 | 2368/205
+    5495 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(531,266) |  104 | 2369/205
+    5509 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (427,260)/(530,266) |  103 | 2369/205
+    5509 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (427,260)/(530,266) |  103 | 2369/205
+    5509 | enemy  | defense    | state=duck prev=fullGuard                | (427,260)/(530,266) |  103 | 2369/205
+    5522 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(529,265) |  102 | 2369/205
+    5522 | enemy  | defense    | state=fullGuard prev=duck                | (427,260)/(529,265) |  102 | 2369/205
+    5535 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(528,265) |  101 | 2369/205
+    5549 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(527,264) |  100 | 2369/205
+    5562 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(526,264) |   99 | 2369/205
+    5574 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(525,264) |   98 | 2369/205
+    5589 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(524,263) |   97 | 2370/205
+    5602 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(523,263) |   96 | 2370/205
+    5602 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (427,260)/(523,263) |   96 | 2370/205
+    5615 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=0 pGu | (427,260)/(522,262) |   95 | 2370/205
+    5615 | enemy  | defense    | state=none prev=fullGuard                | (427,260)/(522,262) |   95 | 2370/205
+    5615 | enemy  | punch      | punch=leftUppercut feint=false charged=f | (427,260)/(521,262) |   94 | 2370/202
+    5629 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (427,260)/(521,262) |   94 | 2370/202
+    5629 | enemy  | defense    | state=duck prev=none                     | (427,260)/(521,262) |   94 | 2370/202
+    5642 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (427,260)/(520,262) |   93 | 2370/202
+    5655 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (427,260)/(519,261) |   92 | 2370/202
+    5669 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (427,260)/(518,261) |   91 | 2370/202
+    5681 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (431,260)/(517,261) |   86 | 2371/202
+    5681 | enemy  | hit        | punch=leftUppercut damage=24 crit=false  | (435,260)/(516,260) |   81 | 2347/202
+    5695 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (428,260)/(516,260) |   88 | 2347/203
+    5695 | player | punch      | punch=rightUppercut feint=false charged= | (432,260)/(516,260) |   84 | 2231/203
+    5708 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (432,260)/(515,260) |   83 | 2231/203
+    5708 | player | move       | pDef=duck pStance=neutral pRhythm=2 pPun | (432,260)/(515,260) |   83 | 2231/203
+    5722 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (436,260)/(514,259) |   79 | 2231/203
+    5735 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (440,260)/(513,259) |   74 | 2231/203
+    5748 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (443,260)/(512,259) |   69 | 2231/203
+    5762 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (447,260)/(511,258) |   64 | 2231/203
+    5775 | player | pos        | pFacing=1 eFacing=-1 pDuck=1 eDuck=1 pGu | (451,260)/(510,258) |   59 | 2231/203
+    5775 | player | hit        | punch=rightUppercut damage=202 crit=fals | (455,260)/(509,257) |   54 | 2231/1
+    5775 | player | knockdown  | punch=rightUppercut defenderStamina=1 kd | (455,260)/(526,257) |   71 | 2278/1

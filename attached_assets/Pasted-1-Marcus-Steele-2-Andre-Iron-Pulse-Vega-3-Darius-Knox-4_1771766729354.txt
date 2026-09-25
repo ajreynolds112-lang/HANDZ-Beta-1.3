@@ -1,0 +1,204 @@
+1. Marcus Steele
+2. Andre “Iron Pulse” Vega
+3. Darius Knox
+4. Leon “Southpaw Phantom” Cruz
+5. Tyson Furyk
+6. Malik “Night Engine” Carter
+7. Rafael Stone
+8. Julian “Quick Verdict” Price
+9. DeShawn Wildero
+10. Victor “Riot Hook” Salazar
+11. Caleb Johnson
+12. Roman “Cold Equation” Petrov
+13. Terrence Maystorm
+14. Isaiah “Flashpoint” Reed
+15. Dominic Vance
+16. Hector “Grim Tempo” Ruiz
+17. Lennox Alvarado
+18. Quentin “Razor Choir” Banks
+19. Omar Briggs
+20. Xavier “Blackout Theory” Shaw
+21. Anthony Kovalevson
+22. Gabriel “Velvet Hammer” King
+23. Jamal Ortiz
+24. Nikolai “Red Comet” Sokolov
+25. Brandon Hale
+26. Elias “Bone Collector” Ward
+27. Curtis Bennett
+28. Dante “Chrome Fist” Morales
+29. Floydrick Caneloza
+30. Adrian “Sudden Silence” Cole
+31. Trevor Lang
+32. Micah “Ghost Ledger” Boone
+33. Sergio Dalton
+34. Byron “Crimson Orbit” Hayes
+35. Peter Grant
+36. Khalil “War Psalm” Hodge
+37. Ruben Castillo
+38. Marcus “Hard Reset” Doyle
+39. Edwin Brooks
+40. Theo “Ivory Avalanche” Laurent
+41. Calvin Price
+42. Zaire “Midnight Verdict” Okoye
+43. Harold Finch
+44. Nico “Switchblade” Marquez
+45. Tyson “Steel Mirage” Barrow
+46. Aaron Pike
+47. Ian Fletcher
+48. Shawn Porterfield
+49. Devon Mercer
+50. Victor “Iron Sabbath” Kane
+51. Connor Blake
+52. Terrence Cole
+53. Ryan O’Connell
+54. Andre “Zero Mercy” Baptiste
+55. Stefan Ionescu
+56. Darius “Black Templar” Graves
+57. Miguel Santos
+58. Jamal “Heatwave Prophet” Bishop
+59. Trevor Mills
+60. Isaiah “Rogue Current” Maddox
+61. Roland Pierce
+62. Hector “Silent Riot” Navarro
+63. Samuel Turner
+64. Leon “Graveyard Shift” Booker
+65. Vincent Cole
+66. Arman “Titan Echo” Petrosyan
+67. Curtis Shaw
+68. DeAndre “Voltage Viper” Quinn
+69. Felix Moreno
+70. Terrence “Savage Arithmetic” Sloan
+71. Bradley Kent
+72. Roman “Nightfall Atlas” Volkov
+73. Shawn Ellis
+74. Darnell “Iron Howl” Briggs
+75. Patrick Doyle
+76. Zane “Obsidian Halo” Cross
+77. Henry Collins
+78. Dante “Solar Flare” Whitaker
+79. Oscar DeLomachenko
+80. Malik “Storm Cipher” Ramsey
+81. Jason Reed
+82. Rafael “Cinder King” Alvarez
+83. Corey Mitchell
+84. Andre “Velcro Jab” Hudson
+85. Nathan Brooks
+86. Isaiah “Blood Moon” Carter
+87. Tyler Grant
+88. Dominic “Rogue Doctrine” Silva
+89. Caleb Ross
+90. Viktor “Hammer Doctrine” Kravtsov
+91. Julian Harper
+92. Xavier “Shock Sermon” Tate
+93. Brian Foster
+94. Lennox “Granite Gospel” Wright
+95. Eric Dawson
+96. Omar “Thunder Psalm” Haddad
+97. Cody Marshall
+98. Tyson “Neptune Knuckles” Vale
+99. George Hill
+100. Andre “Black Ice” Monroe
+101. Scott Jenkins
+102. Malik “Grim Symphony” Rowe
+103. Daniel Price
+104. Hector “Atlas Breaker” Dominguez
+105. Kevin Ward
+106. Leon “Tempest Choir” Maddox
+107. Chris Nolan
+108. Darius “Riot Architect” Sloan
+109. Matthew Cole
+110. Jamal “Midnight Furnace” Ellis
+111. Brandon Scott
+112. Roman “Ivory Execution” Dragunov
+113. Luke Perry
+114. Caleb “Stone Prophet” Hayes
+115. Michael Torres
+116. Andre “Phantom Pressure” Knox
+117. Anthony Furyweather
+118. Zaire “Dark Matter” King
+119. Thomas Reed
+120. Malik “Voltage Requiem” Stone
+121. Paul Harris
+122. Hector “Brass Tyrant” Vega
+123. Jonathan Clark
+124. Leon “North Star Nightmare” Cruz
+125. David Turner
+126. Dante “Black Cathedral” Vance
+127. Mark Lewis
+128. Tyson “Steel Tempest” Romanov
+129. Jason Clark
+130. Isaiah “Grim Static” Boone
+131. Brian Adams
+132. Rafael “Iron Oracle” Castillo
+133. Steven Moore
+134. Andre “Savage Paradox” Bennett
+135. Adam White
+136. Darius “War Algorithm” Price
+137. Kyle Young
+138. Malik “Chrome Tempest” Reed
+139. Justin Hall
+140. Leon “Ghost Hammer” Shaw
+141. Eric Brown
+142. Roman “Cold Blood Opera” Sidorov
+143. Nathan Green
+144. Jamal “Oblivion Hook” Pierce
+145. Aaron Scott
+146. Hector “Iron Eclipse” Navarro
+147. Kevin Lee Jr.
+148. Dante “Static Titan” Brooks
+149. Brian King
+150. Tyson “Blackout Atlas” Mercer
+151. Chris Evans
+152. Andre “Night Engine X” Carter
+153. Victor Drago Jr.
+154. Malik “Quantum Knuckle” Zaire
+155. Leonidas “Starlight Mauler” Rex
+156. Orion “Galactic Bruiser” Voss
+157. Ezekiel “Thunder Gospel” Cain
+158. Atlas Stone
+159. Phoenix “Solar Executioner” Raines
+160. Nova “Meteor Jab” Kade
+161. Magnus “Iron Seraph” Voltaire
+162. Ajax Fury
+163. Darius “Emerald Guillotine” Vale
+164. Andre “Crimson Theory” Locke
+165. Malik “Ivory Rapture” Knox
+166. Leon “Steel Psalmist” Ward
+167. Tyson “Gravity Well” Briggs
+168. Hector “Iron Mirage” Cruz
+169. Roman “Savage Orbit” Petrov
+170. Jamal “Black Sun” Carter
+171. Caleb “Granite Phantom” Ross
+172. Rafael “Cinder Prophet” Morales
+173. Andre Bennett
+174. Malik Carter
+175. Leon Cruz
+176. Hector Ruiz
+177. Roman Petrov
+178. Jamal Bishop
+179. Caleb Ward
+180. Rafael Stone
+181. Tyson Kane
+182. Dante Morales
+183. Isaiah Reed
+184. Victor Salazar
+185. Marcus Doyle
+186. Omar Haddad
+187. Zane Cross
+188. Darius Knox
+189. Malik Stroud
+190. Andre Hudson
+191. Leon Booker
+192. Hector Dominguez
+193. Roman Volkov
+194. Jamal Sloan
+195. Caleb Hayes
+196. Rafael Alvarez
+197. Tyson Vale
+198. Dante Whitaker
+199. Isaiah Carter
+200. Malik Ramsey
+201. Andre Baptiste
+202. Leon Maddox
+203. Nino “Nightmare” Black
+204. Wolfgang “Superman” Aruzenai Jr.

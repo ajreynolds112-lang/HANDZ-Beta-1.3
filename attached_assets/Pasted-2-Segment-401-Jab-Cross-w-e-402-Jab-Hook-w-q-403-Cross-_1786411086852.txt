@@ -1,0 +1,56 @@
+2-Segment
+401. Jab-Cross: w - e
+402. Jab-Hook: w - q
+403. Cross-Hook: e - q
+404. Lead Hook-Cross: q - e
+405. Uppercut-Hook: s - q
+406. Cross-Uppercut: e - d
+407. Charge Cross: A - e
+408. Charge Hook: A - q
+409. Double Jab: w - w
+410. Step-in Jab: fwd - w
+3-Segment
+411. 1-2-3: w - e - q
+412. Jab-Cross-Uppercut: w - e - s
+413. Double Jab-Cross: w - w - e
+414. Hook-Cross-Hook: q - e - r
+415. Step-in 1-2: fwd - w - e
+416. Jab-Charge Cross: w - A - e
+417. Cross-Left Hook-Right Hook: e - q - r
+418. Uppercut-Cross-Hook: s - e - q
+419. Forward Pressure Jab: fwd - w - w
+420. Lead Uppercut-Cross: s - e - d
+4-Segment
+421. Classic 1-2-3-2: w - e - q - e
+422. Double Jab-Cross-Hook: w - w - e - q
+423. Step-in 1-2-Hook: fwd - w - e - q
+424. Jab-Cross-Body-Head: w - e - q (body) - q
+425. Charge Setup: w - w - A - e
+426. Hook-Cross-Uppercut-Hook: q - e - s - q
+427. Forward 1-2-1-2: fwd - w - e - w
+428. Jab-Cross-Hook-Uppercut: w - e - q - s
+429. Power Sequence: e - q - A - d
+430. Pressure Uppercuts: fwd - s - d - q
+5-Segment
+431. 1-2-3-2-3: w - e - q - e - q
+432. Step-in Full Combo: fwd - w - e - q - e
+433. Double Jab-Cross-Hook-Cross: w - w - e - q - e
+434. Body-Head Pressure: q (body) - e - q - r - e
+435. Charge after Setup: w - e - A - d - q
+436. Forward Volume: fwd - w - e - w - e
+437. Uppercut Heavy: s - d - q - e - s
+438. Angle Pressure Left: fwd - sl - w - e - q
+439. Angle Pressure Right: fwd - sr - e - q - e
+440. Power Hook Series: q - e - r - q - e
+6-Segment
+441. Extended Classic: w - e - q - e - q - e
+442. Step-in Pressure 6: fwd - w - e - q - e - w
+443. High Volume Jab into Power: w - w - w - e - q - e
+444. Charge Double Power: w - A - e - q - A - d
+445. Inside Pressure: fwd - s - q - d - e - q
+446. Continuous 1-2 Cycle: w - e - w - e - w - e
+447. Body to Head Assault: q (body) - r (body) - e - q - e - r
+448. Forward Uppercut Barrage: fwd - s - d - s - q - e
+7-Segment
+449. Full Pressure Combo: fwd - w - e - q - e - w - e
+450. Advanced Power Sequence: w - e - q - A - d - e - q

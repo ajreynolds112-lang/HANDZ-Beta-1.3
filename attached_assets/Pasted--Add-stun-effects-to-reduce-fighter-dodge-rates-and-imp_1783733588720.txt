@@ -1,0 +1,66 @@
+
+
+/
+
+
+Add stun effects to reduce fighter dodge rates and improve critical hits
+
+
+
+7 messages & 25 actions
+
+Checkpoint made
+1 hour ago
+
+Worked for 2 minutes
+Lwer the final ddge rate of the ai when against a player by 10%
+
+24 minutes ago
+
+Adjusting AI dodge rate calculation (9 seconds)
+Lower the final dodge rate of the ai when against a player by 10%
+
+23 minutes ago
+
+2 messages & 5 actions
+
+Checkpoint made
+23 minutes ago
+
+Worked for 32 seconds
+make it so in quick fight non-practice mode, official career fights, and doghouse rounds, an ai getting hit with a crit lowers their base chances of getting up from KD's 1 to 3 by 1%, and stunning them lowers their base chance by an additional 0.5%, and lasts throughout the fight
+
+17 minutes ago
+
+12 messages & 46 actions
+
+Checkpoint made
+14 minutes ago
+
+Worked for 2 minutes
+make it so hitting an ai with a stun has a 50% chance to lower their dodge rate by 2%. Make it so hitting on rhythm 49-51 results in a crit 90% of the time for the player and 80% of the time for the ai
+
+13 minutes ago
+
+Planning AI dodge rate adjustments (13 seconds)
+make it so hitting an ai with a stun has a 50% chance to lower their dodge rate by 2% (capped at 10% dodge rate and persists throughout the fight). Make it so hitting on rhythm 49-51% results in a crit 90% of the time for the player and 80% of the time for the ai
+
+12 minutes ago
+
+Planning AI dodge rate reduction logic
+make it so hitting an ai with a stun has a 50% chance to lower their dodge rate by 2% (capped at 10% dodge rate and persists throughout the fight), and hitting the player with a stun has a 25% chance to lower the player's dodge rate by 2% (capped at 10% and ersists throughout the fight). Make it so hitting on rhythm 49-51% results in a crit 90% of the time for the player and 80% of the time for the ai
+
+11 minutes ago
+
+4 messages & 17 actions
+
+Checkpoint made
+9 minutes ago
+
+Worked for 2 minutes
+I didn't use doghouse sparring in camp as it's the first week yet it's unavailable, fix this so the game knows when it's actually been used vs when it isn't
+
+3 minutes ago
+
+4 messages & 47 actions
+Lemme rephrase: I didn't use doghouse sparring in camp as it's the first week since winning a postgame fight, yet it's unavailable, fix this so the game knows when it's actually been used vs when it isn't

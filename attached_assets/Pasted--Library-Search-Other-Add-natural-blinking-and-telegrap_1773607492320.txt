@@ -1,0 +1,31 @@
+
+Library
+Search
+Other
+/
+Add natural blinking and telegraphing to fighter animations
+Good now reverse the camera back LOWER 15%
+
+The crowd is good but you missed the corners, you left them blank, add the crowd all over the blank spaces
+
+Good so make the crowd move 2x faster for 3 seconds when the player lands a clean punch
+
+Make the crowd movement slow by 2x when a punch hasn't been landed by either fighter (clean or not) in 5 seconds
+
+Make the crowd movement slow by 2x when a punch hasn't been landed by either fighter (clean or not) in 5 seconds, then their speed returns to normal when a fighter lands anything
+
+Make the crowd move at 3x speed when a KD occurs, and if the fighter gets up, the crowd will move at 3x speed for the next 10 seconds; if the round ends while their speed is boosted, the crowd speed resets to normal next round. On the start of the last round of a non-sparring or practice fight, the crowd will move at 2x base speed for the first 20 seconds and last 20 seconds.
+
+Make the upward arc from the sway twice as high, but keep ALL other aspects and functionality the same
+
+Now make the camera bias down 20% from where it is now
+
+Make the base punch speed 20% slower
+
+Reduce the charge punch damage by 20%, and double the charge bar fill requirement
+
+Make it so the champion ai has a higher chance to react to the charge punch being armed by the player by moving away. Make the charge refill requirement 30 counters
+
+Make it so during a telegraph, a fighter with yellow or orange gloves get darker instead of lighter, they're hard to see. Make it so during a telegraph, a fighter has a 75% chance to blink at level 1, and a 50% chance to blink at level 100 (the blink is replacing the eye dots with the line). Make it so when fighters are out of range, they blink once every 4-8 seconds, randomly rolled every blink, and Make it so the fighters are less likely to blink when in range of a punch by making them blink once every 10-15 seconds when in range or near range (but still blink when getting hit). Make it so being hit during a blink resets your rhythm to the default rhythm.
+
+Whena. fighter KD's another fighter and slides to the corner, the model should reset to their neutral position with rhythm paused, and if the KD'd fighter gets up, make sure there's no color changing active for either fighter, make sure the fighter who got up slides back to position in their last used rhythm and while in neutral position

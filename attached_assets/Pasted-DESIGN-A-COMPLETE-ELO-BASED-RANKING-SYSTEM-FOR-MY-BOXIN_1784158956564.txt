@@ -1,0 +1,472 @@
+DESIGN A COMPLETE ELO-BASED RANKING SYSTEM FOR MY BOXING CAREER MODE
+
+OVERVIEW
+
+The game contains a large roster of AI boxers plus one created player.
+
+Current roster:
+- 650 AI boxers
+- 1 Career Player
+
+The Career Player always starts ranked #651 (last place).
+
+The player must earn every ranking position by defeating opponents.
+
+This ranking system should simulate a living boxing world every in-game week.
+
+DO NOT RANDOMLY SHUFFLE RANKINGS.
+Every movement in the rankings should be the result of wins, losses, activity, streaks, or inactivity.
+
+There are NO injuries in this game.
+
+-----------------------------------
+
+EACH BOXER STORES
+
+Every boxer should permanently store:
+
+• First Name
+• Last Name
+• Nickname (If Applicable)
+• Age
+• Overall Rating
+• Current Rank
+• Hidden Elo Rating
+• Career Record
+    - Wins
+    - Losses
+    - Draws
+• KO Wins
+• Current Win Streak
+• Current Lose Streak
+• Current Draw Streak
+• Weeks Since Last Fight
+• Is Champion
+• Is Key Fighter
+• Momentum
+• Last 5 Fight Results
+
+-----------------------------------
+
+INITIAL ELO DISTRIBUTION
+
+The rankings are determined primarily by Elo.
+
+Suggested starting Elo values:
+
+Career Player
+1000 Elo
+
+Bottom 100 Fighters
+1020–1120
+
+Lower Journeymen
+1120–1250
+
+Average Professionals
+1250–1450
+
+Prospects
+1450–1600
+
+Contenders
+1600–1800
+
+Elite Fighters
+1800–2050
+
+Key Fighters
+2100–2400
+
+Key Fighters should begin scattered throughout the Top 50 rather than all occupying the very top spots.
+
+Example:
+
+Rank 2
+Rank 6
+Rank 9
+Rank 15
+Rank 21
+Rank 32
+Rank 41
+
+This creates multiple long-term rivals.
+
+-----------------------------------
+
+WEEKLY SIMULATION
+
+Each simulated week:
+
+1. Shuffle all eligible fighters.
+
+2. Roughly half the roster fights.
+
+3. Half remain inactive.
+
+4. Nobody fights twice in one week.
+
+5. Champions may fight slightly less often.
+
+6. Fighters should never fight the exact same opponent repeatedly.
+
+Attempt to avoid rematches unless:
+- title fight
+- rivalry
+- 8+ weeks have passed
+
+-----------------------------------
+
+MATCHMAKING
+
+The simulator should prefer fighters near each other's rankings.
+
+Examples:
+
+Top 10
+fight within Top 20
+
+Top 25
+fight Top 40
+
+Top 50
+fight Top 75
+
+Top 100
+fight Top 150
+
+Lower rankings
+can vary more.
+
+Occasionally allow upsets like:
+
+Rank 75
+vs
+Rank 39
+
+or
+
+Rank 160
+vs
+Rank 108
+
+These create exciting jumps.
+
+-----------------------------------
+
+KEY FIGHTERS
+
+Some fighters are marked:
+
+IsKeyFighter = true
+
+Key Fighters represent the legendary boxers of the era.
+
+Requirements:
+
+• Start with very high Elo.
+
+• Receive slight simulation advantages.
+
+• Almost never lose AI simulated fights.
+
+• May lose to another Key Fighter.
+
+• May lose to the player.
+
+Do NOT make them literally unbeatable.
+
+When two Key Fighters fight,
+simulate normally.
+
+-----------------------------------
+
+SIMULATION WIN PROBABILITY
+
+Fight outcomes should depend on:
+
+Overall Rating
++
+Hidden Elo
++
+Momentum
++
+Home advantage (optional tiny bonus)
+
+Do not make fights purely random.
+
+The stronger boxer should usually win.
+
+However,
+
+10-20% upsets should naturally happen over long careers.
+
+-----------------------------------
+
+ELO FORMULA
+
+Expected Score
+
+Expected =
+1 /
+(1 + 10^((OpponentElo - YourElo)/400))
+
+After fight:
+
+Win
+
+New Elo
+
+Old Elo
++
+K × (1 - Expected)
+
+Loss
+
+Old Elo
++
+K × (0 - Expected)
+
+Draw
+
+Old Elo
++
+K × (0.5 - Expected)
+
+-----------------------------------
+
+K VALUES
+
+Use variable K values.
+
+Debut Fighters
+45
+
+Normal Fight
+32
+
+Top 100
+28
+
+Top 50
+24
+
+Top 15
+20
+
+Title Fight
+18
+
+This keeps veterans from bouncing wildly.
+
+-----------------------------------
+
+BONUSES
+
+KO Win
+
++2 Momentum
+
+Decision Win
+
++1 Momentum
+
+Upset Win
+
+Additional +10 Momentum
+
+KO Loss
+
+-4 Momentum
+
+Decision Loss
+
+-2 Momentum
+
+Draw
+
+0 Momentum
+
+Momentum slowly decays.
+
+Every inactive week:
+
+Momentum *= 0.90
+
+Momentum should stay between
+
+-100
+
+and
+
++100.
+
+-----------------------------------
+
+ACTIVITY
+
+Weeks Since Last Fight
+
+Increase every simulated week.
+
+Whenever a boxer fights:
+
+Weeks Since Last Fight = 0
+
+-----------------------------------
+
+INACTIVITY PENALTY
+
+0-3 weeks
+
+No Elo penalty.
+
+4-8 weeks
+
+Lose 1 Elo/week.
+
+9-20 weeks
+
+Lose 2 Elo/week.
+
+20+
+
+Lose 4 Elo/week.
+
+This keeps inactive fighters from remaining highly ranked forever.
+
+-----------------------------------
+
+WIN STREAK BONUS
+
+Win streaks affect rankings slightly.
+
+3 Wins
+
++8 Ranking Score
+
+5 Wins
+
++15
+
+8 Wins
+
++24
+
+10 Wins
+
++35
+
+15+
+
++50 maximum
+
+Lose one fight:
+
+Win streak resets.
+
+-----------------------------------
+
+LAST FIVE FIGHTS
+
+Store:
+
+W
+L
+D
+
+Example
+
+W
+W
+KO
+L
+W
+
+This can be shown on boxer profile cards.
+
+-----------------------------------
+
+RANKING SCORE
+
+Rankings should NOT equal Elo directly.
+
+Instead calculate:
+
+RankingScore =
+Elo
++
+Momentum
++
+WinStreakBonus
+-
+InactivityPenalty
+
+Then sort every boxer from highest RankingScore to lowest.
+
+Assign rankings:
+
+Rank 1
+
+highest score
+
+Rank 651
+
+lowest score
+
+-----------------------------------
+
+CAREER PLAYER
+
+The Career Player always begins:
+
+Rank #651
+
+1000 Elo
+
+0-0-0
+
+Momentum = 0
+
+The player should climb naturally.
+
+Early career:
+
+One win may jump
+
+10-20 places.
+
+Mid career:
+
+5-10 places.
+
+Top 50:
+
+Often only
+
+1-4 places.
+
+Top 10:
+
+Sometimes defeating Rank 8 only moves the player to Rank 7.
+
+This should make reaching the top feel increasingly difficult.
+
+-----------------------------------
+AI RECORDS:
+Every AI boxer develops naturally.
+Examples after several simulated years:
+41-7
+26-2
+18-0
+58-15
+11-9
+31-14-2
+The world should evolve without player involvement.
+-----------------------------------
+The system should feel like a living boxing world.
+The rankings should constantly evolve based on actual fight results.
+Prospects should occasionally break into contender status.
+Upsets should happen naturally.
+Key Fighters should dominate the era until defeated.
+The Career Player should start as the worst-ranked boxer in the game and eventually earn the opportunity to become the undisputed #1 fighter through consistent victories.

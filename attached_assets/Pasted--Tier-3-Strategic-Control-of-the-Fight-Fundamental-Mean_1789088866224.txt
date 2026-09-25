@@ -1,0 +1,25 @@
+
+Tier 3 — Strategic Control of the Fight
+#	Fundamental	Meaning for the AI
+17	Initiative Priority (initiative_priority)	Being prepared to attack or defend before the opponent gives control over what happens next.
+18	Ring Generalship (ring_generalship)	Control when and where exchanges occur rather than merely winning individual punch interactions.
+19	Tempo Control (tempo_control)	Control the speed and intensity of the fight moment-to-moment. Do not merely synchronize yourself to the opponent.
+20	Momentum Management (momentum_management)	Recognize and compound favorable sequences while interrupting the opponent's momentum.
+21	Pressure With Responsibility (responsible_pressure)	Pressure should disrupt decisions, stamina, rhythm, and timing without advancing faster than the AI can safely defend.
+22	Reset Advantage (reset_advantage)	Position is partly measured by who needs less time to become fully offensive/defensive again. Reset before the opponent and exploit their reset.
+23	Reset Exploitation (reset_exploitation)	Recognize the instant an opponent mentally or physically believes an exchange is finished and attack that transition.
+24	Advantage Window Exploitation (advantage_window)	Enter, capitalize, and leave before the opponent can recover sufficiently to retaliate.
+Tier 4 — Position, Distance & Exchange Structure
+#	Fundamental	Meaning for the AI
+25	Range Elasticity (range_elasticity)	Distance control is not simply standing at the correct range; it is the ability to enter and leave that range faster than the opponent can respond.
+26	Step Timing (step_timing)	Time the opponent's foot movement to manipulate distance rather than judging range from static coordinates alone.
+27	Angle Dominance (angle_dominance)	Seek positions where your own attack is reliable while the opponent's return attack is mechanically disadvantaged.
+28	Lead-Hand Dominance (lead_hand_dominance)	Treat control of the opponent's lead hand as a positional and information advantage.
+29	Ring Interception (ring_interception)	Cut the ring by moving laterally to intercept the opponent's projected escape path instead of merely following them.
+30	Balance Integrity (balance_integrity)	Preserve a state from which offense, defense, movement, or exit can immediately continue. Landing while balanced is evidence of responsible range and position.
+31	Post-Action Positioning (post_action_positioning)	Evaluate punches, steps, and defensive actions partly by where they leave the fighter afterward.
+32	Functional Punch Effect (functional_punch_effect)	A punch can succeed without landing cleanly if it forces a reset, moves the opponent, changes their guard, or creates the next attack.
+33	Positional Shot Selection (positional_shot_selection)	Accuracy means selecting punches appropriate to travel distance, openings, and current positioning—not simply aiming correctly.
+34	Exchange Cycle (exchange_cycle)	Model combat as Entry → Attack → Transition → Exit, rather than treating punches as independent actions.
+35	Combat State Transition (combat_state_transition)	Seamlessly switch offense → defense → recovery → offense while preserving balance and positioning.
+36	Exit-to-Reentry Chaining (exit_to_reentry)	An exit should simultaneously position the fighter for the next exchange, ideally where they can reset first.
