@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { SPARRING_DURATIONS, SPARRING_UPGRADE_ACCURACY, SPARRING_WIN_POINTS, SPARRING_TIER_LABELS, nextSparringTier, loadSparringDuration, saveSparringDuration, type SparringDuration } from "@/game/sparringRewards";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Plus, Trash2, BarChart3, ChevronUp, ChevronLeft, ChevronRight, Dumbbell, Target, Trophy, Users, Swords, Pencil, Save, Check, Settings, Lock, Unlock, Download, Upload, Music, ListMusic, Play, Pause, Hammer, RotateCcw, MessageSquare, Copy, ClipboardPaste, Zap } from "lucide-react";
@@ -95,7 +96,7 @@ interface CareerModeProps {
   onDeleteFighter: (id: string) => void;
   onBack: () => void;
   onAllocateStats: (fighterId: string, skillPoints: SkillPoints, spent: number) => void;
-  onStartTraining: (fighter: Fighter, type: TrainingType, sparringDifficulty?: AIDifficulty, importedPartnerId?: number) => void;
+  onStartTraining: (fighter: Fighter, type: TrainingType, sparringDifficulty?: AIDifficulty, importedPartnerId?: number, sparringDuration?: SparringDuration) => void;
   onEndWeek?: () => void;
   onSimulateWeek?: (fighter: Fighter) => void;
   onSweepTraining?: (fighter: Fighter, type: "weightLifting" | "heavyBag") => void;
@@ -1886,8 +1887,8 @@ export default function CareerMode({
   if (view === "sparringSelect" && selectedFighter) {
     return <SparringDifficultySelect
       fighter={selectedFighter}
-      onSelect={(diff, importedPartnerId) => {
-        onStartTraining(selectedFighter, "sparring", diff, importedPartnerId);
+      onSelect={(diff, importedPartnerId, duration) => {
+        onStartTraining(selectedFighter, "sparring", diff, importedPartnerId, duration);
       }}
       onNightmare={() => {
         onStartNightmare?.(selectedFighter);
@@ -4192,12 +4193,6 @@ function StatRow({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-export const SPARRING_XP_MULT: Record<AIDifficulty, number> = {
-  journeyman: 0.8,
-  contender: 1.0,
-  elite: 1.35,
-  champion: 1.75,
-};
 
 
 /**
@@ -4276,7 +4271,7 @@ function SparringModeCard({ mode, title, wins, force, shards, detail, cardClass,
 
 function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, onUnlockMode, onBack }: {
   fighter: Fighter;
-  onSelect: (difficulty: AIDifficulty, importedPartnerId?: number) => void;
+  onSelect: (difficulty: AIDifficulty, importedPartnerId: number | undefined, duration: SparringDuration) => void;
   onNightmare?: () => void;
   onDoghouse?: () => void;
   onUnlockMode?: (mode: SparringMode) => void;
@@ -4320,6 +4315,7 @@ function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, 
   // moment a session is quit, and the panel would vanish until a reload.
   const hasImportTicket = hasPerk(withSavedInventory(fighter), "importSparring", rs);
   const [importedId, setImportedId] = useState<number | null>(null);
+  const [duration, setDuration] = useState<SparringDuration>(() => loadSparringDuration());
   // Roster entries hold no name of their own; the catalogue does.
   const importRoster = hasImportTicket
     ? [...(rs?.roster ?? [])]
@@ -4366,8 +4362,22 @@ function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, 
       <p className="text-xs w-full text-[#141412] bg-[#c7c095] font-bold">
         {importedId != null
           ? `Import session: 1 round, 3 minutes \u2022 4\u00d7 rewards on a win \u2022 partner spars on double stamina. Allocate earned points to ${sparStatText}.`
-          : `Practice fight: 1 round, 1 minute. Allocate earned points to ${sparStatText}.`}
+          : `Practice fight: 1 round, ${duration / 60} minute${duration > 60 ? "s" : ""}. Win with ${Math.round(SPARRING_UPGRADE_ACCURACY * 100)}%+ accuracy to earn the next tier's rewards. Allocate earned points to ${sparStatText}.`}
       </p>
+      {importedId == null && (
+        <div className="flex w-full gap-2" data-testid="sparring-duration">
+          {SPARRING_DURATIONS.map(sec => (
+            <button
+              key={sec}
+              onClick={() => { setDuration(sec); saveSparringDuration(sec); }}
+              className={`flex-1 rounded py-1.5 text-xs font-bold border ${duration === sec ? "bg-[#c7c095] text-[#141412] border-[#c7c095]" : "bg-black/40 text-white/80 border-white/20 hover:bg-black/60"}`}
+              data-testid={`button-sparring-duration-${sec}`}
+            >
+              {sec / 60} min
+            </button>
+          ))}
+        </div>
+      )}
       <div className="space-y-2 w-full">
         {difficulties.map(diff => {
           const fights = fighter.careerBoutIndex || 0;
@@ -4375,13 +4385,14 @@ function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, 
           const minFights = diff === "champion" ? 7 : diff === "elite" ? 4 : diff === "contender" ? 1 : 0;
           const champPrepLocked = diff === "champion" && !nearFight;
           const locked = !allSparringUnlocked && (fights < minFights || champPrepLocked);
-          const winPts = diff === "journeyman" ? 2 : diff === "contender" ? 3 : diff === "elite" ? 4 : 5;
+          const winPts = SPARRING_WIN_POINTS[diff];
+          const upTier = nextSparringTier(diff);
           const lockReason = fights < minFights ? `Unlocks at ${minFights} fights` : champPrepLocked ? "Available in last 2 prep weeks" : "";
           return (
             <Card
               key={diff}
               className={`shadcn-card rounded-xl border border-card-border text-card-foreground shadow-sm p-3 w-full transition-all bg-[#c7c095] ${locked ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
-              onClick={() => { if (!locked) onSelect(diff, importedId ?? undefined); }}
+              onClick={() => { if (!locked) onSelect(diff, importedId ?? undefined, duration); }}
               data-testid={`card-sparring-${diff}`}
             >
               <div className="flex items-center justify-between gap-2">
@@ -4392,7 +4403,7 @@ function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, 
                         session. Stated as the rule rather than a figure: the
                         loss total is built from a different base than the win
                         figure beside it, so no single number is honest here. */}
-                    {locked ? lockReason : `Win: ${importedId != null ? winPts * 4 : winPts} pts \u2022 Lose: half pts`}
+                    {locked ? lockReason : `Win: ${importedId != null ? winPts * 4 : winPts} pts \u2022 Lose: half pts \u2022 ${Math.round(SPARRING_UPGRADE_ACCURACY * 100)}%+ acc win: ${SPARRING_TIER_LABELS[upTier]} rewards`}
                   </p>
                 </div>
                 <span className="font-semibold text-[#ffffff] text-[20px]">{locked ? "LOCKED" : "SPAR"}</span>
