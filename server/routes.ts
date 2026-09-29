@@ -7,7 +7,7 @@ import { execSync } from "child_process";
 import path from "path";
 import fs from "fs";
 import { writeTunedDefaults } from "./tuningDefaults";
-import { githubStatus, pushSourceToGithub, GithubPushError } from "./githubPush";
+import { githubStatus, pushSourceToGithub, importFromGithub, GithubPushError } from "./githubPush";
 
 const updateFighterSchema = z.object({
   name: z.string().optional(),
@@ -232,6 +232,17 @@ export async function registerRoutes(
     const message = typeof req.body?.message === "string" ? req.body.message.slice(0, 300) : "";
     try {
       res.json({ ok: true, ...(await pushSourceToGithub(message)) });
+    } catch (err) {
+      const status = err instanceof GithubPushError ? err.status : 500;
+      res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  /** Import from GitHub: `dryRun: true` previews, then the screen confirms and applies. */
+  app.post("/api/github/import", async (req, res) => {
+    if (process.env.NODE_ENV === "production") return res.status(403).json({ error: "Only available in the workspace" });
+    try {
+      res.json({ ok: true, ...(await importFromGithub(req.body?.dryRun !== false)) });
     } catch (err) {
       const status = err instanceof GithubPushError ? err.status : 500;
       res.status(status).json({ error: err instanceof Error ? err.message : String(err) });

@@ -70,14 +70,13 @@ function nyTimestamp(d = new Date()): string {
   return `${parts.month} ${parts.day}, ${parts.year} ${parts.hour}:${parts.minute} ${parts.dayPeriod} ET`;
 }
 
+/** One push or import at a time: they read and write the same files. */
 let pushing = false;
 
 export interface GithubPushResult { changed: number; deleted: number; commit?: string; url?: string; }
 
-export async function pushSourceToGithub(message: string): Promise<GithubPushResult> {
-  if (pushing) throw new GithubPushError("A push is already running.", 409);
-  pushing = true;
-  try {
+/** Local file hashes and the remote head/tree, for diffing either way. */
+async function snapshot() {
     // Local files: tracked + untracked, minus ignored and excluded.
     const listed = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "-z"], { cwd: ROOT, maxBuffer: 64 << 20 })
       .toString().split("\0").filter(Boolean)
@@ -105,6 +104,15 @@ export async function pushSourceToGithub(message: string): Promise<GithubPushRes
     }
     const isLfs = (p: string) => lfs.some(re => re.test(p));
 
+    return { local, ref, head, remote, isLfs };
+}
+
+export async function pushSourceToGithub(message: string): Promise<GithubPushResult> {
+  if (pushing) throw new GithubPushError("A push or import is already running.", 409);
+  pushing = true;
+  try {
+    const { local, ref, head, remote, isLfs } = await snapshot();
+
     const changed = Array.from(local).filter(([p, sha]) => remote.get(p) !== sha && !isLfs(p)).map(([p]) => p);
     const deleted = Array.from(remote.keys()).filter(p => SOURCE_ROOTS.test(p) && !local.has(p) && !isLfs(p));
     if (changed.length === 0 && deleted.length === 0) return { changed: 0, deleted: 0 };
@@ -131,6 +139,70 @@ export async function pushSourceToGithub(message: string): Promise<GithubPushRes
     const description = `Last update: ${nyTimestamp()} — ${summary}`.slice(0, 350);
     await gh(REPO, { description }, "PATCH");
     return { changed: changed.length, deleted: deleted.length, commit: commit.sha.slice(0, 7), url: commit.html_url };
+  } finally {
+    pushing = false;
+  }
+}
+
+/** Remote-only upload artifacts that never belong in the workspace. */
+const IMPORT_SKIP = /(^|\/)(\.DS_Store|\.gitattributes)$/;
+
+export interface GithubImportResult {
+  updated: string[]; added: string[]; deleted: string[];
+  applied: boolean; commit?: string; installed?: boolean; serverChanged?: boolean;
+}
+
+/**
+ * Make the workspace match the repo: write every file that differs, add new
+ * ones, and delete source files the repo no longer has. `dryRun` only reports
+ * what would change, so the screen can confirm first. Agent/workspace config
+ * and Git LFS files are never touched.
+ */
+export async function importFromGithub(dryRun: boolean): Promise<GithubImportResult> {
+  if (pushing) throw new GithubPushError("A push or import is already running.", 409);
+  pushing = true;
+  try {
+    const { local, ref, remote, isLfs } = await snapshot();
+    const wanted = Array.from(remote).filter(([p]) => !EXCLUDE.some(re => re.test(p)) && !IMPORT_SKIP.test(p) && !isLfs(p));
+    const updated = wanted.filter(([p, sha]) => local.has(p) && local.get(p) !== sha).map(([p]) => p);
+    const added = wanted.filter(([p]) => !local.has(p) && !fs.existsSync(path.join(ROOT, p))).map(([p]) => p);
+    const deleted = Array.from(local.keys()).filter(p => SOURCE_ROOTS.test(p) && !remote.has(p));
+    const result: GithubImportResult = { updated, added, deleted, applied: false, commit: ref.object.sha.slice(0, 7) };
+    if (dryRun || (updated.length + added.length + deleted.length) === 0) return result;
+
+    // Download everything before writing anything, so a failed fetch leaves the workspace untouched.
+    const toWrite = updated.concat(added);
+    const contents = new Map<string, Buffer>();
+    let next = 0;
+    const worker = async () => {
+      while (next < toWrite.length) {
+        const p = toWrite[next++];
+        const blob = await gh<{ content: string }>(`${REPO}/git/blobs/${remote.get(p)}`);
+        contents.set(p, Buffer.from(blob.content, "base64"));
+        await sleep(250);
+      }
+    };
+    await Promise.all(Array.from({ length: 3 }, worker));
+
+    for (const [p, buf] of Array.from(contents)) {
+      const abs = path.join(ROOT, p);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, buf);
+    }
+    for (const p of deleted) fs.rmSync(path.join(ROOT, p), { force: true });
+    result.applied = true;
+
+    const touched = toWrite.concat(deleted);
+    if (touched.some(p => p === "package.json" || p === "package-lock.json")) {
+      try {
+        execFileSync("npm", ["install", "--no-audit", "--no-fund"], { cwd: ROOT, stdio: "ignore", timeout: 240_000 });
+        result.installed = true;
+      } catch {
+        result.installed = false;
+      }
+    }
+    result.serverChanged = touched.some(p => /^(server|shared)\//.test(p) || p === "package.json");
+    return result;
   } finally {
     pushing = false;
   }
