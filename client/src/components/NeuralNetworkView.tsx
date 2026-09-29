@@ -2218,6 +2218,8 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
           </span>
         </label>
       </Card>
+      {/* Solid backing so the outline buttons stay readable over any career ring colour behind the menu. */}
+      <Card className="p-3 w-full space-y-2" style={{ background: "#0a0a0f" }} data-testid="card-neural-actions">
       <Button
         variant="outline"
         className="w-full gap-2"
@@ -2301,6 +2303,7 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
       >
         <Swords className="w-4 h-4" /> Test.
       </Button>
+      </Card>
       {testMode === "choose" && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
