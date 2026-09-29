@@ -7,6 +7,7 @@ import { execSync } from "child_process";
 import path from "path";
 import fs from "fs";
 import { writeTunedDefaults } from "./tuningDefaults";
+import { githubStatus, pushSourceToGithub, GithubPushError } from "./githubPush";
 
 const updateFighterSchema = z.object({
   name: z.string().optional(),
@@ -214,6 +215,26 @@ export async function registerRoutes(
       res.json({ ok: true, sections: Object.keys(body.params as object).length });
     } catch {
       res.status(500).json({ error: "Failed to write tuned defaults" });
+    }
+  });
+
+  /**
+   * Push to GitHub (Neural Network screen). Workspace-only: a published
+   * server's files aren't the source, and a visitor must not be able to push.
+   */
+  app.get("/api/github/status", async (_req, res) => {
+    if (process.env.NODE_ENV === "production") return res.json({ available: false, online: false, reason: "Only available in the workspace" });
+    res.json({ available: true, ...(await githubStatus()) });
+  });
+
+  app.post("/api/github/push", async (req, res) => {
+    if (process.env.NODE_ENV === "production") return res.status(403).json({ error: "Only available in the workspace" });
+    const message = typeof req.body?.message === "string" ? req.body.message.slice(0, 300) : "";
+    try {
+      res.json({ ok: true, ...(await pushSourceToGithub(message)) });
+    } catch (err) {
+      const status = err instanceof GithubPushError ? err.status : 500;
+      res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 

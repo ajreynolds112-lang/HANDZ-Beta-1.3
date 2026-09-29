@@ -8,6 +8,7 @@ import { loadXpConfig, saveXpConfig, loadXpDefaults, saveXpDefaults, hasCustomXp
 import PunchAnimEditor from "@/components/PunchAnimEditor";
 import NeuralTestFight from "@/components/NeuralTestFight";
 import AiTrainingView from "@/components/AiTrainingView";
+import GithubPushCard from "@/components/GithubPushCard";
 import RosterGenerationView from "@/components/RosterGenerationView";
 import * as localSaves from "@/lib/localSaves";
 import { regenerateRosterNumbers } from "@/game/careerRoster";
@@ -25,8 +26,8 @@ import {
 } from "@/game/aiPatterns";
 import { isUnderTheHoodEnabled, setUnderTheHoodEnabled } from "@/components/PatternMemoryHud";
 import {
-  applyTuningBundle,
-  buildTuningBundle,
+  applyParameterFile,
+  buildParameterFile,
   pushTuningDefaults,
   startTuningDefaultsWatcher,
   validateTuningBundle,
@@ -1630,9 +1631,9 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
     reader.readAsText(file);
   };
 
-  /** Every parameter this screen and the editors it opens expose, as one file. */
-  const downloadParameters = () => {
-    const json = JSON.stringify(buildTuningBundle(), null, 2);
+  /** Every parameter this screen and the editors it opens expose, plus the AI Training state, as one file. */
+  const downloadParameters = async () => {
+    const json = JSON.stringify(await buildParameterFile(), null, 2);
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1649,7 +1650,7 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
       setTimeout(() => { setParamStatus("idle"); setParamError(""); }, 6000);
     };
     const reader = new FileReader();
-    reader.onload = e => {
+    reader.onload = async e => {
       let data: unknown;
       try {
         data = JSON.parse(e.target?.result as string);
@@ -1660,7 +1661,7 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
       const invalid = validateTuningBundle(data);
       if (invalid) { fail(invalid); return; }
 
-      applyTuningBundle(data as TuningBundle);
+      await applyParameterFile(data as TuningBundle);
       invalidateNeuralParamCaches();
 
       // Everything this screen shows, re-read from what just landed.
@@ -2199,6 +2200,7 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
           )}
         </div>
       </div>
+      {!isFighterMode && <GithubPushCard />}
       <Card className="p-3 w-full" style={{ background: "#0a1a0a", border: "1px solid #1a4a1a" }}>
         <label className="flex items-start gap-2 cursor-pointer" data-testid="toggle-under-the-hood">
           <input
