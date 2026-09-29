@@ -1,7 +1,7 @@
 {
   "kind": "handz-neural-parameters",
   "version": 1,
-  "exportedAt": "2026-09-29T20:30:28.818Z",
+  "exportedAt": "2026-09-29T21:01:55.276Z",
   "params": {
     "handz_punch_anim": {
       "jab": {
@@ -5738,6 +5738,37 @@
       "towelRoundWonPenalty": 0.05,
       "towelCareerMult": 1,
       "towelGlobalMult": 1
+    },
+    "handz_sparring_reward_config": {
+      "upgradeAccuracyPct": 70,
+      "upgradeItemFloor": true,
+      "tiers": {
+        "journeyman": {
+          "xpMult": 0.8,
+          "winPoints": 2,
+          "pointCap": 12
+        },
+        "contender": {
+          "xpMult": 1,
+          "winPoints": 3,
+          "pointCap": 18
+        },
+        "elite": {
+          "xpMult": 1.35,
+          "winPoints": 4,
+          "pointCap": 24
+        },
+        "champion": {
+          "xpMult": 1.75,
+          "winPoints": 5,
+          "pointCap": 30
+        },
+        "undisputed": {
+          "xpMult": 2.2,
+          "winPoints": 6,
+          "pointCap": 36
+        }
+      }
     },
     "handz_ai_pattern_config": {
       "enabled": true,
