@@ -7,7 +7,7 @@ import {
   AdaptiveMemory, TimingSlot, ObservedPattern, RingZone, BehaviorProfile,
   WhiffSnapshot, AiDecisionStats, SlipDir, NeuralBaseline,
 } from "./types";
-import { aiRNG, isFeintEngaged, isPerfectBlockRhythmPaused, isRhythmVulnerable, getPunchReachPx, getBurstPunchExcess, accrueRingMileage, startSlip, isLeadArmPunch, tryReset, aiResetAllowed, resetBenefitsActive, AI_SLIP_HOLD } from "./engine";
+import { aiRNG, isFeintEngaged, isPerfectBlockRhythmPaused, isRhythmVulnerable, getPunchReachPx, getBurstPunchExcess, accrueRingMileage, startSlip, isLeadArmPunch, tryReset, aiResetAllowed, AI_SLIP_HOLD } from "./engine";
 import { SITUATION_DB, matchSituation, getDifficultyMultiplier, type SituationMatchResult } from "./situationDB";
 import { levelScale, pointCoef, getScaling } from "@/lib/scalingConfig";
 import { getNeuralOverrides, getRcConfig, getAiRangeConfig, getAiPatternConfig } from "@/components/NeuralNetworkView";
@@ -20,7 +20,10 @@ import {
   cancelAiString, updateAiStringRunner, applyAiStringMovement, confirmAiStringPunch,
   holdAiStringThrow,
   notifyAiStringPunchResolved, isAiStringAssault, type StringSelectContext,
+  ensureAiRlState, attachRlPolicy, peekAiRlUtility, takeAiRlUtility, settleAiRlUtility,
 } from "./aiStringRunner";
+import { buildRlObservation } from "./rlObservation";
+import { rlPolicyForDifficulty } from "./rlDeploy";
 import { AGGRESSION_DEFICIT_MIN_SAMPLE, type AiStringRole } from "./aiStrings";
 import {
   createAiPatternMemory, ensureAiPatternMemory, recordPatternAction, findArmedPattern,
@@ -301,7 +304,7 @@ function pixelsToBlocks(px: number): number {
  *  appearance stay the fighter's own, so champions still hit like themselves. Opponents
  *  with no roster id (quick fight, Nightmare, menu fights) are never redirected.
  *  Set CHAMPION_AI_SOURCE_ID to null to hand champions their individual brains back. */
-const CHAMPION_AI_SOURCE_ID: number | null = 204;
+export const CHAMPION_AI_SOURCE_ID: number | null = 204;
 const CHAMPION_AI_SOURCE_ARCHETYPE: Archetype = "BoxerPuncher";
 
 /** The roster identity an AI brain is built from. */
@@ -1115,6 +1118,18 @@ export function initAiBrain(difficulty: AIDifficulty, archetype: Archetype, leve
   brain.stylePatience = clamp01(brain.stylePatience * 0.5);
   brain.styleEngageCycleIn = Math.min(12.0, brain.styleEngageCycleIn * 1.5);
   brain.styleEngageCycleOut = Math.max(1.0, brain.styleEngageCycleOut * 0.5);
+
+  // RL tactical policy, per the Neural Network screen's deployment setting.
+  // Never on a training seed: the trainer attaches its own when it wants one.
+  brain.rl = null;
+  if (!isTrainingRosterId(rosterId) && !isTrainingRosterId(brainRosterId)) {
+    try {
+      const policy = rlPolicyForDifficulty(difficulty);
+      if (policy) attachRlPolicy(brain, policy);
+    } catch {
+      /* no storage to read: the weighted chooser it is */
+    }
+  }
 
   return brain;
 }
@@ -5439,6 +5454,13 @@ function updatePunchDeficit(brain: AiBrainState, state: GameState, isPlayerAI: b
  * Situational read handed to the string selector. Everything here is already
  * tracked by the brain; the selector just wants it in one place.
  */
+/**
+ * The GameState updateAI is currently running for. buildStringContext has no
+ * state parameter and six callers; the RL observation is the only thing that
+ * needs the ring and the clock, so it reads them from here.
+ */
+let rlObsState: GameState | null = null;
+
 function buildStringContext(
   brain: AiBrainState,
   enemy: FighterState,
@@ -5454,6 +5476,9 @@ function buildStringContext(
     oppStam < 0.22;
   const blockSync = computeBlockSync(brain, enemy, player);
   return {
+    // Only built for a brain carrying a policy; its presence routes selection.
+    rlObs: brain.rl && brain.rl.policy ? buildRlObservation(rlObsState, enemy, player, brain) : null,
+    canArmCharge: !enemy.chargeArmed && enemy.chargeMeterBars >= 1,
     blockSyncReady: blockSync.ready,
     blockSyncArmNow: blockSync.armNow,
     blockSyncMaxWait: BLOCK_SYNC_MAX_WAIT,
@@ -5509,6 +5534,35 @@ function startStringForOffense(
   return true;
 }
 
+/**
+ * Perform an RL utility that isn't a segment. 1 = Reset (only where Reset is
+ * allowed; tryReset still refuses while a Reset is running or during a stun lock). 3 = slip, with
+ * the string held until the slide lands so its first punch is the counter.
+ */
+function performRlUtility(
+  utility: number,
+  brain: AiBrainState,
+  enemy: FighterState,
+  state: GameState,
+  rt: ReturnType<typeof ensureAiStringRuntime>,
+): void {
+  let applied = false;
+  if (utility === 1) {
+    applied = aiResetAllowed(state) && tryReset(enemy, state);
+  } else if (utility === 3) {
+    if (!enemy.slipActive && enemy.slipDisabledTimer <= 0 && !enemy.isKnockedDown && !enemy.isPunching) {
+      const dir: SlipDir = rng.next01() < 0.5 ? "left" : "right";
+      startSlip(enemy, dir);
+      if (enemy.slipActive) {
+        enemy.slipHoldTimer = AI_SLIP_HOLD;
+        rt.beatTimer = Math.max(rt.beatTimer, enemy.slipEnterDuration || 0);
+        applied = true;
+      }
+    }
+  }
+  settleAiRlUtility(brain, applied);
+}
+
 // ===== MAIN AI UPDATE LOOP =====
 
 export function updateAI(state: GameState, dt: number, attemptPunchFn: (fighter: FighterState, punchType: PunchType, isFeint?: boolean, isCharged?: boolean) => boolean, isPlayerAI: boolean = false): void {
@@ -5534,6 +5588,9 @@ export function updateAI(state: GameState, dt: number, attemptPunchFn: (fighter:
   // predate the feature entirely, so this is idempotent and runs before anything
   // reads brain.strings.
   ensureAiStringRuntime(brain);
+  // RL policy state: same story. null means the weighted chooser.
+  ensureAiRlState(brain);
+  rlObsState = state;
 
   // Situation-driven fundamental switching. Idempotent: HMR keeps live brains,
   // and any brain built before this existed has none of these fields.
@@ -5778,10 +5835,9 @@ export function updateAI(state: GameState, dt: number, attemptPunchFn: (fighter:
   if (brain.resetRollTimer >= AI_RESET_ROLL_INTERVAL && aiResetAllowed(state)) {
     brain.resetRollTimer -= AI_RESET_ROLL_INTERVAL;
     const fat = enemy.fatigue;
-    // A window whose benefits a punch has already stripped is worth resetting
-    // out of: the roll treats it as no window at all, and tryReset is the one
-    // that refuses if the cooldown or a stun lockout says no.
-    if (fat && fat.maxEnergy > 0 && fat.cooldownTimer <= 0 && !resetBenefitsActive(enemy)) {
+    // A Reset can't be spent while one is already running (even one a punch
+    // has stripped); tryReset also refuses during a stun lockout.
+    if (fat && fat.maxEnergy > 0 && !fat.resetActive) {
       const spentFrac = 1 - Math.max(0, Math.min(1, fat.energy / fat.maxEnergy));
       const resetChance = AI_RESET_CHANCE_BY_BAND[brain.difficultyBand] ?? AI_RESET_CHANCE_BY_BAND.Easy;
       if (spentFrac >= AI_RESET_FATIGUE_THRESHOLD && rng.chance(resetChance)) {
@@ -5941,6 +5997,16 @@ export function updateAI(state: GameState, dt: number, attemptPunchFn: (fighter:
       cancelAiString(brain, enemy, false);
     }
     if (_rt.active) {
+      // A Reset or slip-counter the RL policy wrapped this string in. Performed
+      // here, before the runner's next boundary (which holds while one is
+      // owed), through the same engine calls the AI's own Reset roll and
+      // read-slip use; refused means standard. A slip waits out a punch still
+      // in flight from the previous string rather than being refused by it.
+      const _rlUtil = peekAiRlUtility(brain);
+      if (_rlUtil !== 0 && !(_rlUtil === 3 && enemy.isPunching)) {
+        takeAiRlUtility(brain);
+        performRlUtility(_rlUtil, brain, enemy, state, _rt);
+      }
       const _sctx = buildStringContext(brain, enemy, player);
       const _stick = updateAiStringRunner(brain, enemy, player, dt, _sctx);
 

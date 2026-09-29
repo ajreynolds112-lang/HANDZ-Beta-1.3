@@ -3,6 +3,7 @@ import type { AiSegment, AiMoveDir } from "./aiStrings";
 import type { AiPatternMemory } from "./aiPatterns";
 import type { DrilledClosingBuffs, DrilledFightState } from "./drilledActions";
 import type { RingColors } from "./ringColors";
+import type { RlPolicy } from "./rlPolicy";
 
 export type Archetype = "BoxerPuncher" | "OutBoxer" | "Brawler" | "Swarmer";
 
@@ -120,6 +121,9 @@ export interface AiStringFrame {
   whiffed: number;
   /** Separation this string owes a walk back to, or -1. See AiStringRuntime. */
   returnDistPx: number;
+  /** The suspended run's RL control, restored with it. See AiStringRuntime. */
+  rlControlled?: boolean;
+  rlTempo?: number;
 }
 
 /**
@@ -236,6 +240,65 @@ export interface AiStringRuntime {
   /** Debug counters. */
   runCount: number;
   cancelCount: number;
+  /**
+   * The running string was picked by the RL tactical policy. Such a run takes
+   * its beat from rlTempo and skips the per-slot beat learning and the per-id
+   * selection weights: the policy owns its tempo.
+   */
+  rlControlled: boolean;
+  /** Beat delay (s) the policy chose for every slot of this run, or -1. */
+  rlTempo: number;
+  /**
+   * A utility the policy chose that updateAI has to perform (1 Reset, 3
+   * slip-then-counter), or 0. Charge and stance switch are applied as segments.
+   */
+  rlUtilityPending: number;
+}
+
+/** One policy decision, kept while recording is on. The trainer's raw material. */
+export interface AiRlDecisionRecord {
+  /** brain.gameTime at the decision. */
+  t: number;
+  obs: Float32Array;
+  /** Eligibility per string-head index (1 = allowed). */
+  mask: Uint8Array;
+  roles: string[];
+  stringIndex: number;
+  stringId: number;
+  tempoIndex: number;
+  tempo: number;
+  utility: number;
+  logProb: number;
+  value: number;
+  /** Whether the utility actually went ahead; null until it is known. */
+  utilityApplied: boolean | null;
+}
+
+/** A decision made in selectAiString, waiting for start/insert/extend to apply it. */
+export interface AiRlPendingDecision {
+  stringId: number;
+  tempo: number;
+  utility: number;
+  /** Arm Charge is possible right now (meter bar available, not already armed). */
+  chargeOk: boolean;
+  record: AiRlDecisionRecord | null;
+}
+
+export interface AiRlState {
+  policy: RlPolicy | null;
+  /** Append every decision to `log`. Off in normal play; the trainer turns it on. */
+  recording: boolean;
+  /** Argmax instead of sampling. */
+  deterministic: boolean;
+  log: AiRlDecisionRecord[];
+  /** Decisions dropped because the log was full. */
+  dropped: number;
+  decisions: number;
+  pending: AiRlPendingDecision | null;
+  /** Record of a Reset / slip-counter still waiting to be performed. */
+  utilityRecord: AiRlDecisionRecord | null;
+  /** Most recent decision, for the HUD. */
+  last: { stringId: number; tempo: number; utility: number; applied: boolean | null; t: number } | null;
 }
 
 /**
@@ -263,6 +326,11 @@ export interface AiBrainState {
   currentState: AiState;
   /** String engine state. See AiStringRuntime. */
   strings: AiStringRuntime;
+  /**
+   * RL tactical policy, when one is attached. null/undefined = the weighted
+   * string chooser, exactly as before.
+   */
+  rl?: AiRlState | null;
   currentPhase: TacticalPhase;
   difficultyBand: DifficultyBand;
   difficultyScore: number;
@@ -992,10 +1060,8 @@ export interface FatigueState {
 
   /** Reset window is suspending the sway penalties. */
   resetActive: boolean;
-  /** Seconds left in the window. Counts down only while not paused. */
+  /** Seconds left in the window, which is the length of the snap animation. */
   resetTimer: number;
-  /** Perfect block freezes the window's countdown for this long. */
-  resetPauseTimer: number;
   /**
    * A punch got through during the window. The Reset keeps running — the air it
    * buys is still paid — but every other benefit it was worth is off until the
@@ -1019,10 +1085,6 @@ export interface FatigueState {
    * 1 whenever nothing is banked, which is every bout outside a career fight.
    */
   snapSlowMult: number;
-  /** Time left before another Reset may be pressed. */
-  cooldownTimer: number;
-  /** This bout's current cooldown length. Grows with every Reset taken. */
-  cooldownCurrent: number;
   /** Elapsed seconds into the staggered torso -> lead arm -> rear arm snap. */
   snapTimer: number;
   /** Gap between snap stages. Stretches as current stamina falls. */
@@ -1143,6 +1205,10 @@ export interface FighterState {
   cleanPunchesLanded: number;
   feintBaits: number;
   damageDealt: number;
+  /** Perfect blocks this fighter made this bout (RL reward tally). */
+  perfectBlocksMade?: number;
+  /** Charged punches this fighter threw that failed to land this bout (RL reward tally). */
+  chargedPunchesMissed?: number;
   timeSinceLastLanded: number;
   timeSinceLastDamageTaken: number;
   damageTakenRegenPauseFired: boolean;

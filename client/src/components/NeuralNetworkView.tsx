@@ -17,6 +17,7 @@ import { ArrowLeft, RotateCcw, Save, Lock, Download, Upload, Trash2, Star, Music
 import ItemsEditorView from "@/components/ItemsEditorView";
 import GameDocsView from "@/components/GameDocsView";
 import { RefinementTuningCard } from "@/components/RefinementTuningCard";
+import { RlPolicyCard } from "@/components/RlPolicyCard";
 import ScalingReferenceTables from "@/components/ScalingReferenceTables";
 import {
   AI_PATTERN_RANGES, DEFAULT_AI_PATTERN_CONFIG, PATTERN_HUD_MAX, clampAiPatternField,
@@ -437,16 +438,12 @@ export interface FatigueConfig {
    */
   duckLagMax: number;
 
-  /** How long the Reset suspension lasts. */
-  resetBaseDuration: number;
   /**
    * A Reset does not switch fatigue off — it turns it down. Every fatigue debuff
    * keeps applying at this share of its strength for the life of the window, so
    * a badly gassed fighter who resets is sharp again but never quite fresh.
    */
   resetEffectMult: number;
-  /** A perfect block freezes the window's countdown for this long. */
-  resetPbPause: number;
   /**
    * Career bouts only: each punch that gets through drags the fighter's next
    * Reset out by this share of how long their snap currently takes, and
@@ -498,9 +495,6 @@ export interface FatigueConfig {
    * inside flinchRangePx, on both sides of the ratio.
    */
   flinchFeintRatioLimit: number;
-  /** Cooldown, and the amount every Reset adds to it for the rest of the bout. */
-  resetCooldownBase: number;
-  resetCooldownStep: number;
   /** Gap between the torso, lead-arm and rear-arm snaps. */
   resetSnapStagger: number;
   /** Plays the whole snap — stagger and head dip alike — this much faster. */
@@ -574,9 +568,7 @@ export const DEFAULT_FATIGUE_CONFIG: FatigueConfig = {
   duckLagMax: 0.4,
   vulnPerHit: 0.005,
 
-  resetBaseDuration: 20,
   resetEffectMult: 0.1,
-  resetPbPause: 2,
   resetSnapSlowPerPunch: 0.0025,
   resetSnapSlowGraceHits: 2,
   resetStunLockMax: 5,
@@ -591,8 +583,6 @@ export const DEFAULT_FATIGUE_CONFIG: FatigueConfig = {
   flinchDecayPerReaction: 0.05,
   flinchResetNegateWindow: 1.5,
   flinchFeintRatioLimit: 4,
-  resetCooldownBase: 0.75,
-  resetCooldownStep: 0.01,
   resetSnapStagger: 0.1,
   resetSnapSpeedMult: 1.2,
   resetSnapDistMult: 2,
@@ -1060,6 +1050,21 @@ let trainingNeural: Record<number, NeuralState> | null = null;
 
 export function setTrainingNeuralOverrides(map: Record<number, NeuralState> | null) {
   trainingNeural = map;
+}
+
+/**
+ * Set (or with null, remove) one training-range id's override without
+ * touching the rest of the map. The RL trainer's learner uses this to box with
+ * the Champion's own knobs while keeping its training identity.
+ */
+export function setTrainingNeuralOverride(id: number, state: NeuralState | null) {
+  if (state) {
+    trainingNeural = { ...(trainingNeural || {}), [id]: state };
+  } else if (trainingNeural && trainingNeural[id]) {
+    const next = { ...trainingNeural };
+    delete next[id];
+    trainingNeural = next;
+  }
 }
 
 export function getNeuralOverrides(fighterId?: number): Record<Difficulty, NeuralState> {
@@ -2943,6 +2948,7 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
             ))}
           </Card>
           <RefinementTuningCard key={`refine-${paramEpoch}`} />
+          <RlPolicyCard key={`rl-${paramEpoch}`} />
           <Card className="p-3 w-full space-y-3" style={{ background: "#0a1a0a", border: "1px solid #1a4a1a" }}>
             <div className="flex items-center justify-between gap-2">
               <div>
@@ -3146,9 +3152,7 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
                   { key: "vulnPerHit", label: "Rhythm Vuln Added per Punch Taken (arc share, each end)", step: "0.005" },
                 ] },
                 { heading: "Reset (B) — the answer to fatigue", rows: [
-                  { key: "resetBaseDuration", label: "Window Duration (s)", step: "1" },
                   { key: "resetEffectMult", label: "Fatigue Strength During Window", step: "0.05" },
-                  { key: "resetPbPause", label: "Perfect Block Freezes Window (s)", step: "0.5" },
                   { key: "resetSnapSlowPerPunch", label: "Snap Slowed per Punch Taken, Career Bouts (share)", step: "0.0025" },
                   { key: "resetSnapSlowGraceHits", label: "Punches Owed After a Reset Before It Slows Again", step: "1" },
                   { key: "resetStunLockMax", label: "Stun Locks Reset Out at Defense 0 (s)", step: "0.5" },
@@ -3165,8 +3169,6 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
                   { key: "flinchDecayPerReaction", label: "Intensity Lost per Reaction", step: "0.01" },
                   { key: "flinchResetNegateWindow", label: "Reset Negates the Next Flinch For (s)", step: "0.1" },
                   { key: "flinchFeintRatioLimit", label: "Feints per Committed Punch (same punch & stance)", step: "1" },
-                  { key: "resetCooldownBase", label: "Cooldown Base (s)", step: "0.05" },
-                  { key: "resetCooldownStep", label: "Cooldown Added per Reset (s)", step: "0.01" },
                   { key: "resetSnapStagger", label: "Snap Stagger (s)", step: "0.01" },
                   { key: "resetSnapSpeedMult", label: "Snap Animation Speed (x)", step: "0.1" },
                   { key: "resetSnapDistMult", label: "Snap Travel Distance (x)", step: "0.25" },

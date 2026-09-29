@@ -1377,7 +1377,7 @@ const DEFAULT_STATES: Record<Difficulty, NeuralState> = { /* ... */ };`,
       {
         t: "p",
         text:
-          "Everything editable in this view is registered in a single central registry, each entry mapped to its own localStorage key. The registry covers the neural keys above plus punch animation, roster generation, fight tips, items, scaling, XP, stamina, refinement, turn, range, stoppage and AI-pattern configs, along with the boolean toggles.",
+          "Everything editable in this view is registered in a single central registry, each entry mapped to its own localStorage key. The registry covers the neural keys above plus punch animation, roster generation, fight tips, items, scaling, XP, stamina, refinement, turn, range, stoppage and AI-pattern configs, along with the boolean toggles (including the under-the-hood HUD switch). It also carries the AI training outputs: the deployed RL policy (handz_rl_policy — whatever was last deployed from AI Training, with its live-use mode) and the fundamentals-trained champion (handz_champion_fundamental_states — its parameters plus remembered situations, republished each time a fundamental closes). So the most recently deployed/trained AI is what a publish ships. The training runs themselves (population, RL trainer checkpoint) are scratch work and stay in the browser.",
       },
       {
         t: "code",
@@ -1393,7 +1393,7 @@ const DEFAULT_STATES: Record<Difficulty, NeuralState> = { /* ... */ };`,
         t: "ul",
         items: [
           "Export reads each registry key, JSON-parses it, and validates only the outer shape.",
-          "Upload rejects a wrong kind, a wrong version, unknown sections, or a wrong per-section shape. Application then replaces registered keys, removes sections absent from the bundle, and invalidates the scaling, punch-animation and refinement caches.",
+          "Upload rejects a wrong kind, a wrong version, unknown sections, or a wrong per-section shape. Application then replaces registered keys, removes sections absent from the bundle, and invalidates the scaling, punch-animation, refinement and champion-fundamentals caches.",
           "Upload is a replace, not a merge. A section missing from the file is deleted, not left alone.",
           "Stateful child editors are remounted after an upload via a paramEpoch key bump — without it they would keep rendering their pre-upload state.",
         ],

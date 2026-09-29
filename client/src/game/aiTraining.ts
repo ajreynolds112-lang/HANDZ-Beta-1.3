@@ -24,9 +24,9 @@
  * not worker-safe (module-level input state, audio, a config import from a React
  * module), so a cycle is spread across frames rather than moved off-thread.
  */
-import type { GameState, FighterState, Archetype } from "./types";
-import { createInitialState, startFight, updateGame } from "./engine";
+import type { GameState, FighterState } from "./types";
 import { initAiBrain } from "./ai";
+import { ROUND_SECONDS, startHeadlessBout, stepHeadless, type HeadlessOutcome } from "./headlessBout";
 import { soundEngine } from "./sound";
 import {
   FUNDAMENTALS, type Fundamental, type FundamentalSeed, type FundStat,
@@ -40,15 +40,8 @@ import {
 
 export { TRAINING_ROSTER_BASE, isTrainingRosterId } from "./aiFundamentals";
 
-/** Fixed timestep. Bouts must not vary with frame rate or results stop comparing. */
-const SIM_DT = 1 / 60;
-const ROUND_SECONDS = 60;
-/** Hard ceiling so a stalemate can never wedge a generation. */
-const MAX_TICKS = Math.ceil((ROUND_SECONDS + 12) / SIM_DT);
-/** A bout is won by draining the opponent to this. */
-const STAMINA_FLOOR = 1;
-
-const ARCHETYPES: Archetype[] = ["BoxerPuncher", "OutBoxer", "Brawler", "Swarmer"];
+// Timestep, round length, bout ceiling and resolution rules live in
+// headlessBout.ts, shared with the RL policy trainer.
 
 // ------------------------------------------------------------------ observer
 
@@ -1362,7 +1355,7 @@ export function foldAiObservations(seed: FundamentalSeed, obs: FightObserver) {
 
 // ---------------------------------------------------------------- bout runner
 
-export type BoutOutcome = "drain" | "knockdown" | "cards" | "draw";
+export type BoutOutcome = HeadlessOutcome;
 
 export interface Bout {
   seedA: number;
@@ -1384,85 +1377,18 @@ const nextSeed = () => (boutRng = (boutRng * 1103515245 + 12345) & 0x7fffffff);
 export const seedRosterId = (seedId: number) => TRAINING_ROSTER_BASE + seedId;
 
 export function createBout(seedA: FundamentalSeed, seedB: FundamentalSeed, level: number, fundKey: string): Bout {
-  const r = nextSeed();
-  const archA = ARCHETYPES[r % ARCHETYPES.length];
-  const archB = ARCHETYPES[(r >> 3) % ARCHETYPES.length];
-
-  const state = startFight(
-    createInitialState(),
-    archA, level, level,
-    seedA.name, undefined,
-    true, "champion",
-    1, ROUND_SECONDS, "normal",
-    65, 65,
-    archB, seedB.name,
-    undefined,
-    false, false, false, false,
-    true,                 // cpuVsCpu
-    undefined,
-    false, undefined,
-    1, 1, 1,
-    undefined, undefined,
-    false,
-    seedRosterId(seedB.id),
+  // Each seed's brain carries its real roster id, so its neural override is
+  // found and the champion redirect leaves it alone.
+  const state = startHeadlessBout(nextSeed(), level,
+    { name: seedA.name, buildBrain: (arch, lv) => initAiBrain("champion", arch, lv, true, seedRosterId(seedA.id)) },
+    { name: seedB.name, rosterId: seedRosterId(seedB.id), buildBrain: (arch, lv) => initAiBrain("champion", arch, lv, true, seedRosterId(seedB.id)) },
   );
-
-  // startFight gives the player corner a brain with no roster id, so neither its
-  // neural override nor its seed identity would be found. Rebuild both brains
-  // with their real ids instead of widening startFight's argument list.
-  state.aiBrain = initAiBrain("champion", archB, level, true, seedRosterId(seedB.id));
-  state.playerAiBrain = initAiBrain("champion", archA, level, true, seedRosterId(seedA.id));
-
-  state.phase = "fighting";
-  state.countdownTimer = 0;
-  state.introAnimActive = false;
-  state.introAnimTimer = 0;
-  state.playerIntroPlaying = false;
-  state.enemyIntroPlaying = false;
-
   return { seedA: seedA.id, seedB: seedB.id, state, obs: newObserver(fundKey), ticks: 0, done: false, winner: null, outcome: "cards" };
-}
-
-/**
- * Resolve a bout the moment it is decided. A win means draining the opponent to
- * the floor while staying off it; a knockdown loses outright; anything still
- * standing at the bell goes to the cards on damage dealt, and an exact tie is a
- * draw that counts as a loss for both.
- */
-function resolve(bout: Bout): boolean {
-  const { player: a, enemy: b } = bout.state;
-
-  if (a.isKnockedDown && !b.isKnockedDown) { bout.winner = 1; bout.outcome = "knockdown"; return true; }
-  if (b.isKnockedDown && !a.isKnockedDown) { bout.winner = 0; bout.outcome = "knockdown"; return true; }
-
-  const aOut = a.stamina <= STAMINA_FLOOR;
-  const bOut = b.stamina <= STAMINA_FLOOR;
-  if (aOut || bOut) {
-    bout.outcome = aOut && bOut ? "draw" : "drain";
-    bout.winner = aOut && bOut ? null : aOut ? 1 : 0;
-    return true;
-  }
-
-  if (bout.ticks >= MAX_TICKS || bout.state.phase === "fightEnd" || bout.state.phase === "roundEnd" || bout.state.roundTimer <= 0) {
-    bout.outcome = "cards";
-    if (a.damageDealt === b.damageDealt) { bout.winner = null; bout.outcome = "draw"; }
-    else bout.winner = a.damageDealt > b.damageDealt ? 0 : 1;
-    return true;
-  }
-  return false;
 }
 
 /** Advance one bout by up to `maxTicks` engine steps. Returns ticks consumed. */
 export function stepBout(bout: Bout, maxTicks: number): number {
-  let n = 0;
-  while (n < maxTicks && !bout.done) {
-    bout.state = updateGame({ ...bout.state }, SIM_DT);
-    observeTick(bout.obs, bout.state, SIM_DT);
-    bout.ticks++;
-    n++;
-    if (resolve(bout)) { bout.done = true; break; }
-  }
-  return n;
+  return stepHeadless(bout, maxTicks, (state, dt) => observeTick(bout.obs, state, dt));
 }
 
 // ------------------------------------------------------------------ the run

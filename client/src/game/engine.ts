@@ -1,3 +1,4 @@
+import { aiRNG } from "./aiRng";
 import {
   GameState, FighterState, PunchType, Archetype, DefenseState,
   PUNCH_CONFIGS, ARCHETYPE_STATS, ENEMY_NAMES, HitEffect, Vec2,
@@ -365,57 +366,9 @@ export function formatRoundRecordingForExport(recording: InputRecording, roundNu
   return lines.join("\n");
 }
 
-class TimeBasedRNG {
-  private rand: () => number;
-  private seed: number;
-  private cachedValue: number;
-  private lastUpdateTime: number;
-  private cacheInterval: number;
-
-  constructor(seed: number = 12345, cacheInterval: number = 0.2) {
-    this.seed = seed;
-    this.cacheInterval = cacheInterval;
-    this.lastUpdateTime = -999;
-    this.rand = this.createSeededRandom(seed);
-    this.cachedValue = this.rand();
-  }
-
-  private createSeededRandom(seed: number): () => number {
-    let s = seed;
-    return () => {
-      s = (s * 1664525 + 1013904223) & 0xFFFFFFFF;
-      return (s >>> 0) / 0xFFFFFFFF;
-    };
-  }
-
-  reseed(newSeed: number): void {
-    this.seed = newSeed;
-    this.rand = this.createSeededRandom(newSeed);
-    this.lastUpdateTime = -999;
-    this.cachedValue = this.rand();
-  }
-
-  next01(): number {
-    const now = performance.now() / 1000;
-    if (now - this.lastUpdateTime > this.cacheInterval) {
-      this.cachedValue = this.rand();
-      this.lastUpdateTime = now;
-    }
-    return this.cachedValue;
-  }
-
-  range(min: number, max: number): number {
-    const t = this.rand();
-    return min + (max - min) * t;
-  }
-
-  chance(probability: number): boolean {
-    const t = this.rand();
-    return t <= Math.max(0, Math.min(1, probability));
-  }
-}
-
-export const aiRNG = new TimeBasedRNG(Date.now());
+// The AI's RNG lives in its own import-free module so the string runner (and
+// its Node check scripts) can load it without dragging the whole engine in.
+export { aiRNG };
 
 const LAUNCH_DELAY_MULT = 0.033;
 const ARM_SPEED_MULT = 7.5;
@@ -572,14 +525,11 @@ export function createFatigueState(maxEnergy: number): FatigueState {
     swayPunch: false,
     resetActive: false,
     resetTimer: 0,
-    resetPauseTimer: 0,
     resetStaminaOnly: false,
     resetLockTimer: 0,
     snapSlowPunches: 0,
     snapSlowGrace: 0,
     snapSlowMult: 1,
-    cooldownTimer: 0,
-    cooldownCurrent: getFatigueConfig().resetCooldownBase,
     snapTimer: 0,
     snapStagger: getFatigueConfig().resetSnapStagger,
     snapActive: false,
@@ -896,7 +846,9 @@ export function tryReset(fighter: FighterState, state: GameState): boolean {
   const f = fighter.fatigue;
   const fc = getFatigueConfig();
   if (fighter.isKnockedDown || state.knockdownActive) return false;
-  if (f.cooldownTimer > 0) return false;
+  // No cooldown: a Reset can be spent whenever one isn't already running. A
+  // window a punch has stripped is still running, so it has to play out first.
+  if (f.resetActive) return false;
   // Stunned fighters cannot buy their way out of it — see applyResetStunLock.
   if (f.resetLockTimer > 0) return false;
 
@@ -940,8 +892,6 @@ export function tryReset(fighter: FighterState, state: GameState): boolean {
 
   clearFatigueSway(fighter);
   f.resetActive = true;
-  f.resetTimer = fc.resetBaseDuration;
-  f.resetPauseTimer = 0;
   // A whole new Reset is what buys the benefits back after a punch stripped
   // them off the last one.
   f.resetStaminaOnly = false;
@@ -988,11 +938,11 @@ export function tryReset(fighter: FighterState, state: GameState): boolean {
     * (fc.resetSnapSlowMax - (fc.resetSnapSlowMax - 1) * staminaFrac) * snapSlow / snapSpeed;
   f.snapTimer = 0;
   f.snapActive = true;
+  // The window lasts exactly as long as the snap animation: it closes when the
+  // rear arm is home (see updateFatigue), so it is always well under a second
+  // or two, however gassed the fighter is.
+  f.resetTimer = f.snapStagger * 3;
   f.headDuckTimer = fc.resetHeadDuckTime * snapSlow / snapSpeed;
-
-  // Cooldown grows for the remainder of the bout with every Reset spent.
-  f.cooldownTimer = f.cooldownCurrent;
-  f.cooldownCurrent += fc.resetCooldownStep;
 
   // The rhythm kicks instead of parking. A Reset throws the sway into a
   // full-speed sweep for resetRhythmBurst seconds — running whether or not the
@@ -1237,10 +1187,8 @@ function updateFatigue(fighter: FighterState, dt: number, state: GameState): voi
   const f = fighter.fatigue;
   updateFlinch(fighter, dt, state);
 
-  if (f.cooldownTimer > 0) f.cooldownTimer = Math.max(0, f.cooldownTimer - dt);
-  // The stun lockout runs on the same clock as the cooldown: a fighter who is
-  // being stopped from resetting is not being asked to do anything, so it burns
-  // off through the rest of the bout the way the cooldown does.
+  // The stun lockout burns off through the rest of the bout: a fighter who is
+  // being stopped from resetting is not being asked to do anything.
   if (f.resetLockTimer > 0) f.resetLockTimer = Math.max(0, f.resetLockTimer - dt);
   if (f.headDuckTimer > 0) f.headDuckTimer = Math.max(0, f.headDuckTimer - dt);
   // The post-Reset rhythm kick. Ticked here rather than in the sway so it runs
@@ -1253,25 +1201,21 @@ function updateFatigue(fighter: FighterState, dt: number, state: GameState): voi
     // easing home over one stagger instead of vanishing at the end of its hold.
     if (f.snapTimer >= f.snapStagger * 3) {
       f.snapActive = false;
-      // The whole animation has played: that is what counts as fully reset.
+      // The whole animation has played: that is what counts as fully reset,
+      // and it is also the end of the Reset window.
       onResetFullyPlayed(fighter);
     }
   }
 
+  // The Reset window is the snap animation: it ends the moment the snap does.
+  // Deliberately no early return while it runs: a Reset damps fatigue rather
+  // than switching it off, so the sway keeps running underneath the window.
   if (f.resetActive) {
-    // A perfect block buys time: the window's clock stops while the pause runs.
-    if (f.resetPauseTimer > 0) {
-      f.resetPauseTimer = Math.max(0, f.resetPauseTimer - dt);
-    } else {
-      f.resetTimer -= dt;
-      if (f.resetTimer <= 0) {
-        f.resetActive = false;
-        f.resetTimer = 0;
-        f.resetStaminaOnly = false;
-      }
+    f.resetTimer = f.snapActive ? Math.max(0, f.snapStagger * 3 - f.snapTimer) : 0;
+    if (!f.snapActive) {
+      f.resetActive = false;
+      f.resetStaminaOnly = false;
     }
-    // Deliberately no early return: a Reset damps fatigue to a tenth rather
-    // than switching it off, so the sway keeps running underneath the window.
   }
 
   const fighting = state.phase === "fighting" && !state.knockdownActive && !state.isPaused;
@@ -1315,8 +1259,9 @@ export function fatigueBlocksPunchInput(fighter: FighterState): boolean {
  * to its end so the air a Reset buys keeps being paid — but everything else the
  * Reset was worth switches off until the fighter spends a whole new one:
  * fatigue goes back to full strength, the sway hardens up again and the trained
- * slip speed inside the window stops applying. Idempotent, so further punches
- * inside the same window change nothing.
+ * slip speed inside the window stops applying. A new Reset can't be spent
+ * until this window has run out. Idempotent, so further punches inside the same
+ * window change nothing.
  */
 function stripResetOnHit(fighter: FighterState): void {
   const f = fighter.fatigue;
@@ -5568,12 +5513,6 @@ function tryHit(
   if (isPerfectBlock) {
     blocked = true;
     blockReduction = 1.0;
-    // Reading a punch this cleanly buys a live Reset more time: the window's
-    // countdown stops for the length of the pause. The punch also never ends
-    // the Reset, which is handled where every other landed punch does.
-    if (defender.fatigue.resetActive) {
-      defender.fatigue.resetPauseTimer = Math.max(defender.fatigue.resetPauseTimer, getFatigueConfig().resetPbPause);
-    }
   }
 
   // Rhythm-cut and Bruiser block ignore. Unlike the punch-family refinements
@@ -6204,6 +6143,11 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
   const snapPStam    = Math.round(state.player.stamina);
   const snapEStam    = Math.round(state.enemy.stamina);
   if (!result.hit) {
+    // Bout tally the RL trainer's reward reads: a charged punch that failed to
+    // land in any way. A feint was never a real punch.
+    if (attacker.isCharging && !attacker.isFeinting) {
+      attacker.chargedPunchesMissed = (attacker.chargedPunchesMissed ?? 0) + 1;
+    }
     if (result.isDodge) {
       state.hitEffects.push({
         x: defender.x + defender.facing * 10,
@@ -6405,6 +6349,8 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
         attacker.rhythmLevel = 1;
       }
       if (result.isPerfectBlock) {
+        // Bout tally the RL trainer's reward reads.
+        defender.perfectBlocksMade = (defender.perfectBlocksMade ?? 0) + 1;
         attacker.moveSlowMult = Math.min(attacker.moveSlowMult, 0.50);
         attacker.moveSlowTimer = Math.max(attacker.moveSlowTimer, 0.75);
         attacker.regenPauseTimer = Math.max(attacker.regenPauseTimer, 2.0);
@@ -8676,9 +8622,8 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
 
   // Reset (B). Spent on the way UP, like a punch: the read is graded against
   // where the bout is when the key comes back up, not when it went down, so a
-  // held key cannot bank a Reset and drop it into a window later. Refused on
-  // cooldown, and the cooldown grows with every Reset spent this bout, so it
-  // cannot be leaned on as a panic button either.
+  // held key cannot bank a Reset and drop it into a window later. Refused only
+  // while a Reset window is already running (or a stun lock / knockdown).
   consumePress(RESET_KEY);
   if (consumeRelease(RESET_KEY)) {
     tryReset(player, state);

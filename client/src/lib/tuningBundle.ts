@@ -25,6 +25,7 @@
 import { reloadScaling } from "./scalingConfig";
 import { invalidatePunchAnimCache } from "./punchAnimConfig";
 import { reloadRefinementTuning } from "@/game/refinementTuning";
+import { reloadChampionFundamentals } from "@/game/championStates";
 
 /**
  * Every parameter key the Neural Network screen exposes, against the shape its
@@ -71,6 +72,14 @@ const PARAM_SHAPES = {
   handz_directional_perfect_block: "boolean",
   handz_nightmare_bypass: "boolean",
   handz_refinement_bypass: "boolean",
+  // Pattern-memory "under the hood" HUD switch
+  handz_under_the_hood: "boolean",
+  // RL tactical policy: deployment mode + the deployed network's weights. The
+  // last policy deployed from AI Training is what a publish ships.
+  handz_rl_policy: "object",
+  // Fundamentals training output: the champion's parameters + remembered
+  // situations, published each time a fundamental closes.
+  handz_champion_fundamental_states: "object",
 } as const satisfies Record<string, "object" | "array" | "boolean">;
 
 export type TuningParamKey = keyof typeof PARAM_SHAPES;
@@ -205,12 +214,13 @@ function writeParams(params: Record<string, unknown>, dropMissing: boolean): voi
 /**
  * Configs the fight loop reads through a module-level cache. The items catalog
  * and its drop distribution key their caches on the raw stored string, so a
- * write invalidates them on its own; these three don't.
+ * write invalidates them on its own; these don't.
  */
 export function invalidateTuningCaches(): void {
   try { reloadScaling(); } catch { /* nothing to reload */ }
   try { invalidatePunchAnimCache(); } catch { /* nothing to reload */ }
   try { reloadRefinementTuning(); } catch { /* nothing to reload */ }
+  try { reloadChampionFundamentals(); } catch { /* nothing to reload */ }
 }
 
 /** Replace every parameter with the bundle's. Validate first. */
@@ -298,7 +308,10 @@ export async function pushTuningDefaults(): Promise<boolean> {
  * @returns a stop function that flushes a pending change on the way out.
  */
 export function startTuningDefaultsWatcher(intervalMs = 1500): () => void {
-  let last = tuningSignature();
+  // Empty, so the first tick always pushes: a section newly added to the
+  // registry (or deployed while no watcher ran) reaches the file without
+  // waiting for some other edit.
+  let last = "";
   let inFlight = false;
   let queued = false;
 

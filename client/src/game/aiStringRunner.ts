@@ -39,8 +39,11 @@ import type {
   AiStringRuntime,
   AiStringPlanStep,
   BoxingStance,
+  AiRlState,
+  AiRlDecisionRecord,
 } from "./types";
-import { aiRNG } from "./engine";
+import { aiRNG } from "./aiRng";
+import { rlAct, RL_UTILITIES, type RlPolicy } from "./rlPolicy";
 import {
   AI_STRINGS,
   AI_STRINGS_BY_ID,
@@ -234,6 +237,9 @@ export function createAiStringRuntime(): AiStringRuntime {
     consecutiveWhiffs: 0,
     runCount: 0,
     cancelCount: 0,
+    rlControlled: false,
+    rlTempo: -1,
+    rlUtilityPending: 0,
   };
 }
 
@@ -270,6 +276,9 @@ export function ensureAiStringRuntime(brain: AiBrainState): AiStringRuntime {
   if (typeof rt.outLastX !== "number") rt.outLastX = -1;
   if (typeof rt.outLastZ !== "number") rt.outLastZ = -1;
   if (!Array.isArray(rt.plan)) rt.plan = [];
+  if (typeof rt.rlControlled !== "boolean") rt.rlControlled = false;
+  if (typeof rt.rlTempo !== "number") rt.rlTempo = -1;
+  if (typeof rt.rlUtilityPending !== "number") rt.rlUtilityPending = 0;
   return rt;
 }
 
@@ -322,6 +331,16 @@ function getBeatTable(rt: AiStringRuntime, def: AiStringDef): number[] {
  * expire mid-string, which would turn the charge segment into a dead beat.
  */
 function getBeat(rt: AiStringRuntime, def: AiStringDef, slot: number): number {
+  // A policy-picked run carries one tempo for every slot, and never touches the
+  // learned table or the lazily-rolled bias. The post-charge clamp still holds;
+  // it reads the working copy because the policy may have prepended the charge.
+  if (rt.rlControlled && rt.rlTempo >= 0) {
+    let beat = rt.rlTempo;
+    if (slot > 0 && rt.segments[slot - 1]?.kind === "charge") {
+      beat = Math.min(beat, CHARGE_RELEASE_WINDOW * 0.6);
+    }
+    return clamp(beat, BEAT_MIN, BEAT_MAX);
+  }
   const table = getBeatTable(rt, def);
   let beat = table[slot] ?? BEAT_DEFAULT;
   if (slot > 0 && def.segments[slot - 1]?.kind === "charge") {
@@ -366,6 +385,13 @@ function adapts(brain: AiBrainState): boolean {
 // ===== SELECTION =====
 
 export interface StringSelectContext {
+  /**
+   * RL observation (see rlObservation.ts). Only built when the brain carries a
+   * policy; its presence is what routes selection through the policy.
+   */
+  rlObs?: Float32Array | null;
+  /** Arm Charge is possible right now: a meter bar is banked and none is armed. */
+  canArmCharge?: boolean;
   /** Current separation in pixels. */
   distPx: number;
   /** Distance the AI considers "in range". */
@@ -426,6 +452,246 @@ function rangeFit(
   return ratio >= 1.2 ? 1.3 : 0.55;
 }
 
+// ===== RL TACTICAL POLICY HOOK =====
+//
+// When a brain carries a policy (brain.rl.policy) the policy picks the string,
+// its tempo and a tactical utility at every selection point: the offence entry
+// point, the idle fallback, extensions and reactive inserts, each with its own
+// role filter. The choice is left on brain.rl.pending and applied by whichever
+// of start / insert / extend actually runs the string.
+
+/** Recorded decisions kept per brain before the oldest start dropping off. */
+export const RL_LOG_CAP = 4096;
+/**
+ * The library's longest string. A utility that would add a segment to a string
+ * already this long is refused, so the policy never runs a longer sequence
+ * than the library itself contains.
+ */
+export const RL_MAX_STRING_SEGMENTS = 30;
+
+export function createAiRlState(
+  policy: RlPolicy | null,
+  opts: { recording?: boolean; deterministic?: boolean } = {},
+): AiRlState {
+  return {
+    policy,
+    recording: opts.recording === true,
+    deterministic: opts.deterministic === true,
+    log: [],
+    dropped: 0,
+    decisions: 0,
+    pending: null,
+    utilityRecord: null,
+    last: null,
+  };
+}
+
+/** Attach (or with null, detach) a policy. Replaces any previous RL state. */
+export function attachRlPolicy(
+  brain: AiBrainState,
+  policy: RlPolicy | null,
+  opts: { recording?: boolean; deterministic?: boolean } = {},
+): void {
+  brain.rl = policy ? createAiRlState(policy, opts) : null;
+}
+
+/**
+ * Idempotent backfill. HMR keeps live brains that predate the field, and a
+ * half-built RL state from an older build gets its missing fields.
+ */
+export function ensureAiRlState(brain: AiBrainState): AiRlState | null {
+  if (brain.rl === undefined) brain.rl = null;
+  const rl = brain.rl;
+  if (!rl) return null;
+  if (typeof rl.recording !== "boolean") rl.recording = false;
+  if (typeof rl.deterministic !== "boolean") rl.deterministic = false;
+  if (!Array.isArray(rl.log)) rl.log = [];
+  if (typeof rl.dropped !== "number") rl.dropped = 0;
+  if (typeof rl.decisions !== "number") rl.decisions = 0;
+  if (rl.pending === undefined) rl.pending = null;
+  if (rl.utilityRecord === undefined) rl.utilityRecord = null;
+  if (rl.last === undefined) rl.last = null;
+  if (rl.policy === undefined) rl.policy = null;
+  return rl;
+}
+
+/**
+ * Eligibility per policy string-head index: the same category role, stamina
+ * and difficulty gates the weighted chooser applies. An id the library no
+ * longer has is never eligible.
+ */
+export function buildRlStringMask(
+  policy: RlPolicy,
+  ctx: StringSelectContext,
+  roles: readonly AiStringRole[],
+): Uint8Array {
+  const mask = new Uint8Array(policy.stringIds.length);
+  for (let i = 0; i < policy.stringIds.length; i++) {
+    const def = AI_STRINGS_BY_ID.get(policy.stringIds[i]);
+    if (!def) continue;
+    const meta = AI_STRING_CATEGORY_META[def.category];
+    if (!roles.includes(meta.role)) continue;
+    if (ctx.myStaminaFrac < meta.minStamina) continue;
+    if (ctx.difficultyScore < meta.minDifficulty) continue;
+    mask[i] = 1;
+  }
+  return mask;
+}
+
+/** Uniform draws for policy sampling come off the AI RNG, uncached. */
+const rlUniform = (): number => aiRNG.range(0, 1);
+
+function selectAiStringByPolicy(
+  brain: AiBrainState,
+  rl: AiRlState,
+  policy: RlPolicy,
+  ctx: StringSelectContext,
+  roles: readonly AiStringRole[],
+): AiStringDef | null {
+  rl.pending = null;
+  const obs = ctx.rlObs as Float32Array;
+  const mask = buildRlStringMask(policy, ctx, roles);
+  const d = rlAct(policy, obs, mask, { uniform: rlUniform, deterministic: rl.deterministic });
+  if (!d) return null;
+  const def = AI_STRINGS_BY_ID.get(d.stringId);
+  if (!def) return null;
+
+  const t = typeof brain.gameTime === "number" ? brain.gameTime : 0;
+  let record: AiRlDecisionRecord | null = null;
+  if (rl.recording) {
+    record = {
+      t,
+      obs: new Float32Array(obs),
+      mask,
+      roles: roles.slice(),
+      stringIndex: d.stringIndex,
+      stringId: d.stringId,
+      tempoIndex: d.tempoIndex,
+      tempo: d.tempo,
+      utility: d.utility,
+      logProb: d.logProb,
+      value: d.value,
+      utilityApplied: null,
+    };
+    if (rl.log.length >= RL_LOG_CAP) {
+      rl.log.shift();
+      rl.dropped++;
+    }
+    rl.log.push(record);
+  }
+  rl.decisions++;
+  rl.pending = {
+    stringId: def.id,
+    tempo: d.tempo,
+    utility: d.utility,
+    chargeOk: ctx.canArmCharge === true,
+    record,
+  };
+  rl.last = { stringId: def.id, tempo: d.tempo, utility: d.utility, applied: null, t };
+  return def;
+}
+
+function settleRlUtility(rl: AiRlState | null | undefined, record: AiRlDecisionRecord | null, applied: boolean): void {
+  if (record) record.utilityApplied = applied;
+  if (rl && rl.last && (!record || rl.last.t === record.t)) rl.last.applied = applied;
+}
+
+/**
+ * Apply the pending policy decision to the run that just took `def` on. The
+ * segments of `def` start at `segStart` in the working copy (0 for start and
+ * insert, the old length for an extension). Charge and stance switch become a
+ * leading segment; Reset and slip-counter are left for updateAI to perform.
+ */
+function applyRlDecision(brain: AiBrainState, rt: AiStringRuntime, def: AiStringDef, segStart: number): void {
+  const rl = brain.rl;
+  const pend = rl ? rl.pending : null;
+  if (rl) rl.pending = null;
+  if (!rl || !pend || pend.stringId !== def.id) {
+    // Not a policy pick. A fresh run starts clean; an extension of a policy
+    // run keeps the tempo it already has.
+    if (segStart === 0) {
+      rt.rlControlled = false;
+      rt.rlTempo = -1;
+      rt.rlUtilityPending = 0;
+    }
+    return;
+  }
+
+  rt.rlControlled = true;
+  rt.rlTempo = pend.tempo;
+  rt.rlUtilityPending = 0;
+  rl.utilityRecord = null;
+  const util = RL_UTILITIES[pend.utility];
+  const roomForSegment = def.segments.length < RL_MAX_STRING_SEGMENTS;
+  if (util === "charge") {
+    const alreadyCharged = rt.segments[segStart]?.kind === "charge";
+    if (!pend.chargeOk || (!alreadyCharged && !roomForSegment)) {
+      settleRlUtility(rl, pend.record, false);
+      return;
+    }
+    if (!alreadyCharged) {
+      rt.segments.splice(segStart, 0, { kind: "charge", token: "rl:charge" });
+    }
+    settleRlUtility(rl, pend.record, true);
+  } else if (util === "switchStance") {
+    if (!roomForSegment) {
+      settleRlUtility(rl, pend.record, false);
+      return;
+    }
+    rt.segments.splice(segStart, 0, { kind: "switchStance", token: "rl:switch" });
+    settleRlUtility(rl, pend.record, true);
+  } else if (util === "reset" || util === "slipCounter") {
+    rt.rlUtilityPending = pend.utility;
+    rl.utilityRecord = pend.record;
+  } else {
+    settleRlUtility(rl, pend.record, true);
+  }
+}
+
+/** A policy pick that was never run (the insert it was for was refused). */
+function discardRlDecision(brain: AiBrainState): void {
+  const rl = brain.rl;
+  if (!rl || !rl.pending) return;
+  const rec = rl.pending.record;
+  if (rec && rl.log[rl.log.length - 1] === rec) rl.log.pop();
+  rl.decisions = Math.max(0, rl.decisions - 1);
+  rl.pending = null;
+}
+
+function clearRlRun(brain: AiBrainState, rt: AiStringRuntime): void {
+  if (rt.rlUtilityPending !== 0) {
+    settleRlUtility(brain.rl, brain.rl?.utilityRecord ?? null, false);
+    if (brain.rl) brain.rl.utilityRecord = null;
+  }
+  rt.rlControlled = false;
+  rt.rlTempo = -1;
+  rt.rlUtilityPending = 0;
+}
+
+/**
+ * The utility updateAI must perform for the running string (1 Reset, 3
+ * slip-counter), or 0. Taking it clears it; report the outcome with
+ * settleAiRlUtility.
+ */
+/** The owed utility without taking it (0 when none). */
+export function peekAiRlUtility(brain: AiBrainState): number {
+  return ensureAiStringRuntime(brain).rlUtilityPending;
+}
+
+export function takeAiRlUtility(brain: AiBrainState): number {
+  const rt = ensureAiStringRuntime(brain);
+  const u = rt.rlUtilityPending;
+  rt.rlUtilityPending = 0;
+  return u;
+}
+
+export function settleAiRlUtility(brain: AiBrainState, applied: boolean): void {
+  const rl = brain.rl;
+  if (!rl) return;
+  settleRlUtility(rl, rl.utilityRecord, applied);
+  rl.utilityRecord = null;
+}
+
 /**
  * Weighted pick across every eligible string. Returns null only if the library
  * itself is empty -- Fundamentals is gated at zero stamina and zero difficulty
@@ -437,6 +703,11 @@ export function selectAiString(
   roles: readonly AiStringRole[] = ["offense", "mixed"],
 ): AiStringDef | null {
   const rt = ensureAiStringRuntime(brain);
+
+  // A brain carrying an RL policy picks through it. Everyone else falls through
+  // to the weighted chooser below, untouched -- including its RNG draws.
+  const rl = brain.rl;
+  if (rl && rl.policy && ctx.rlObs) return selectAiStringByPolicy(brain, rl, rl.policy, ctx, roles);
 
   const eligible: AiStringDef[] = [];
   const weights: number[] = [];
@@ -601,6 +872,8 @@ export function insertAiString(
     landed: rt.landed,
     whiffed: rt.whiffed,
     returnDistPx: rt.returnDistPx,
+    rlControlled: rt.rlControlled,
+    rlTempo: rt.rlTempo,
   });
 
   rt.stringId = def.id;
@@ -622,6 +895,7 @@ export function insertAiString(
   rt.consecutiveWhiffs = 0;
   rt.extensions = 0;
   rt.runCount++;
+  applyRlDecision(brain, rt, def, 0);
   return true;
 }
 
@@ -667,7 +941,9 @@ function tryExtendAiString(
 
   const next = selectAiString(brain, ctx, ["offense", "mixed"]);
   if (!next) return false;
+  const appendAt = rt.segments.length;
   for (const sg of next.segments) rt.segments.push({ ...sg });
+  applyRlDecision(brain, rt, next, appendAt);
   rt.extensions++;
   rt.plan = [];
   return true;
@@ -702,6 +978,7 @@ export function startAiString(brain: AiBrainState, def: AiStringDef): void {
   rt.consecutiveWhiffs = 0;
   rt.extensions = 0;
   rt.runCount++;
+  applyRlDecision(brain, rt, def, 0);
 }
 
 /**
@@ -733,8 +1010,11 @@ export function cancelAiString(
   if (saveStamina && rt.stringId >= 0) {
     rt.cancelCount++;
     // A string that keeps getting bailed out of is a string that is not working.
-    const prev = rt.weight[rt.stringId] ?? 1;
-    rt.weight[rt.stringId] = clamp(prev * 0.85, 0.15, 4);
+    // Policy-picked runs leave the per-id weights alone: the policy chose it.
+    if (!rt.rlControlled) {
+      const prev = rt.weight[rt.stringId] ?? 1;
+      rt.weight[rt.stringId] = clamp(prev * 0.85, 0.15, 4);
+    }
   }
 
   rt.active = false;
@@ -748,13 +1028,14 @@ export function cancelAiString(
   rt.throwFailCount = 0;
   rt.chargeSlot = -1;
   clearRetreatDeflect(rt);
+  clearRlRun(brain, rt);
 }
 
 function finishAiString(brain: AiBrainState, enemy: FighterState): AiStringTick {
   const rt = ensureAiStringRuntime(brain);
   const id = rt.stringId;
 
-  if (id >= 0 && (rt.landed > 0 || rt.whiffed > 0)) {
+  if (!rt.rlControlled && id >= 0 && (rt.landed > 0 || rt.whiffed > 0)) {
     // Weight the string by how well it actually worked this bout.
     const hitRate = rt.landed / Math.max(1, rt.landed + rt.whiffed);
     const prev = rt.weight[id] ?? 1;
@@ -792,6 +1073,9 @@ function finishAiString(brain: AiBrainState, enemy: FighterState): AiStringTick 
     // was interrupted rather than from the inserted string's horizon.
     rt.returnDistPx = parent.returnDistPx ?? -1;
     rt.plan = [];
+    rt.rlControlled = parent.rlControlled === true;
+    rt.rlTempo = typeof parent.rlTempo === "number" ? parent.rlTempo : -1;
+    rt.rlUtilityPending = 0;
     return tick({});
   }
 
@@ -799,6 +1083,7 @@ function finishAiString(brain: AiBrainState, enemy: FighterState): AiStringTick 
   rt.stringId = -1;
   rt.segments = [];
   rt.index = 0;
+  clearRlRun(brain, rt);
   return tick({ finished: true });
 }
 
@@ -978,9 +1263,16 @@ export function updateAiStringRunner(
       const cut = selectAiString(brain, ctx, ["offense"]);
       if (cut && cut.id !== rt.stringId && insertAiString(brain, enemy, cut)) {
         def = cut;
+      } else if (cut) {
+        discardRlDecision(brain);
       }
     }
   }
+
+  // A Reset or slip-counter the policy wrapped the new string in comes first:
+  // hold the boundary until updateAI has performed (or refused) it, so the
+  // string's opening segment follows the utility instead of beating it out.
+  if (rt.rlUtilityPending !== 0) return IDLE_TICK;
 
   // ===== DEFENSIVE SEGMENT =====
   // The offensive read is the rhythm-cut sync; this is the same read pointed at
@@ -1009,6 +1301,8 @@ export function updateAiStringRunner(
     // Offence meshes into the string rather than stopping at its last segment.
     if (!tryExtendAiString(brain, rt, ctx)) return finishAiString(brain, enemy);
     syncStringPlan(rt, def);
+    // Same as an insert: an extension's Reset / slip goes before its first shot.
+    if (rt.rlUtilityPending !== 0) return IDLE_TICK;
   }
 
   const slot = rt.index;
@@ -1286,13 +1580,14 @@ export function notifyAiStringPunchResolved(
   if (landed) {
     rt.landed++;
     rt.consecutiveWhiffs = 0;
-    if (adapts(brain)) nudgeBeat(rt, def, slot, -1);
+    // A policy-picked run owns its tempo: no per-slot beat learning.
+    if (!rt.rlControlled && adapts(brain)) nudgeBeat(rt, def, slot, -1);
     return;
   }
 
   rt.whiffed++;
   rt.consecutiveWhiffs++;
-  if (adapts(brain)) nudgeBeat(rt, def, slot, +1);
+  if (!rt.rlControlled && adapts(brain)) nudgeBeat(rt, def, slot, +1);
 
   // Recalculate: is the opponent simply leaving? Continuing a long string at a
   // retreating target burns stamina for nothing, which is the exact failure the
@@ -1315,13 +1610,17 @@ export function notifyAiStringPunchResolved(
 /** Debug snapshot for the tuning UI / logs. */
 export function describeAiStringState(brain: AiBrainState): string {
   const rt = ensureAiStringRuntime(brain);
+  const rl = brain.rl;
+  const rlTag = rl && rl.policy
+    ? ` rl[decisions=${rl.decisions}${rl.last ? ` last=#${rl.last.stringId} ${rl.last.tempo.toFixed(3)}s ${RL_UTILITIES[rl.last.utility] ?? "?"}${rl.last.applied === false ? "(refused)" : ""}` : ""}]`
+    : "";
   if (!rt.active) {
-    return `idle (ran ${rt.runCount}, cancelled ${rt.cancelCount})`;
+    return `idle (ran ${rt.runCount}, cancelled ${rt.cancelCount})${rlTag}`;
   }
   const def = AI_STRINGS_BY_ID.get(rt.stringId);
   const name = def ? `#${def.id} ${def.name}` : `#${rt.stringId}`;
   const waiting = rt.rangeWaitTimer > 0 ? ` waitRange=${rt.rangeWaitTimer.toFixed(2)}s` : "";
   const owed = rt.returnDistPx >= 0 ? ` returnTo=${rt.returnDistPx.toFixed(0)}px` : "";
   const plan = rt.plan.map((st) => st.kind).join(">") || "-";
-  return `${name} [${rt.index}/${rt.segments.length}] beat=${rt.beatTimer.toFixed(3)} hold=${rt.holdKind}${waiting}${owed} plan=${plan} landed=${rt.landed} whiffed=${rt.whiffed}`;
+  return `${name} [${rt.index}/${rt.segments.length}] beat=${rt.beatTimer.toFixed(3)} hold=${rt.holdKind}${waiting}${owed} plan=${plan} landed=${rt.landed} whiffed=${rt.whiffed}${rt.rlControlled ? ` tempo=${rt.rlTempo.toFixed(3)}` : ""}${rlTag}`;
 }

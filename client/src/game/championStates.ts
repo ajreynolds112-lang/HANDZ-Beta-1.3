@@ -17,6 +17,7 @@ import {
   situationSimilarity,
 } from "./fundamentalStates";
 
+/** Registered in the tuning bundle: the trained champion ships with a publish. */
 const LS_KEY = "handz_champion_fundamental_states";
 
 export interface ChampionFundamentals {
@@ -56,6 +57,14 @@ export function publishChampionFundamentals(params: Record<string, number>, stor
   try {
     localStorage.setItem(LS_KEY, JSON.stringify({ params, store: serializeStore(store) }));
   } catch { /* storage full — the in-memory copy still drives this session */ }
+}
+
+/**
+ * Forget the held copy so the next read comes from storage. This section ships
+ * in the tuning bundle, so an upload rewrites it behind the cache.
+ */
+export function reloadChampionFundamentals() {
+  cache = undefined;
 }
 
 export function clearChampionFundamentals() {

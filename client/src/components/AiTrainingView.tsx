@@ -20,7 +20,7 @@
  * evolves here is the same machinery the tuning screen edits by hand.
  */
 import { useRef, useEffect, useState, useCallback } from "react";
-import type { GameState } from "@/game/types";
+import type { AiBrainState, GameState } from "@/game/types";
 import {
   createInitialState, startFight, updateGame, handleKeyDown, handleKeyUp, clearAllKeys,
 } from "@/game/engine";
@@ -46,6 +46,16 @@ import { serializeStore, deserializeStore, emptyStore } from "@/game/fundamental
 import { publishChampionFundamentals } from "@/game/championStates";
 import { Button } from "@/components/ui/button";
 import { X, Play, Pause, RotateCcw, Swords, ChevronLeft } from "lucide-react";
+import RlTrainingPanel from "@/components/RlTrainingPanel";
+import type { RlRun } from "@/game/rlRun";
+import { buildLearnerBrain, newRlRuntime, RL_LEARNER_ROSTER_ID, type RlRuntime } from "@/game/rlTraining";
+import type { RlPolicy } from "@/game/rlPolicy";
+
+type TrainingMode = "fundamentals" | "rl";
+
+type Sparring =
+  | { kind: "seed"; seed: FundamentalSeed; minutes: number; obs: FightObserver }
+  | { kind: "rl"; policy: RlPolicy; minutes: number };
 
 const LS_KEY = "handz_ai_training";
 /** Keys the fight owns while a spar is up, kept in step with GameCanvas. */
@@ -175,9 +185,26 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
   const [, forceTick] = useState(0);
   const [tab, setTab] = useState<"board" | "fundamentals">("board");
   const [selected, setSelected] = useState(0);
-  const [sparring, setSparring] = useState<{ seed: FundamentalSeed; minutes: number } | null>(null);
+  const [sparring, setSparring] = useState<Sparring | null>(null);
+  const [mode, setMode] = useState<TrainingMode>("fundamentals");
+  // The RL run lives here rather than in its panel, so a spar (which unmounts
+  // the panel) comes back to the same in-memory run instead of re-reading a
+  // checkpoint that may still be on its way to disk.
+  const rlRunRef = useRef<RlRun | null>(null);
+  const rlRtRef = useRef<RlRuntime>(newRlRuntime());
+  const [rlRunning, setRlRunning] = useState(false);
 
   runningRef.current = running;
+  const modeRef = useRef<TrainingMode>(mode);
+  modeRef.current = mode;
+
+  // Only one trainer runs at a time: switching stops both.
+  const switchMode = (m: TrainingMode) => {
+    if (m === mode) return;
+    setRunning(false);
+    setRlRunning(false);
+    setMode(m);
+  };
 
   // Boot the population, then publish it so the AI can find each seed's brain.
   if (runRef.current === null) {
@@ -221,7 +248,7 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
       lastRef.current = ts;
       const r = runRef.current!;
 
-      if (runningRef.current && !sparring) {
+      if (runningRef.current && !sparring && modeRef.current === "fundamentals") {
         runHeadless(r, FRAME_BUDGET_MS);
         if (cycleComplete(r)) {
           // advanceFundamental writes the winner's parameters for the fundamental
@@ -264,16 +291,40 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
     save(fresh);
   };
 
-  if (sparring) {
+  if (sparring && sparring.kind === "seed") {
+    const { seed, obs } = sparring;
     return (
       <TraineeFight
-        seed={sparring.seed}
+        title={seed.name}
         minutes={sparring.minutes}
+        enemyRosterId={seedRosterId(seed.id)}
+        // Same reason as the tournament: give the brain the seed's own identity
+        // so its evolved parameters are the ones being fought.
+        buildBrain={() => initAiBrain("champion", "BoxerPuncher", 100, false, seedRosterId(seed.id))}
+        onTick={(s, dt) => observeAiTick(obs, s, dt)}
+        onClose={() => foldAiObservations(seed, obs)}
         onExit={() => {
           clearAllKeys();
           // The spar folds the AI's fundamentals straight into the seed, so the
           // population on disk is stale until this runs.
           save(runRef.current!);
+          setSparring(null);
+        }}
+      />
+    );
+  }
+  if (sparring && sparring.kind === "rl") {
+    const policy = sparring.policy;
+    // A normal-speed bout against the training policy. Nothing is recorded and
+    // nothing folds back: it never counts toward training.
+    return (
+      <TraineeFight
+        title="RL policy (training)"
+        minutes={sparring.minutes}
+        enemyRosterId={RL_LEARNER_ROSTER_ID}
+        buildBrain={() => buildLearnerBrain(policy, "BoxerPuncher", 100, { recording: false, cpuVsCpu: false })}
+        onExit={() => {
+          clearAllKeys();
           setSparring(null);
         }}
       />
@@ -307,6 +358,17 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
             <ChevronLeft className="w-4 h-4" /> Back
           </Button>
           <div className="text-lg font-semibold">AI Training</div>
+          <div className="flex rounded border border-white/15 p-0.5" data-testid="switch-training-mode">
+            <Button size="sm" variant={mode === "fundamentals" ? "default" : "ghost"} className="h-7"
+              onClick={() => switchMode("fundamentals")} data-testid="button-mode-fundamentals">
+              Fundamentals
+            </Button>
+            <Button size="sm" variant={mode === "rl" ? "default" : "ghost"} className="h-7"
+              onClick={() => switchMode("rl")} data-testid="button-mode-rl">
+              RL Policy
+            </Button>
+          </div>
+          {mode === "fundamentals" && <>
           <div className="text-xs text-white/50" data-testid="text-sweep-position">
             Generation {run.gen} · fundamental {run.fundIndex + 1}/{SWEEP_LENGTH} · {run.completed}/{cycleTotal} bouts
           </div>
@@ -318,7 +380,18 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
               <RotateCcw className="w-4 h-4" /> Reset
             </Button>
           </div>
+          </>}
         </div>
+
+        {mode === "rl" ? (
+          <RlTrainingPanel
+            runRef={rlRunRef}
+            rtRef={rlRtRef}
+            running={rlRunning}
+            setRunning={setRlRunning}
+            onFight={(policy, minutes) => { setRlRunning(false); setSparring({ kind: "rl", policy, minutes }); }}
+          />
+        ) : (<>
 
         {/* Sweep progress. The bar is the whole 73-fundamental sweep, filled
             smoothly by the bouts inside the fundamental under test. */}
@@ -418,7 +491,7 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
                             <Button size="sm" variant="ghost" onClick={() => { setSelected(s.id); setTab("fundamentals"); }}>
                               View
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setSparring({ seed: s, minutes: 1 })} data-testid={`button-fight-${s.id}`}>
+                            <Button size="sm" variant="ghost" onClick={() => setSparring({ kind: "seed", seed: s, minutes: 1, obs: newObserver() })} data-testid={`button-fight-${s.id}`}>
                               <Swords className="w-3 h-3" />
                             </Button>
                           </div>
@@ -477,7 +550,7 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
               <span>Fight a seed at normal speed for</span>
               {[1, 2, 3].map(m => (
                 <Button key={m} size="sm" variant="outline" disabled={!ranked[0]}
-                  onClick={() => ranked[0] && setSparring({ seed: ranked[0], minutes: m })}
+                  onClick={() => ranked[0] && setSparring({ kind: "seed", seed: ranked[0], minutes: m, obs: newObserver() })}
                   data-testid={`button-spar-${m}`}>
                   {m} min
                 </Button>
@@ -592,6 +665,7 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
             })}
           </div>
         )}
+        </>)}
       </div>
     </div>
   );
@@ -612,13 +686,27 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
  * entirely, because a seed's win rate has to stay comparable with the seeds it
  * is ranked against.
  */
-function TraineeFight({ seed, minutes, onExit }: { seed: FundamentalSeed; minutes: number; onExit: () => void }) {
+function TraineeFight({ title, minutes, enemyRosterId, buildBrain, onTick, onClose, onExit }: {
+  title: string;
+  minutes: number;
+  enemyRosterId?: number;
+  /** Builds the AI corner's brain once the fight has started. */
+  buildBrain: () => AiBrainState;
+  /** Called after every engine step (the seed spar scores the AI side here). */
+  onTick?: (s: GameState, dt: number) => void;
+  /** Called exactly once when the fight goes away. */
+  onClose?: () => void;
+  onExit: () => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GameState | null>(null);
-  const obsRef = useRef<FightObserver>(newObserver());
-  const foldedRef = useRef(false);
+  const closedRef = useRef(false);
   const rafRef = useRef<number>(0);
   const lastRef = useRef<number>(0);
+  const tickRef = useRef(onTick);
+  tickRef.current = onTick;
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   if (stateRef.current === null) {
     resetAutoZoom();
@@ -629,7 +717,7 @@ function TraineeFight({ seed, minutes, onExit }: { seed: FundamentalSeed; minute
       true, "champion",
       1, minutes * 60, "normal",
       65, 65,
-      "BoxerPuncher", seed.name,
+      "BoxerPuncher", title,
       undefined,
       false, false, false, false,
       false,                 // player-controlled
@@ -638,11 +726,9 @@ function TraineeFight({ seed, minutes, onExit }: { seed: FundamentalSeed; minute
       1, 1, 1,
       undefined, undefined,
       false,
-      seedRosterId(seed.id),
+      enemyRosterId,
     );
-    // Same reason as the tournament: give the brain the seed's own identity so
-    // its evolved parameters are the ones being fought.
-    s.aiBrain = initAiBrain("champion", "BoxerPuncher", 100, false, seedRosterId(seed.id));
+    s.aiBrain = buildBrain();
     // Explicit: this corner is the player's, and nothing else is to drive it.
     s.playerAiBrain = null;
     s.phase = "fighting";
@@ -654,13 +740,13 @@ function TraineeFight({ seed, minutes, onExit }: { seed: FundamentalSeed; minute
     stateRef.current = s;
   }
 
-  // Fold the AI side in once, on the way out. Guarded because an effect cleanup
-  // runs twice under StrictMode and these tallies are cumulative.
+  // Close once, on the way out. Guarded because an effect cleanup runs twice
+  // under StrictMode and whatever onClose folds is cumulative.
   useEffect(() => () => {
-    if (foldedRef.current) return;
-    foldedRef.current = true;
-    foldAiObservations(seed, obsRef.current);
-  }, [seed]);
+    if (closedRef.current) return;
+    closedRef.current = true;
+    closeRef.current?.();
+  }, []);
 
   // The parent rebuilds onExit on every render and re-renders five times a
   // second to refresh the standings. This effect must therefore not depend on
@@ -708,7 +794,7 @@ function TraineeFight({ seed, minutes, onExit }: { seed: FundamentalSeed; minute
       if (s.phase === "fighting" || s.phase === "prefight") {
         s = updateGame({ ...s }, dt);
         stateRef.current = s;
-        observeAiTick(obsRef.current, s, dt);
+        tickRef.current?.(s, dt);
       }
       const ctx = canvasRef.current?.getContext("2d");
       if (ctx) renderGame(ctx, s);
@@ -722,7 +808,7 @@ function TraineeFight({ seed, minutes, onExit }: { seed: FundamentalSeed; minute
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black" data-testid="trainee-fight">
       <canvas ref={canvasRef} width={800} height={600} style={{ height: "100vh", width: "auto" }} />
       <div className="absolute top-3 left-3 text-xs text-white/50">
-        {seed.name} · {minutes} min · Esc to leave
+        {title} · {minutes} min · Esc to leave
       </div>
       <Button size="sm" variant="destructive" className="absolute top-3 right-3" onClick={onExit}>
         <X className="w-4 h-4" /> Leave
