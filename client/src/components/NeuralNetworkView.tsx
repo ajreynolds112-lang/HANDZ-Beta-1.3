@@ -9,6 +9,7 @@ import PunchAnimEditor from "@/components/PunchAnimEditor";
 import NeuralTestFight from "@/components/NeuralTestFight";
 import AiTrainingView from "@/components/AiTrainingView";
 import GithubPushCard from "@/components/GithubPushCard";
+import SparringRewardsCard from "@/components/SparringRewardsCard";
 import RosterGenerationView from "@/components/RosterGenerationView";
 import * as localSaves from "@/lib/localSaves";
 import { regenerateRosterNumbers } from "@/game/careerRoster";
@@ -1379,6 +1380,8 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
   const [turnConfig, setTurnConfig] = useState<TurnConfig>(() => getTurnConfig());
   const [aiRangeConfig, setAiRangeConfig] = useState<AiRangeConfig>(() => getAiRangeConfig());
   const [stoppageConfig, setStoppageConfig] = useState<StoppageConfig>(() => getStoppageConfig());
+  // Bumped after an upload so self-contained cards remount from storage.
+  const [paramsRev, setParamsRev] = useState(0);
   const [aiPatternConfig, setAiPatternConfig] = useState<AiPatternConfig>(() => getAiPatternConfig());
   const [underTheHood, setUnderTheHood] = useState(() => isUnderTheHoodEnabled());
   const [showUploadZone, setShowUploadZone] = useState(false);
@@ -1674,6 +1677,7 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
       setTurnConfig(getTurnConfig());
       setAiRangeConfig(getAiRangeConfig());
       setStoppageConfig(getStoppageConfig());
+      setParamsRev(r => r + 1);
       setAiPatternConfig(loadAiPatternConfig());
       setFightTips(getFightTips());
       setNightmareBypass(localStorage.getItem(LS_NIGHTMARE_BYPASS_KEY) === "true");
@@ -3205,6 +3209,7 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
               </div>
             ))}
           </Card>
+          <SparringRewardsCard key={paramsRev} />
           <Card className="p-3 w-full space-y-3" style={{ background: "#0a1a0a", border: "1px solid #1a4a1a" }}>
             <div className="flex items-center justify-between gap-2">
               <div>

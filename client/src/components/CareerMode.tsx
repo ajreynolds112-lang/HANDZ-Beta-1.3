@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { SPARRING_DURATIONS, SPARRING_UPGRADE_ACCURACY, SPARRING_WIN_POINTS, SPARRING_TIER_LABELS, nextSparringTier, loadSparringDuration, saveSparringDuration, type SparringDuration } from "@/game/sparringRewards";
+import { SPARRING_DURATIONS, getSparringRewardConfig, SPARRING_TIER_LABELS, nextSparringTier, loadSparringDuration, saveSparringDuration, type SparringDuration } from "@/game/sparringRewards";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Plus, Trash2, BarChart3, ChevronUp, ChevronLeft, ChevronRight, Dumbbell, Target, Trophy, Users, Swords, Pencil, Save, Check, Settings, Lock, Unlock, Download, Upload, Music, ListMusic, Play, Pause, Hammer, RotateCcw, MessageSquare, Copy, ClipboardPaste, Zap } from "lucide-react";
@@ -4316,6 +4316,9 @@ function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, 
   const hasImportTicket = hasPerk(withSavedInventory(fighter), "importSparring", rs);
   const [importedId, setImportedId] = useState<number | null>(null);
   const [duration, setDuration] = useState<SparringDuration>(() => loadSparringDuration());
+  const rewardCfg = getSparringRewardConfig();
+  const upgradeOn = rewardCfg.upgradeAccuracyPct <= 100;
+  const upgradePct = Math.round(rewardCfg.upgradeAccuracyPct);
   // Roster entries hold no name of their own; the catalogue does.
   const importRoster = hasImportTicket
     ? [...(rs?.roster ?? [])]
@@ -4362,7 +4365,7 @@ function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, 
       <p className="text-xs w-full text-[#141412] bg-[#c7c095] font-bold">
         {importedId != null
           ? `Import session: 1 round, 3 minutes \u2022 4\u00d7 rewards on a win \u2022 partner spars on double stamina. Allocate earned points to ${sparStatText}.`
-          : `Practice fight: 1 round, ${duration / 60} minute${duration > 60 ? "s" : ""}. Win with ${Math.round(SPARRING_UPGRADE_ACCURACY * 100)}%+ accuracy to earn the next tier's rewards. Allocate earned points to ${sparStatText}.`}
+          : `Practice fight: 1 round, ${duration / 60} minute${duration > 60 ? "s" : ""}. ${upgradeOn ? `Win with ${upgradePct}%+ accuracy to earn the next tier's rewards. ` : ""}Allocate earned points to ${sparStatText}.`}
       </p>
       {importedId == null && (
         <div className="flex w-full gap-2" data-testid="sparring-duration">
@@ -4385,7 +4388,7 @@ function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, 
           const minFights = diff === "champion" ? 7 : diff === "elite" ? 4 : diff === "contender" ? 1 : 0;
           const champPrepLocked = diff === "champion" && !nearFight;
           const locked = !allSparringUnlocked && (fights < minFights || champPrepLocked);
-          const winPts = SPARRING_WIN_POINTS[diff];
+          const winPts = rewardCfg.tiers[diff].winPoints;
           const upTier = nextSparringTier(diff);
           const lockReason = fights < minFights ? `Unlocks at ${minFights} fights` : champPrepLocked ? "Available in last 2 prep weeks" : "";
           return (
@@ -4403,7 +4406,7 @@ function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, 
                         session. Stated as the rule rather than a figure: the
                         loss total is built from a different base than the win
                         figure beside it, so no single number is honest here. */}
-                    {locked ? lockReason : `Win: ${importedId != null ? winPts * 4 : winPts} pts \u2022 Lose: half pts \u2022 ${Math.round(SPARRING_UPGRADE_ACCURACY * 100)}%+ acc win: ${SPARRING_TIER_LABELS[upTier]} rewards`}
+                    {locked ? lockReason : `Win: ${importedId != null ? winPts * 4 : winPts} pts \u2022 Lose: half pts${upgradeOn ? ` \u2022 ${upgradePct}%+ acc win: ${SPARRING_TIER_LABELS[upTier]} rewards` : ""}`}
                   </p>
                 </div>
                 <span className="font-semibold text-[#ffffff] text-[20px]">{locked ? "LOCKED" : "SPAR"}</span>

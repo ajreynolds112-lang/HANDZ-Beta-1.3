@@ -84,7 +84,7 @@ import LoadingScreen from "@/components/LoadingScreen";
 import { useChunkedLoader } from "@/lib/useChunkedLoader";
 import { pickRewardCrates, getAiPunchEnduranceLossForRank } from "@/game/rosterGenConfig";
 import { computeForceEarned } from "@/game/forceRewards";
-import { SPARRING_XP_MULT, SPARRING_WIN_POINTS, SPARRING_POINT_CAP, SPARRING_WIN_RARITY_CAP, sparringRewardTier, sparringWinRarity, isSparringUpgrade, SPARRING_TIER_LABELS, type SparringDuration } from "@/game/sparringRewards";
+import { getSparringRewardConfig, SPARRING_WIN_RARITY_CAP, sparringRewardTier, sparringWinRarity, isSparringUpgrade, SPARRING_TIER_LABELS, type SparringDuration } from "@/game/sparringRewards";
 import type { CrateId } from "@/game/cratesConfig";
 
 /**
@@ -1745,14 +1745,16 @@ export default function Game() {
         const landed = newState.player.punchesLanded;
         const accuracy = thrown > 0 ? landed / thrown : 0;
         // A win at 60%+ accuracy pays the next tier's rewards (Champion → Undisputed).
-        const sparUpgraded = isSparringUpgrade(sparringWon, accuracy);
-        const sparRewardTier = sparringRewardTier(sparringDifficulty, sparringWon, accuracy);
+        const sparRewardCfg = getSparringRewardConfig();
+        const sparUpgraded = isSparringUpgrade(sparringWon, accuracy, sparRewardCfg);
+        const sparRewardTier = sparringRewardTier(sparringDifficulty, sparringWon, accuracy, sparRewardCfg);
+        const sparTierRewards = sparRewardCfg.tiers[sparRewardTier];
         const sparringBase = 400 * (activeFighter.level / 100) * 0.5 * 20 * 4 * 0.7;
-        const sparringDiffMult = SPARRING_XP_MULT[sparRewardTier];
+        const sparringDiffMult = sparTierRewards.xpMult;
         const winMult = sparringWon ? 1.0 : 0.4;
         const xpGained = Math.max(1, Math.floor(sparringBase * sparringDiffMult * winMult * 0.32));
 
-        let sparringAllocPoints = sparringWon ? SPARRING_WIN_POINTS[sparRewardTier] : 1;
+        let sparringAllocPoints = sparringWon ? sparTierRewards.winPoints : 1;
 
         let sparRefPts = 0;
         if (sparringWon) {
@@ -1792,7 +1794,7 @@ export default function Game() {
         sparringAllocPoints = Math.round(sparringAllocPoints * (sparCfg.statSparMult ?? 1.0));
         // Global training SP rebalance: all training rewards are reduced by 40%.
         sparringAllocPoints = Math.ceil(sparringAllocPoints * 0.6);
-        const sparMaxByDiffBase = SPARRING_POINT_CAP[sparRewardTier];
+        const sparMaxByDiffBase = sparTierRewards.pointCap;
         // Idle penalties only kick in after a 4-week grace period with no opponent.
         const sparMaxByDiff = sparIdleWeeks === 5 ? Math.ceil(sparMaxByDiffBase / 2) : sparMaxByDiffBase;
         sparringAllocPoints = Math.min(sparringAllocPoints, sparMaxByDiff);
@@ -1987,7 +1989,7 @@ export default function Game() {
         // an exhausted tier could fall back to something above the ceiling.
         const sparElapsedSeconds = Math.max(0, newState.roundDuration - newState.roundTimer);
         const sparRewardRarity = sparringWon
-          ? sparringWinRarity(sparElapsedSeconds, sparRewardTier, sparUpgraded)
+          ? sparringWinRarity(sparElapsedSeconds, sparRewardTier, sparUpgraded, sparRewardCfg)
           : null;
         if (sparUpgraded) {
           const upgradeMilestone = {

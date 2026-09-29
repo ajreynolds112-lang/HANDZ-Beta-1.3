@@ -73,6 +73,8 @@ const PARAM_SHAPES = {
   handz_ai_range_config: "object",
   handz_rc_config: "object",
   handz_stoppage_config: "object",
+  // Sparring rewards: accuracy upgrade threshold + per-tier XP/points/cap
+  handz_sparring_reward_config: "object",
   handz_ai_pattern_config: "object",
   handz_fatigue_config: "object",
   handz_directional_perfect_block: "boolean",
