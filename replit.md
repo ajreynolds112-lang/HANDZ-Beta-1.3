@@ -5,6 +5,34 @@ HANDZ is a full-stack web application implementing a top-down orthographic boxin
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
+After each request, concisely state in plain English the new functionality it added.
+
+**GitHub sync (set by the user):** every update is committed to https://github.com/ajreynolds112-lang/HANDZ-Beta-1.3 (branch `main`) via the GitHub connection — but only after the user confirms each push. Ask with a short summary of the files changed; never push unconfirmed.
+
+**Required skills on every update (always active, set by the user):** read and apply these workspace skills in `.local/custom_skills/` on every change:
+- **`using-agent-skills` FIRST** (extremely important, per the user): activate it before any other skill at the start of every task; use its discovery tree to pick the phase skills, then layer the rest of this list on top.
+- `ponytail-main-*` (both variants): laziest working solution, YAGNI, reuse before writing, root-cause fixes, full intensity by default.
+- `ponytail-review-*`, `ponytail-audit-*`, `ponytail-debt-*`, `ponytail-gain-*`, `ponytail-help-*` (both variants each): review diffs for over-engineering, track `ponytail:` shortcut comments; audit/debt/gain/help run on request.
+- `token-efficiency`: keep tool output and file reads small.
+- `router`: send game-dev work to the matching gamedev skill before acting.
+- `input-systems`: follow it for anything touching controls, key mapping, rebinding or input feel.
+- `skill` (web research): use it whenever the internet or an outside platform/URL needs looking up.
+- `code-review-and-quality`, `code-simplification`: review every change for correctness and clarity; simplify without changing behavior.
+- `context-engineering`: keep session context lean and relevant.
+- `api-and-interface-design`: stable contracts for any API, module boundary or type shared between parts.
+- `documentation-and-adrs`: record non-obvious design decisions and keep docs in step with shipped changes.
+- `ci-cd-and-automation`: follow it for check scripts, validation workflows and build/deploy automation.
+- Chrome DevTools set — `browser-testing-with-devtools`, `chrome-devtools`, `chrome-devtools-cli`, `troubleshooting`: verify browser behavior (DOM, console, network, visuals). No MCP server is configured; use the CLI (`chrome-devtools`, setup in its `references/installation.md`) against the system Chromium, and `troubleshooting` when a page/connection fails. Fall back to screenshots/logs only if the CLI can't run.
+- `a11y-debugging`: keyboard nav, focus states, labels, contrast on any UI change.
+- `debug-optimize-lcp`: slow page/menu loads, Core Web Vitals.
+- `memory-leak-debugging`: memory growth, long-session slowdowns, heap snapshots.
+- `cookie-debugging`: session/auth/cookie and 401/403 issues.
+- `game-ai`: AI opponent decision-making, state machines, behavior logic.
+- `camera-systems`: fight/gym camera follow, zoom, framing, shake.
+- `game-ui-ux`: HUD, menus, overlays, scaling, focus navigation.
+- `save-systems`: save slots, persistence, migrations, save file import/export.
+- `rpg`: career progression — stats, leveling, items/equipment, rewards.
+- `create-game-assets`: any generated or sourced art (sprites, item icons, textures).
 
 ## System Architecture
 
