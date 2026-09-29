@@ -7,10 +7,11 @@ HANDZ is a full-stack web application implementing a top-down orthographic boxin
 Preferred communication style: Simple, everyday language.
 After each request, concisely state in plain English the new functionality it added.
 
-**GitHub sync (set by the user):** every update is committed to https://github.com/ajreynolds112-lang/HANDZ-Beta-1.3 (branch `main`) via the GitHub connection — but only after the user confirms each push. Ask with a short summary of the files changed; never push unconfirmed.
+**GitHub sync (set by the user):** every update is committed to https://github.com/ajreynolds112-lang/HANDZ-Beta-1.3 (branch `main`) via the GitHub connection. Push every update immediately without asking for confirmation (user's instruction, in force until they say otherwise). Every push also updates the repo's About description to: `Last update: <date, time ET> — <what was changed/rolled back>` (GitHub caps it at 350 chars).
 
 **Required skills on every update (always active, set by the user):** read and apply these workspace skills in `.local/custom_skills/` on every change:
 - **`using-agent-skills` FIRST** (extremely important, per the user): activate it before any other skill at the start of every task; use its discovery tree to pick the phase skills, then layer the rest of this list on top.
+- **Skill discovery (set by the user):** whenever a task could benefit from a skill not already listed here, look for one first: `skill-finder` (secondary) for existing Replit/workspace skills, `github-solution-finder` (secondary) for proven open-source libraries/solutions, and `skill` (web research) for anything outside the repo. Pick by long-term cost efficiency: prefer what's already installed, adopt something new only if it will save more time/tokens over repeated use than it costs to set up and keep in context. Skip discovery on routine tasks the current skills already cover.
 - `ponytail-main-*` (both variants): laziest working solution, YAGNI, reuse before writing, root-cause fixes, full intensity by default.
 - `ponytail-review-*`, `ponytail-audit-*`, `ponytail-debt-*`, `ponytail-gain-*`, `ponytail-help-*` (both variants each): review diffs for over-engineering, track `ponytail:` shortcut comments; audit/debt/gain/help run on request.
 - `token-efficiency`: keep tool output and file reads small.
