@@ -9,31 +9,34 @@ After each request, concisely state in plain English the new functionality it ad
 
 **GitHub sync (set by the user):** every update is committed to https://github.com/ajreynolds112-lang/HANDZ-Beta-1.3 (branch `main`) via the GitHub connection. Push every update immediately without asking for confirmation (user's instruction, in force until they say otherwise). Every push also updates the repo's About description to: `Last update: <date, time ET> — <what was changed/rolled back>` (GitHub caps it at 350 chars).
 
-**Required skills on every update (always active, set by the user):** read and apply these workspace skills in `.local/custom_skills/` on every change:
-- **`using-agent-skills` FIRST** (extremely important, per the user): activate it before any other skill at the start of every task; use its discovery tree to pick the phase skills, then layer the rest of this list on top.
-- **Skill discovery (set by the user):** whenever a task could benefit from a skill not already listed here, look for one first: `skill-finder` (secondary) for existing Replit/workspace skills, `github-solution-finder` (secondary) for proven open-source libraries/solutions, and `skill` (web research) for anything outside the repo. Pick by long-term cost efficiency: prefer what's already installed, adopt something new only if it will save more time/tokens over repeated use than it costs to set up and keep in context. Skip discovery on routine tasks the current skills already cover.
-- `ponytail-main-*` (both variants): laziest working solution, YAGNI, reuse before writing, root-cause fixes, full intensity by default.
-- `ponytail-review-*`, `ponytail-audit-*`, `ponytail-debt-*`, `ponytail-gain-*`, `ponytail-help-*` (both variants each): review diffs for over-engineering, track `ponytail:` shortcut comments; audit/debt/gain/help run on request.
+**Skill activation (set by the user):** `using-agent-skills` (in `.local/custom_skills/`) is the single entry point. Activate it FIRST at the start of every task; it decides which other skills load. Only load a skill when the task matches its trigger below or in its own decision tree. Never preload the whole list, because every skill read costs tokens on every request.
+
+*Always on (small, every change):*
+- `ponytail-main-*` (both variants): laziest working solution, YAGNI, reuse before writing, root-cause fixes.
 - `token-efficiency`: keep tool output and file reads small.
-- `router`: send game-dev work to the matching gamedev skill before acting.
-- `input-systems`: follow it for anything touching controls, key mapping, rebinding or input feel.
-- `skill` (web research): use it whenever the internet or an outside platform/URL needs looking up.
-- `code-review-and-quality`, `code-simplification`: review every change for correctness and clarity; simplify without changing behavior.
-- `context-engineering`: keep session context lean and relevant.
-- `api-and-interface-design`: stable contracts for any API, module boundary or type shared between parts.
-- `documentation-and-adrs`: record non-obvious design decisions and keep docs in step with shipped changes.
-- `ci-cd-and-automation`: follow it for check scripts, validation workflows and build/deploy automation.
-- Chrome DevTools set — `browser-testing-with-devtools`, `chrome-devtools`, `chrome-devtools-cli`, `troubleshooting`: verify browser behavior (DOM, console, network, visuals). No MCP server is configured; use the CLI (`chrome-devtools`, setup in its `references/installation.md`) against the system Chromium, and `troubleshooting` when a page/connection fails. Fall back to screenshots/logs only if the CLI can't run.
-- `a11y-debugging`: keyboard nav, focus states, labels, contrast on any UI change.
-- `debug-optimize-lcp`: slow page/menu loads, Core Web Vitals.
-- `memory-leak-debugging`: memory growth, long-session slowdowns, heap snapshots.
-- `cookie-debugging`: session/auth/cookie and 401/403 issues.
-- `game-ai`: AI opponent decision-making, state machines, behavior logic.
-- `camera-systems`: fight/gym camera follow, zoom, framing, shake.
-- `game-ui-ux`: HUD, menus, overlays, scaling, focus navigation.
-- `save-systems`: save slots, persistence, migrations, save file import/export.
-- `rpg`: career progression — stats, leveling, items/equipment, rewards.
-- `create-game-assets`: any generated or sourced art (sprites, item icons, textures).
+
+*Load on trigger (`using-agent-skills` routes to these):*
+- Any game-dev work (fighters, AI, levels, feel, physics, shaders): `router` first, which then picks the gamedev skill.
+- AI opponent decision-making or behavior logic: `game-ai`.
+- Controls, key mapping, rebinding, input feel: `input-systems`.
+- Fight or gym camera follow, zoom, framing, shake: `camera-systems`.
+- HUD, menus, overlays, scaling, focus navigation: `game-ui-ux`. Also `a11y-debugging` when the UI change affects keyboard nav, focus, labels or contrast.
+- Save slots, persistence, migrations, save import/export: `save-systems`.
+- Career progression, stats, leveling, items, equipment, rewards: `rpg`.
+- Generated or sourced art (sprites, item icons, textures): `create-game-assets`.
+- API, module boundary or shared type contracts: `api-and-interface-design`.
+- Non-obvious design decisions or doc updates: `documentation-and-adrs`.
+- Check scripts, validation workflows, build/deploy automation: `ci-cd-and-automation`.
+- Reviewing a diff: `code-review-and-quality` and `code-simplification`; `ponytail-review-*` for over-engineering.
+- Verifying browser behavior (DOM, console, network, visuals): `browser-testing-with-devtools` and `chrome-devtools-cli`, using the system Chromium (setup in `chrome-devtools/references/installation.md`; no MCP server is configured). Use `troubleshooting` if the page or connection fails. Fall back to screenshots and logs only if the CLI can't run.
+- Slow page or menu loads, Core Web Vitals: `debug-optimize-lcp`.
+- Memory growth, long-session slowdowns: `memory-leak-debugging`.
+- Session, auth, cookie or 401/403 issues: `cookie-debugging`.
+- Internet or outside-URL lookups: `skill` (web research).
+- Session context growing heavy: `context-engineering`.
+- On request only: `ponytail-audit-*`, `ponytail-debt-*`, `ponytail-gain-*`, `ponytail-help-*`.
+
+*Skill discovery:* when a task could benefit from a skill not listed here, search before building. Use `skill-finder` (secondary) for existing Replit or workspace skills, `github-solution-finder` (secondary) for proven open-source solutions, and `skill` for anything outside the repo. Choose by long-term cost efficiency: prefer what's installed, and adopt something new only if repeated use saves more than it costs to set up and keep in context. Skip discovery on routine tasks the current skills already cover.
 
 ## System Architecture
 
