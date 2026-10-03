@@ -336,7 +336,7 @@ export class Fighter3D {
    * extension, so the glove still lands where the engine says it does.
    */
   private applyPoseOffsets(): void {
-    const offs = getPoseOffsets();
+    const offs = getPoseOffsets(this.mem.stanceBlend >= 0.5 ? "southpaw" : "orthodox");
     let any = false;
     for (const k in offs) { any = true; break; }
     if (!any) return;

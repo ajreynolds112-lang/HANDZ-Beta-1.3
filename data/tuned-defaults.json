@@ -1,7 +1,7 @@
 {
   "kind": "handz-neural-parameters",
   "version": 1,
-  "exportedAt": "2026-09-29T22:08:56.863Z",
+  "exportedAt": "2026-10-03T20:17:45.817Z",
   "params": {
     "handz_punch_anim": {
       "jab": {
@@ -118,6 +118,48 @@
         "damage": 7,
         "staminaCost": 3
       }
+    },
+    "handz_pose_offsets": {
+      "Spine1": [
+        7,
+        40,
+        -5
+      ],
+      "Hips": [
+        1,
+        0,
+        0
+      ],
+      "LeftArm": [
+        16,
+        16,
+        -6
+      ],
+      "LeftForeArm": [
+        0,
+        13,
+        47
+      ],
+      "Head": [
+        -18,
+        11,
+        -20
+      ],
+      "LeftFoot": [
+        -3,
+        22,
+        1
+      ],
+      "LeftUpLeg": [
+        4,
+        -1,
+        -7
+      ],
+      "RightLeg": [
+        0,
+        33,
+        0
+      ]
     },
     "handz_neural_state": {
       "journeyman": {
@@ -5539,7 +5581,7 @@
         "cleanHitTaken": -0.25,
         "cleanStreakTaken": -0.3,
         "stunTaken": -1,
-        "perfectBlock": 0.2,
+        "perfectBlock": 0.1,
         "rhythmCutHit": -0.5,
         "rhythmCutFightCap": 50,
         "ringMileage": 1,

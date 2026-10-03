@@ -2,7 +2,8 @@
  * Hand-tuned joint rotations layered over the solved 3D fight pose, edited in
  * Neural Network → Edit Poses. Each joint holds degrees about the fighter's
  * body axes (x forward, y up, z the fighter's right), applied root → leaf so
- * rotating a joint carries everything below it.
+ * rotating a joint carries everything below it. Orthodox and southpaw each
+ * keep their own set; one can be mirrored onto the other.
  *
  * Stored as tunable config (joins the tuning bundle registry), so it exports,
  * uploads and ships with a publish like every other Neural Network setting.
@@ -13,12 +14,14 @@ export const POSE_OFFSETS_KEY = "handz_pose_offsets";
 
 export type JointRot = [number, number, number];
 export type PoseOffsets = Partial<Record<BoneName, JointRot>>;
+export type PoseStance = "orthodox" | "southpaw";
+export type StancePoses = Record<PoseStance, PoseOffsets>;
 
-let draft: PoseOffsets | null = null;
+let draft: StancePoses | null = null;
 let lastRaw: string | null | undefined;
-let cached: PoseOffsets = {};
+let cached: StancePoses = { orthodox: {}, southpaw: {} };
 
-function clean(v: unknown): PoseOffsets {
+function cleanSet(v: unknown): PoseOffsets {
   const out: PoseOffsets = {};
   if (!v || typeof v !== "object" || Array.isArray(v)) return out;
   for (const [k, r] of Object.entries(v as Record<string, unknown>)) {
@@ -29,26 +32,48 @@ function clean(v: unknown): PoseOffsets {
   return out;
 }
 
-/** Saved offsets (cached on the raw string, so uploads and other tabs are picked up for free). */
-export function getSavedPoseOffsets(): PoseOffsets {
+/**
+ * Reflect a pose across the boxer's centre plane: Left ↔ Right joints swap, and
+ * rotations about the forward (x) and vertical (y) axes change sign while the
+ * side-axis (z) tilt keeps it.
+ */
+export function mirrorPose(o: PoseOffsets): PoseOffsets {
+  const out: PoseOffsets = {};
+  for (const [k, r] of Object.entries(o) as [BoneName, JointRot][]) {
+    const name = (k.startsWith("Left") ? "Right" + k.slice(4) : k.startsWith("Right") ? "Left" + k.slice(5) : k) as BoneName;
+    out[name] = [r[0] === 0 ? 0 : -r[0], r[1] === 0 ? 0 : -r[1], r[2]];
+  }
+  return out;
+}
+
+function clean(v: unknown): StancePoses {
+  const o = v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
+  if ("orthodox" in o || "southpaw" in o) return { orthodox: cleanSet(o.orthodox), southpaw: cleanSet(o.southpaw) };
+  // Older single-set format: it was the orthodox pose; southpaw starts as its mirror.
+  const ortho = cleanSet(o);
+  return { orthodox: ortho, southpaw: mirrorPose(ortho) };
+}
+
+/** Saved poses (cached on the raw string, so uploads and other tabs are picked up for free). */
+export function getSavedStancePoses(): StancePoses {
   let raw: string | null = null;
   try { raw = localStorage.getItem(POSE_OFFSETS_KEY); } catch { /* no storage */ }
   if (raw !== lastRaw) {
     lastRaw = raw;
-    try { cached = clean(raw ? JSON.parse(raw) : {}); } catch { cached = {}; }
+    try { cached = clean(raw ? JSON.parse(raw) : {}); } catch { cached = { orthodox: {}, southpaw: {} }; }
   }
   return cached;
 }
 
-/** What the renderer applies: the editor's unsaved draft while it is open, else the saved set. */
-export function getPoseOffsets(): PoseOffsets {
-  return draft ?? getSavedPoseOffsets();
+/** What the renderer applies for a stance: the editor's unsaved draft while it is open, else the saved set. */
+export function getPoseOffsets(stance: PoseStance): PoseOffsets {
+  return (draft ?? getSavedStancePoses())[stance];
 }
 
-export function setPoseOffsetsDraft(d: PoseOffsets | null): void {
+export function setPoseOffsetsDraft(d: StancePoses | null): void {
   draft = d;
 }
 
-export function savePoseOffsets(o: PoseOffsets): void {
-  localStorage.setItem(POSE_OFFSETS_KEY, JSON.stringify(clean(o)));
+export function savePoseOffsets(p: StancePoses): void {
+  localStorage.setItem(POSE_OFFSETS_KEY, JSON.stringify(clean(p)));
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { ArrowLeft, RotateCcw, Save, Undo2, Redo2 } from "lucide-react";
+import { ArrowLeft, RotateCcw, Save, Undo2, Redo2, FlipHorizontal2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,8 @@ import { createInitialState } from "@/game/engine";
 import { Fighter3D } from "@/game/three/fighterModel";
 import { BONE_NAMES, type BoneName, ensureFighterAssets, fighterAssetEpoch } from "@/game/three/fighterRig";
 import {
-  type JointRot, type PoseOffsets, getSavedPoseOffsets, savePoseOffsets, setPoseOffsetsDraft,
+  type JointRot, type PoseOffsets, type PoseStance, type StancePoses,
+  getSavedStancePoses, mirrorPose, savePoseOffsets, setPoseOffsetsDraft,
 } from "@/game/three/poseOffsets";
 
 const JOINT_LABEL: Record<BoneName, string> = {
@@ -36,7 +37,8 @@ const AXES = [
   { label: "Z", hint: "tilt about the side axis" },
 ];
 const ZERO: JointRot = [0, 0, 0];
-const same = (a: PoseOffsets, b: PoseOffsets) => JSON.stringify(a) === JSON.stringify(b);
+const same = (a: StancePoses, b: StancePoses) => JSON.stringify(a) === JSON.stringify(b);
+const copyPoses = (p: StancePoses): StancePoses => ({ orthodox: { ...p.orthodox }, southpaw: { ...p.southpaw } });
 
 /**
  * Neural Network → Edit Poses: rotate any joint of the 3D boxer's fight stance
@@ -44,30 +46,37 @@ const same = (a: PoseOffsets, b: PoseOffsets) => JSON.stringify(a) === JSON.stri
  * redoes, Save (confirmed) writes the set the fights use.
  */
 export default function PoseEditorView({ onBack }: { onBack: () => void }) {
-  const [offsets, setOffsets] = useState<PoseOffsets>(() => ({ ...getSavedPoseOffsets() }));
-  const [savedSnap, setSavedSnap] = useState<PoseOffsets>(() => ({ ...getSavedPoseOffsets() }));
+  const [poses, setPoses] = useState<StancePoses>(() => copyPoses(getSavedStancePoses()));
+  const [savedSnap, setSavedSnap] = useState<StancePoses>(() => copyPoses(getSavedStancePoses()));
   const [selected, setSelected] = useState<BoneName>("LeftArm");
   const [southpaw, setSouthpaw] = useState(false);
+  const stance: PoseStance = southpaw ? "southpaw" : "orthodox";
+  const other: PoseStance = southpaw ? "orthodox" : "southpaw";
+  const stanceRef = useRef(stance);
+  stanceRef.current = stance;
+  const [confirmMirror, setConfirmMirror] = useState(false);
   const [fullGuard, setFullGuard] = useState(false);
   const [confirmSave, setConfirmSave] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const undoRef = useRef<PoseOffsets[]>([]);
-  const redoRef = useRef<PoseOffsets[]>([]);
+  const undoRef = useRef<StancePoses[]>([]);
+  const redoRef = useRef<StancePoses[]>([]);
   const gestureRef = useRef<{ key: string; t: number } | null>(null);
   const [, bump] = useState(0);
-  const offsetsRef = useRef(offsets);
-  offsetsRef.current = offsets;
-  const dirty = !same(offsets, savedSnap);
+  const offsetsRef = useRef(poses);
+  offsetsRef.current = poses;
+  const offsets: PoseOffsets = poses[stance];
+  const dirty = !same(poses, savedSnap);
 
   // The renderer reads the draft while this view is open.
-  useEffect(() => { setPoseOffsetsDraft(offsets); }, [offsets]);
+  useEffect(() => { setPoseOffsetsDraft(poses); }, [poses]);
   useEffect(() => () => setPoseOffsetsDraft(null), []);
 
   /** One undo step per gesture: a run of edits to the same joint axis with no pause over 0.6 s. */
   const edit = useCallback((bone: BoneName, axis: number, value: number) => {
     const now = performance.now();
-    const key = `${bone}:${axis}`;
+    const st = stanceRef.current;
+    const key = `${st}:${bone}:${axis}`;
     const g = gestureRef.current;
     if (!g || g.key !== key || now - g.t > 600) {
       undoRef.current.push(offsetsRef.current);
@@ -76,20 +85,21 @@ export default function PoseEditorView({ onBack }: { onBack: () => void }) {
     }
     gestureRef.current = { key, t: now };
     const v = Math.max(-180, Math.min(180, Math.round(value)));
-    setOffsets(prev => {
+    setPoses(prevAll => {
+      const prev = prevAll[st];
       const r: JointRot = [...(prev[bone] ?? ZERO)] as JointRot;
       r[axis] = v;
       const next = { ...prev };
       if (r.every(x => x === 0)) delete next[bone]; else next[bone] = r;
-      return next;
+      return { ...prevAll, [st]: next };
     });
   }, []);
 
-  const replaceAll = useCallback((next: PoseOffsets) => {
+  const replaceAll = useCallback((next: StancePoses) => {
     undoRef.current.push(offsetsRef.current);
     redoRef.current = [];
     gestureRef.current = null;
-    setOffsets(next);
+    setPoses(next);
   }, []);
 
   const undo = useCallback(() => {
@@ -97,7 +107,7 @@ export default function PoseEditorView({ onBack }: { onBack: () => void }) {
     if (!prev) return;
     redoRef.current.push(offsetsRef.current);
     gestureRef.current = null;
-    setOffsets(prev);
+    setPoses(prev);
     bump(n => n + 1);
   }, []);
   const redo = useCallback(() => {
@@ -105,7 +115,7 @@ export default function PoseEditorView({ onBack }: { onBack: () => void }) {
     if (!next) return;
     undoRef.current.push(offsetsRef.current);
     gestureRef.current = null;
-    setOffsets(next);
+    setPoses(next);
     bump(n => n + 1);
   }, []);
 
@@ -262,6 +272,9 @@ export default function PoseEditorView({ onBack }: { onBack: () => void }) {
           <ArrowLeft className="w-4 h-4 mr-1" /> Back
         </Button>
         <h2 className="text-lg font-bold mr-auto">Edit Poses</h2>
+        <Button variant="outline" size="sm" onClick={() => setConfirmMirror(true)} data-testid="button-pose-mirror">
+          <FlipHorizontal2 className="w-4 h-4 mr-1" /> Mirror to {southpaw ? "Orthodox" : "Southpaw"}
+        </Button>
         <Button variant="outline" size="sm" onClick={undo} disabled={!undoRef.current.length} title="Undo (Cmd/Ctrl+Z)" data-testid="button-pose-undo">
           <Undo2 className="w-4 h-4" />
         </Button>
@@ -310,7 +323,7 @@ export default function PoseEditorView({ onBack }: { onBack: () => void }) {
             <div className="flex items-center">
               <div className="font-semibold mr-auto">{JOINT_LABEL[selected]}</div>
               <Button variant="ghost" size="sm" disabled={!offsets[selected]}
-                onClick={() => { const n = { ...offsets }; delete n[selected]; replaceAll(n); }} data-testid="button-joint-reset">
+                onClick={() => { const n = { ...offsets }; delete n[selected]; replaceAll({ ...poses, [stance]: n }); }} data-testid="button-joint-reset">
                 <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset joint
               </Button>
             </div>
@@ -335,9 +348,9 @@ export default function PoseEditorView({ onBack }: { onBack: () => void }) {
 
           <div className="border-t border-border pt-3 flex items-center gap-2">
             <span className="text-xs text-muted-foreground mr-auto">
-              {editedCount} joint{editedCount === 1 ? "" : "s"} edited{dirty ? " · unsaved changes" : ""}
+              {southpaw ? "Southpaw" : "Orthodox"}: {editedCount} joint{editedCount === 1 ? "" : "s"} edited{dirty ? " · unsaved changes" : ""}
             </span>
-            <Button variant="outline" size="sm" disabled={!editedCount} onClick={() => replaceAll({})} data-testid="button-pose-reset-all">
+            <Button variant="outline" size="sm" disabled={!editedCount} onClick={() => replaceAll({ ...poses, [stance]: {} })} data-testid="button-pose-reset-all">
               Reset all
             </Button>
           </div>
@@ -349,16 +362,36 @@ export default function PoseEditorView({ onBack }: { onBack: () => void }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Save fight pose?</AlertDialogTitle>
             <AlertDialogDescription>
-              Every 3D fighter will use these joint rotations ({editedCount} joint{editedCount === 1 ? "" : "s"} edited).
+              Every 3D fighter will use these joint rotations (orthodox: {Object.keys(poses.orthodox).length},
+              southpaw: {Object.keys(poses.southpaw).length} joints edited).
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-pose-save-cancel">Cancel</AlertDialogCancel>
             <AlertDialogAction data-testid="button-pose-save-confirm" onClick={() => {
-              savePoseOffsets(offsets);
-              setSavedSnap(offsets);
+              savePoseOffsets(poses);
+              setSavedSnap(copyPoses(poses));
               setJustSaved(true);
             }}>Save</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmMirror} onOpenChange={setConfirmMirror}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mirror {southpaw ? "southpaw" : "orthodox"} pose to {southpaw ? "orthodox" : "southpaw"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The {other} pose will be replaced by a left/right mirror of the current {stance} pose. You can undo this
+              with Cmd/Ctrl+Z, and nothing is saved until you press Save.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-pose-mirror-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction data-testid="button-pose-mirror-confirm" onClick={() => {
+              replaceAll({ ...poses, [other]: mirrorPose(poses[stance]) });
+              setSouthpaw(other === "southpaw");
+            }}>Mirror</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
