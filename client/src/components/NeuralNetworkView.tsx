@@ -15,9 +15,10 @@ import * as localSaves from "@/lib/localSaves";
 import { regenerateRosterNumbers } from "@/game/careerRoster";
 import type { CareerRosterState } from "@shared/schema";
 import { ADMIN_PIN, isValidPin } from "@/lib/pinAuth";
-import { ArrowLeft, RotateCcw, Save, Lock, Download, Upload, Trash2, Star, Music, Lightbulb, Plus, Minus, Users, Package, BookOpen, Swords } from "lucide-react";
+import { ArrowLeft, RotateCcw, Save, Lock, Download, Upload, Trash2, Star, Music, Lightbulb, Plus, Minus, Users, Package, BookOpen, Swords, PersonStanding } from "lucide-react";
 import ItemsEditorView from "@/components/ItemsEditorView";
 import GameDocsView from "@/components/GameDocsView";
+import PoseEditorView from "@/components/PoseEditorView";
 import { RefinementTuningCard } from "@/components/RefinementTuningCard";
 import { RlPolicyCard } from "@/components/RlPolicyCard";
 import ScalingReferenceTables from "@/components/ScalingReferenceTables";
@@ -1393,6 +1394,7 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
   const [testMode, setTestMode] = useState<null | "choose" | "normal" | "training">(null);
   const [showItemsEditor, setShowItemsEditor] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
+  const [showPoseEditor, setShowPoseEditor] = useState(false);
   const [fightTips, setFightTips] = useState<string[]>(() => getFightTips());
   const [tipDeleteConfirm, setTipDeleteConfirm] = useState<number | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -2036,6 +2038,10 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
     return <GameDocsView onBack={() => setShowDocs(false)} />;
   }
 
+  if (showPoseEditor && unlocked) {
+    return <PoseEditorView onBack={() => setShowPoseEditor(false)} />;
+  }
+
   if (showItemsEditor && unlocked) {
     return <ItemsEditorView onBack={() => setShowItemsEditor(false)} />;
   }
@@ -2298,6 +2304,14 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
             data-testid="button-items-editor"
           >
             <Package className="w-4 h-4" /> Items
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1 gap-2"
+            onClick={() => setShowPoseEditor(true)}
+            data-testid="button-edit-poses"
+          >
+            <PersonStanding className="w-4 h-4" /> Edit Poses
           </Button>
         </div>
       )}

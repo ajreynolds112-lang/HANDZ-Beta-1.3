@@ -17,6 +17,7 @@ import {
 } from "../renderer";
 import { BONE_NAMES, type BoneName, type Region, type RigInstance, createRig, fighterAssetEpoch } from "./fighterRig";
 import { type PoseMemory, type PoseTargets, type RigDims, eyeState, newPoseMemory, newPoseTargets, solvePose } from "./fighterPose";
+import { getPoseOffsets } from "./poseOffsets";
 import { MAT_HEIGHT, toSceneX, toSceneYaw, toSceneZ } from "./worldMapping";
 import { type BodyTilt, type KdMemory, applyKnockdownPose, newKdMemory } from "./knockdownPose";
 import { type RefereeMemory, buildRefereeClothes, newRefereeMemory, solveRefereePose } from "./referee3d";
@@ -204,6 +205,7 @@ export class Fighter3D {
       this.rig.body.position.set(0, 0, 0);
     }
     this.applyPose();
+    if (!f.isKnockedDown) this.applyPoseOffsets();
     this.applyLook(f, colors, state, frame);
     if (f.isKnockedDown) for (const e of this.rig.eyes) e.scale.y = e.userData.baseScale.y * 0.15;
   }
@@ -323,6 +325,36 @@ export class Fighter3D {
       this.fk(`${s}ToeBase`);
       this.keepBind(`${s}ToeBase`);
     });
+  }
+
+  private _oq = new THREE.Quaternion();
+  private _ob = new THREE.Quaternion();
+  private _oe = new THREE.Euler();
+  /**
+   * Hand-edited joint rotations (Edit Poses), about the body axes, root → leaf
+   * so a joint carries its children. A punching arm's offsets fade out with its
+   * extension, so the glove still lands where the engine says it does.
+   */
+  private applyPoseOffsets(): void {
+    const offs = getPoseOffsets();
+    let any = false;
+    for (const k in offs) { any = true; break; }
+    if (!any) return;
+    const bodyInv = this.rig.body.getWorldQuaternion(this._ob).invert();
+    for (const name of BONE_NAMES) {
+      const r = offs[name];
+      if (!r) continue;
+      const armSide = name.startsWith("Left") && /Shoulder|Arm|Hand/.test(name) ? 0
+        : name.startsWith("Right") && /Shoulder|Arm|Hand/.test(name) ? 1 : -1;
+      const w = armSide >= 0 ? 1 - Math.min(1, this.mem.armExt[armSide] || 0) : 1;
+      if (w <= 0) continue;
+      const bone = this.bind[name].bone;
+      // B = the bone's current body-space orientation; local delta = B⁻¹·Q·B.
+      const B = bone.getWorldQuaternion(new THREE.Quaternion()).premultiply(bodyInv);
+      const D = THREE.MathUtils.DEG2RAD * w;
+      this._oq.setFromEuler(this._oe.set(r[0] * D, r[1] * D, r[2] * D, "YXZ"));
+      bone.quaternion.multiply(B.clone().invert().multiply(this._oq).multiply(B));
+    }
   }
 
   private _bd = new THREE.Vector3();

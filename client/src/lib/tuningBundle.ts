@@ -47,6 +47,7 @@ import { deserializeRlRun, loadRlCheckpointRaw, saveRlCheckpoint } from "@/game/
 const PARAM_SHAPES = {
   // Punch animation editor
   handz_punch_anim: "object",
+  handz_pose_offsets: "object",
   // AI graphs: live state, "set as default" snapshots, named presets, per-opponent overrides
   handz_neural_state: "object",
   handz_neural_defaults: "object",
