@@ -28,6 +28,7 @@ import {
   getPunchReachPx, punchPhaseFractions, resetHeadDuckOffset, resetSnapDistanceMult,
 } from "../engine";
 import { levelScale } from "@/lib/scalingConfig";
+import { getActivePunchAnimConfig } from "@/lib/punchAnimConfig";
 import { PX_PER_UNIT } from "./worldMapping";
 
 /** 2D figure body height in px (BODY_H in renderer.ts), the unit its offsets scale with. */
@@ -281,6 +282,7 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
   // there. Step the body in by whatever the straight arm can't cover (capped);
   // the arm IK stretches for the rest.
   let reachLunge = 0, punchYaw = 0, lunge = 0, bodyDip = 0, upperDip = 0, punchLean = 0;
+  const animCfg = getActivePunchAnimConfig();
   for (let i = 0; i < 2; i++) {
     const p = mem.armPunch[i];
     const be = mem.bodyExt[i];
@@ -294,10 +296,13 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
     const deficit = along - (Math.max(0, dims.shoulder[i].x) + dims.armLen * 1.05);
     reachLunge = Math.max(reachLunge, Math.min(MAX_REACH_LUNGE, Math.max(0, deficit)) * be);
     punchYaw += (left ? -1 : 1) * (hook ? 0.75 : upper ? 0.4 : rear ? 0.6 : 0.18) * be;
-    if (!upper) lunge = Math.max(lunge, (hook ? 0.05 : rear ? 0.12 : 0.09) * be);
+    // Per-punch "Lean forward" (Punch Animation Editor) scales the torso tilt and
+    // body step into the punch; the real-reach lunge above is left alone.
+    const leanK = Math.max(0, animCfg[p as keyof typeof animCfg]?.leanMult ?? 1);
+    if (!upper) lunge = Math.max(lunge, (hook ? 0.05 : rear ? 0.12 : 0.09) * be * leanK);
     if (bShot) bodyDip = Math.max(bodyDip, 0.09 * be);
     if (upper) upperDip = Math.max(upperDip, 0.05 * Math.sin(Math.PI * be));
-    punchLean = Math.max(punchLean, (bShot ? 0.25 : 0.1) * be);
+    punchLean = Math.max(punchLean, (bShot ? 0.25 : 0.1) * be * leanK);
   }
 
   // ── pelvis ──

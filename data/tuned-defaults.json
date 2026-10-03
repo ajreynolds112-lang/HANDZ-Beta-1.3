@@ -1,7 +1,7 @@
 {
   "kind": "handz-neural-parameters",
   "version": 1,
-  "exportedAt": "2026-10-03T20:17:45.817Z",
+  "exportedAt": "2026-10-03T20:34:25.713Z",
   "params": {
     "handz_punch_anim": {
       "jab": {
@@ -24,10 +24,10 @@
         "staminaCost": 1
       },
       "cross": {
-        "launchDelayMult": 1,
-        "armSpeedMult": 0.28,
-        "lingerMult": 1,
-        "retractionMult": 0.73,
+        "launchDelayMult": 1.57,
+        "armSpeedMult": 1.43,
+        "lingerMult": 0.99,
+        "retractionMult": 2.39,
         "lockoutMs": 120,
         "angle": -13,
         "reachMult": 1,
@@ -120,46 +120,100 @@
       }
     },
     "handz_pose_offsets": {
-      "Spine1": [
-        7,
-        40,
-        -5
-      ],
-      "Hips": [
-        1,
-        0,
-        0
-      ],
-      "LeftArm": [
-        16,
-        16,
-        -6
-      ],
-      "LeftForeArm": [
-        0,
-        13,
-        47
-      ],
-      "Head": [
-        -18,
-        11,
-        -20
-      ],
-      "LeftFoot": [
-        -3,
-        22,
-        1
-      ],
-      "LeftUpLeg": [
-        4,
-        -1,
-        -7
-      ],
-      "RightLeg": [
-        0,
-        33,
-        0
-      ]
+      "orthodox": {
+        "Spine1": [
+          7,
+          40,
+          -5
+        ],
+        "LeftArm": [
+          16,
+          16,
+          -6
+        ],
+        "LeftForeArm": [
+          -4,
+          13,
+          42
+        ],
+        "Head": [
+          -13,
+          10,
+          -35
+        ],
+        "LeftFoot": [
+          -3,
+          22,
+          1
+        ],
+        "LeftUpLeg": [
+          4,
+          -1,
+          -7
+        ],
+        "RightLeg": [
+          0,
+          33,
+          0
+        ],
+        "Spine": [
+          10,
+          -5,
+          -6
+        ],
+        "Hips": [
+          0,
+          3,
+          0
+        ]
+      },
+      "southpaw": {
+        "Spine1": [
+          -7,
+          -40,
+          -5
+        ],
+        "RightArm": [
+          -16,
+          -16,
+          -6
+        ],
+        "RightForeArm": [
+          4,
+          -13,
+          42
+        ],
+        "Head": [
+          13,
+          -10,
+          -35
+        ],
+        "RightFoot": [
+          3,
+          -22,
+          1
+        ],
+        "RightUpLeg": [
+          -4,
+          1,
+          -7
+        ],
+        "LeftLeg": [
+          0,
+          -33,
+          0
+        ],
+        "Spine": [
+          -10,
+          5,
+          -6
+        ],
+        "Hips": [
+          0,
+          -3,
+          0
+        ]
+      }
     },
     "handz_neural_state": {
       "journeyman": {

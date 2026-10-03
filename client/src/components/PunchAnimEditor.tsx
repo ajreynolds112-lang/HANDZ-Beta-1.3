@@ -104,6 +104,12 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
   const paramsRef = useRef(params);
   const punchTypeRef = useRef(punchType);
   const cycleStartRef = useRef(0);
+  // View spin in degrees (3D only): drag the preview or use the slider for a full 360°.
+  const [spin, setSpin] = useState(0);
+  const spinRef = useRef(0);
+  spinRef.current = spin;
+  const dragRef = useRef<{ x: number; start: number } | null>(null);
+  const use3dView = getGraphicsMode() === "3d";
 
   useEffect(() => { paramsRef.current = params; }, [params]);
 
@@ -154,6 +160,7 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
         colors: DEFAULT_PLAYER_COLORS,
         bobPhase: now * 0.0025,
         punch: { type: punchTypeRef.current, extension: progress },
+        yaw: (spinRef.current * Math.PI) / 180,
       });
       if (!drawn3d) renderFighterPunchFrame(
         ctx, PREVIEW_W, PREVIEW_H,
@@ -179,13 +186,41 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
   }, []);
 
   return (
-    <div className="flex justify-center rounded overflow-hidden bg-zinc-900">
-      <canvas
-        ref={canvasRef}
-        width={PREVIEW_W}
-        height={PREVIEW_H}
-        data-testid="canvas-punch-preview"
-      />
+    <div className="flex flex-col gap-1">
+      <div className="flex justify-center rounded overflow-hidden bg-zinc-900">
+        <canvas
+          ref={canvasRef}
+          width={PREVIEW_W}
+          height={PREVIEW_H}
+          data-testid="canvas-punch-preview"
+          className={use3dView ? "cursor-grab active:cursor-grabbing" : undefined}
+          style={{ touchAction: "none" }}
+          onPointerDown={e => {
+            if (!use3dView) return;
+            dragRef.current = { x: e.clientX, start: spinRef.current };
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={e => {
+            const d = dragRef.current;
+            if (!d) return;
+            const v = Math.round(d.start + (e.clientX - d.x) * 1.2);
+            setSpin(((v % 360) + 360) % 360);
+          }}
+          onPointerUp={() => { dragRef.current = null; }}
+          onPointerCancel={() => { dragRef.current = null; }}
+        />
+      </div>
+      {use3dView && (
+        <div className="flex items-center gap-2 px-1">
+          <span className="text-[10px] text-muted-foreground shrink-0">Spin</span>
+          <input type="range" min={0} max={360} step={1} value={spin} onChange={e => setSpin(Number(e.target.value))}
+            className="flex-1 h-1.5 cursor-pointer accent-blue-500" data-testid="slider-punch-spin" />
+          <span className="text-[10px] font-mono w-8 text-right">{spin}°</span>
+          <button className="text-[10px] text-muted-foreground hover:text-blue-400 underline" onClick={() => setSpin(0)} data-testid="button-punch-spin-reset">
+            reset
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -470,6 +505,14 @@ export default function PunchAnimEditor({ defaultExpanded = false }: PunchAnimEd
                   </span>
                 </p>
                 <div className="space-y-3">
+                  <SliderRow
+                    label="Lean Forward"
+                    desc="How far the body leans and steps forward into this punch (×default, 0 = stays upright). Visual only — hit range is unchanged"
+                    value={p.leanMult ?? 1.0}
+                    min={0} max={2} step={0.05}
+                    defaultVal={1.0}
+                    onChange={v => updateParam(activePunch, "leanMult", v)}
+                  />
                   {cat === "straight" && (
                     <>
                       <SliderRow

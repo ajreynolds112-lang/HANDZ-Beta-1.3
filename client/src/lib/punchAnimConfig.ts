@@ -17,6 +17,8 @@ export interface PunchAnimParams {
   dropPhase: number;
   riseArcFactor: number;
   distanceMult: number;
+  /** 3D: how far the body leans/steps forward into this punch (×default; 0 = upright). Visual only. */
+  leanMult: number;
   /** Actual gameplay hit range in pixels used by hit detection. Independent of reachMult/distanceMult, which are visual-only. */
   hitRangePx: number;
   /** Base damage dealt by this punch before any fighter/archetype/refinement multipliers. */
@@ -42,6 +44,7 @@ export const DEFAULT_PARAMS: Omit<PunchAnimParams, "hitRangePx" | "damage" | "st
   dropPhase: 0.32,
   riseArcFactor: 0.85,
   distanceMult: 1.0,
+  leanMult: 1.0,
 };
 
 export const DEFAULT_PUNCH_ANIM_CONFIG: PunchAnimConfig = {

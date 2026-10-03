@@ -137,7 +137,8 @@ class PreviewRenderer {
     // Frame the whole body (plus the reach, side-on) in this card's shape.
     const aspect = outW / outH;
     const halfTan = Math.tan(THREE.MathUtils.degToRad(CAM_FOV / 2));
-    const lookX = punch ? 0.55 : 0;
+    // The punch framing leans toward the reach; it swings round with a spun model.
+    const lookX = punch ? 0.55 * Math.cos(pose.yaw ?? 0) : 0;
     const halfH = Math.max(punch ? 1.25 : 1.28, (punch ? 1.9 : 0.66) / aspect);
     const dist = halfH / halfTan;
     this.camera.aspect = aspect;
