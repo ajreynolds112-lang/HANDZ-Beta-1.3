@@ -189,8 +189,6 @@ export function punchHitsHead(f: FighterState, punch: PunchType): boolean {
 /** Share of a hook's way home covered during its linger (the rest in retraction). */
 const HOOK_LINGER_RETURN = 0.6;
 
-/** Lunge cap (m): past this, the arm stretches instead so contact always lands. */
-const MAX_REACH_LUNGE = 0.45;
 
 /** Solve the full pose. `dims` from the rig, `mem` is the caller's per-fighter smoothing. */
 export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: PoseContext, out: PoseTargets): PoseTargets {
@@ -303,15 +301,15 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
     oppDist = Math.max(0.2, Math.hypot(oppL.x, oppL.z));
     oppDuck = Math.max(0, Math.min(1, opp.duckProgress || 0));
   }
-  const oppDirX = oppL.x / oppDist, oppDirZ = oppL.z / oppDist;
 
   // Body follow-through, summed per arm off the body's (slower) follow value, so
   // a punch handed from one hand to the other turns the hips through rather
   // than flipping them.
-  // Real-reach lunge: a punch that can land at this distance must visibly get
-  // there. Step the body in by whatever the straight arm can't cover (capped);
-  // the arm IK stretches for the rest.
-  let reachLunge = 0, punchYaw = 0, lunge = 0, bodyDip = 0, upperDip = 0, punchLean = 0;
+  // No punch steps or lunges the body in: closing distance is the fighter's own
+  // footwork. A punch at the edge of its reach is covered by the arm alone.
+  let punchYaw = 0, bodyDip = 0, upperDip = 0, punchLean = 0;
+  // Per leg: how far a same-side hook is pivoting that knee/foot inward.
+  const hookPivot = [0, 0];
   const animCfg = getActivePunchAnimConfig();
   for (let i = 0; i < 2; i++) {
     const p = mem.armPunch[i];
@@ -321,17 +319,11 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
     const hook = p.includes("Hook"), upper = p.includes("Uppercut");
     const rear = left === southpaw;
     const bShot = mem.armBody[i];
-    const reach = getPunchReachPx(f, p) / PX_PER_UNIT;
-    const along = Math.max(0.25, Math.min(oppDist, reach) - (bShot ? 0.2 : 0.14));
-    // Per-punch "Lean forward" (Punch Animation Editor) scales the torso tilt and
-    // every step into the punch, the reach step included: at 0 the feet stay put
-    // and the arm alone covers the distance.
+    // Per-punch "Lean forward" (Punch Animation Editor) scales the torso tilt.
     const leanK = Math.max(0, animCfg[p as keyof typeof animCfg]?.leanMult ?? 1);
-    // An uppercut lands with the elbow still bent, so it steps in further.
-    const deficit = along - (Math.max(0, dims.shoulder[i].x) + dims.armLen * (upper ? 0.62 : 1.05));
-    reachLunge = Math.max(reachLunge, Math.min(MAX_REACH_LUNGE, Math.max(0, deficit)) * be * leanK);
-    punchYaw += (left ? -1 : 1) * (hook ? 0.75 : upper ? 0.4 : rear ? 0.6 : 0.18) * be;
-    if (!upper) lunge = Math.max(lunge, (hook ? 0.05 : rear ? 0.12 : 0.09) * be * leanK);
+    // A hook turns the torso only slightly; the same-side knee pivots inward.
+    punchYaw += (left ? -1 : 1) * (hook ? 0.32 : upper ? 0.4 : rear ? 0.6 : 0.18) * be;
+    if (hook) hookPivot[i] = Math.max(hookPivot[i], be);
     if (bShot) bodyDip = Math.max(bodyDip, 0.09 * be);
     if (upper) upperDip = Math.max(upperDip, 0.05 * Math.sin(Math.PI * be));
     punchLean = Math.max(punchLean, (bShot ? 0.25 : 0.1) * be * leanK);
@@ -342,9 +334,9 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
   // into bent knees.
   const blade = THREE.MathUtils.lerp(-0.62, 0.62, sb);
   out.pelvisOffset.set(
-    swayFwdPx * PX2M + lunge + fSway.torso * swayM * 0.25 - hitSnap * 0.03 + reachLunge * oppDirX,
+    swayFwdPx * PX2M + fSway.torso * swayM * 0.25 - hitSnap * 0.03,
     -bobPx * PX2M - dims.legLen * 0.2 * dp - bodyDip - upperDip - dims.legLen * 0.09,
-    reachLunge * oppDirZ,
+    0,
   );
   out.pelvisRot.copy(tiltQ(0.03 + slipX * 0.35, slipZ * 0.35)).multiply(yawQ(blade * 0.75 + punchYaw * 0.45, _q));
 
@@ -376,9 +368,6 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
     const a = out.ankle[i].copy(isLeft ? leftOrtho : rightOrtho).lerp(isLeft ? leftSouth : rightSouth, sb);
     const leadness = isLeft ? 1 - sb : sb; // 1 = this foot leads
     a.x += (1 - leadness) * 0.12 * bld - leadness * 0.1 * fld;
-    // The lead foot steps in with a reach lunge; the rear foot stays planted.
-    a.x += leadness * reachLunge * oppDirX * 0.8;
-    a.z += leadness * reachLunge * oppDirZ * 0.8;
     // Walk cycle: alternate steps along the move direction with a small lift.
     const ph = mem.walkPhase + (isLeft ? 0 : Math.PI);
     const step = Math.sin(ph) * 0.09 * mem.walkAmt;
@@ -388,9 +377,13 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
     // Lead toe points at the opponent (turned in a hair), rear foot ~45° out.
     const toeLead = new THREE.Vector3(1, 0, isLeft ? 0.2 : -0.2);
     const toeRear = new THREE.Vector3(0.75, 0, isLeft ? -0.66 : 0.66);
-    out.toeDir[i].copy(toeRear).lerp(toeLead, leadness).normalize();
-    // Knees track over the toes.
-    out.kneePole[i].set(1, 0, (isLeft ? 0.1 : -0.1) * leadness + (isLeft ? -0.6 : 0.6) * (1 - leadness)).normalize();
+    out.toeDir[i].copy(toeRear).lerp(toeLead, leadness);
+    // Knees track over the toes. A same-side hook pivots the knee and foot
+    // inward (toward the body's centreline) with the hip turn.
+    const inward = (isLeft ? 1 : -1) * hookPivot[i];
+    out.toeDir[i].z += inward * 0.35;
+    out.toeDir[i].normalize();
+    out.kneePole[i].set(1, 0, (isLeft ? 0.1 : -0.1) * leadness + (isLeft ? -0.6 : 0.6) * (1 - leadness) + inward * 0.7).normalize();
   }
 
   // ── arms ──
@@ -437,19 +430,21 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
       const target = _e.set(punchDir.x * along, aimHead ? headY : bodyY, punchDir.z * along);
       const arcK = mem.arcK[i];
       if (isHook) {
-        // Wide arc in from the outside, elbow up level with the fist; home in a
-        // straight line to the guard once it has landed.
+        // Thrown straight out of the guard on a flat, horizontal arc: the glove
+        // swings out to the side at guard height and in onto the target, the
+        // elbow rising only as the arm opens. Homes straight back to the guard.
         const arc = Math.sin(Math.PI * ext) * arcK;
         g.lerpVectors(guard, target, ext);
-        const outward = _f.set(-punchDir.z, 0, punchDir.x).multiplyScalar(side * 0.32 * arc);
+        const outward = _f.set(-punchDir.z, 0, punchDir.x).multiplyScalar(side * 0.26 * arc);
         g.add(outward);
-        g.y += 0.05 * arc;
-        out.elbowPole[i].set(0, 0.6 * arcK - 1 * (1 - arcK), side).normalize();
+        // Elbow: from the tucked guard pole out to the side (not up) as the arm opens.
+        const open = smooth(Math.min(1, ext / 0.6)) * arcK;
+        _f.set(0, 0.15, side).applyQuaternion(out.chestRot).normalize();
+        out.elbowPole[i].lerp(_f, open).normalize();
       } else if (isUpper) {
         // A real uppercut: the glove drops to belt level and a touch back to
         // load, sweeps forward along the bottom of a U, then drives UP into the
-        // target with the elbow tucked under the fist (the body steps in so the
-        // arm lands bent, not reaching out like a jab). The path ends where the
+        // target with the elbow tucked under the fist. The path ends where the
         // U-lift shoulder tilt below carries it exactly onto the target.
         const liftEnd = (animCfg[punch as keyof typeof animCfg]?.uLiftDeg ?? 15) * THREE.MathUtils.DEG2RAD;
         const end = _f.copy(target).sub(sh).applyQuaternion(_q.setFromAxisAngle(_zAxis, -liftEnd)).add(sh);
