@@ -16,6 +16,10 @@ import DailyRewardBadge from "@/components/DailyRewardBadge";
 import * as localSaves from "@/lib/localSaves";
 import { createInitialState, startFight, updateGame } from "@/game/engine";
 import { renderGame, renderFighterPreview, renderFightersOnly, getCameraView, setGymEnvironmentDrawer } from "@/game/renderer";
+import { getGraphicsMode } from "@/game/graphicsSetting";
+import { FightScene3D } from "@/game/three/FightScene3D";
+import { setGymDressing } from "@/game/three/gym3d";
+import { GYM_PLAYER_PX, gymZoneAnchor, pickGymZone, projectGymPoint } from "@/game/three/gymLayout";
 import { ringColorsOf } from "@/game/ringColors";
 import type { GameState, FighterColors } from "@/game/types";
 import { type Archetype, SKIN_COLOR_PRESETS } from "@/game/types";
@@ -846,6 +850,16 @@ export default function GymView({
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   playerColorsRef.current = playerColors;
 
+  // 3D graphics: the gym is a WebGL scene under a transparent 2D canvas that
+  // keeps the mouse handling. Falls back to the 2D gym if WebGL won't start.
+  const [view3d, setView3d] = useState<boolean>(() => getGraphicsMode() === "3d");
+  const view3dRef = useRef(view3d);
+  view3dRef.current = view3d;
+  const glCanvasRef = useRef<HTMLCanvasElement>(null);
+  const sceneRef = useRef<FightScene3D | null>(null);
+  // The idle player's own fabricated state (never the sparring sim's).
+  const idleStateRef = useRef<GameState | null>(null);
+
   // Equipment Upgrades: the crate's lid, hover label and click all key off the
   // player's career wins. The draw loop reads it off a ref, and the sparring
   // environment reuses the last value the home screen drew.
@@ -909,6 +923,40 @@ export default function GymView({
     trophyRef.current = reconcileTrophyState(fighter.id, fighter.wins ?? 0, refinementSpent);
     lastTrophyState = trophyRef.current;
   }, [fighter.id, fighter.wins, refinementSpent]);
+
+  // The 3D cases and crate (home screen and sparring) read this snapshot.
+  useEffect(() => {
+    const t = trophyRef.current;
+    setGymDressing({ aTrophies: t.aTrophies, aMedals: t.aMedals, bTrophies: t.bTrophies, bMedals: t.bMedals, crateUnlocked: equipUnlocked });
+  }, [fighter.id, fighter.wins, refinementSpent, equipUnlocked]);
+
+  useEffect(() => {
+    if (!view3d) return;
+    const gl = glCanvasRef.current;
+    if (!gl) return;
+    let scene: FightScene3D;
+    try {
+      scene = new FightScene3D(gl);
+    } catch (err) {
+      console.warn("3D gym unavailable, using the 2D gym", err);
+      setView3d(false);
+      return;
+    }
+    sceneRef.current = scene;
+    const idle = makeGymFight();
+    idle.sparringMode = false; // no headgear on the fighter idling by the bench
+    idle.player.x = GYM_PLAYER_PX.x;
+    idle.player.z = GYM_PLAYER_PX.z;
+    idle.player.facingAngle = GYM_PLAYER_PX.facing;
+    idle.player.rhythmLevel = 0;
+    idle.player.swayOffset = 0;
+    idleStateRef.current = idle;
+    return () => {
+      sceneRef.current = null;
+      idleStateRef.current = null;
+      scene.dispose();
+    };
+  }, [view3d]);
 
   // Fight week: no sparring in the ring, gym goes dark (night), monitor glows white
   const isFightWeek = trainingLockReason === "fightWeek";
@@ -1035,6 +1083,32 @@ export default function GymView({
         // time. A saved palette outranks that roll, and a palette saved while
         // the gym is open takes hold on the next frame.
         gs.ringColors = ringPaletteRef.current ?? undefined;
+        const scene = sceneRef.current;
+        if (view3dRef.current && scene) {
+          const idle = idleStateRef.current;
+          if (idle) idle.player.bobPhase = ((idle.player.bobPhase || 0) + dt * 2.6 * Math.PI * 2) % (Math.PI * 2);
+          ctx.clearRect(0, 0, CW, CH);
+          scene.render(gs, {
+            gymHome: {
+              hovered: hoveredRef.current,
+              night: fightWeek,
+              idle: idle ? { fighter: idle.player, state: idle, colors: playerColorsRef.current } : null,
+              hideFighters: fightWeek,
+            },
+          });
+          // The home camera drifts, so the floating tags and dots follow it
+          // every frame instead of only on React renders.
+          const host = canvasRef.current?.parentElement;
+          if (host) {
+            host.querySelectorAll<HTMLElement>("[data-gym-anchor]").forEach(el => {
+              const p = projectGymPoint(gymZoneAnchor(el.dataset.gymAnchor as GymZone), scene.homeCamera);
+              el.style.left = `${(p.x / CW) * 100}%`;
+              el.style.top = `${((p.y - Number(el.dataset.gymLift || 0)) / CH) * 100}%`;
+            });
+          }
+          rafRef.current = requestAnimationFrame(loop);
+          return;
+        }
         renderGame(ctx, gs);
       } else {
         ctx.fillStyle = "#111"; ctx.fillRect(0, 0, CW, CH);
@@ -1110,6 +1184,12 @@ export default function GymView({
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const [mx, my] = getCanvasXY(e);
     let zone: GymZone | null = null;
+    if (view3dRef.current && sceneRef.current) {
+      zone = pickGymZone(mx, my, sceneRef.current.homeCamera);
+      hoveredRef.current = zone;
+      setHoveredZone(zone);
+      return;
+    }
     for (const hb of HITRECTS) {
       const r = hb.rect;
       if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) { zone = hb.zone; break; }
@@ -1202,7 +1282,22 @@ export default function GymView({
   };
 
   // Weekly bonus tag pinned over the matching gym object (canvas coords → %)
-  const bonusTagPos = weeklyBonus
+  // Screen spot (canvas px) for a tag hung over a gym object: the 3D anchor in
+  // 3D graphics, the 2D projection otherwise.
+  const tagPos = (zone: GymZone, x2d: number, y2d: number, liftPx = 0): { x: number; y: number } => {
+    if (!view3d) return { x: x2d, y: y2d };
+    const p = projectGymPoint(gymZoneAnchor(zone));
+    return { x: p.x, y: p.y - liftPx };
+  };
+  // In 3D the render loop re-places anchored tags each frame (camera drift).
+  const anchorAttrs = (zone: GymZone, liftPx = 0) =>
+    view3d ? { "data-gym-anchor": zone, "data-gym-lift": String(liftPx) } : {};
+  const bonusZone: GymZone | null = weeklyBonus
+    ? weeklyBonus.trainingType === "heavyBag" ? "bag1" : weeklyBonus.trainingType === "weightLifting" ? "weights" : "ring"
+    : null;
+  const bonusTagPos = weeklyBonus && view3d
+    ? tagPos(weeklyBonus.trainingType === "heavyBag" ? "bag1" : weeklyBonus.trainingType === "weightLifting" ? "weights" : "ring", 0, 0, 4)
+    : weeklyBonus
     ? weeklyBonus.trainingType === "heavyBag" ? { x: projX(EQ.bag1.cx), y: projY(EQ.bag1.cz, 64) - 14 }
     : weeklyBonus.trainingType === "weightLifting" ? { x: projX(EQ.bench.cx), y: projY(EQ.bench.cz, 34) - 22 }
     : { x: (RING_SCR_CX - RING_SCR_HW / 2 + RING_SCR_CX) / 2 - 95, y: RING_SCR_CY - RING_SCR_HH / 2 - 22 }
@@ -1370,11 +1465,19 @@ export default function GymView({
   return (
     <div className="fixed inset-0 z-50 bg-black overflow-hidden flex items-center justify-center" data-testid="gym-view">
       <div className="relative" style={{ height: "100vh", width: "auto", display: "flex" }}>
+        {view3d && (
+          <canvas
+            ref={glCanvasRef}
+            className="absolute inset-0 block pointer-events-none"
+            style={{ width: "100%", height: "100%" }}
+            data-testid="gym-canvas-3d"
+          />
+        )}
         <canvas
           ref={canvasRef}
           width={CW}
           height={CH}
-          className="block"
+          className="block relative"
           style={{ height: "100vh", width: "auto", cursor: hoveredZone ? "pointer" : "default" }}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => { hoveredRef.current = null; setHoveredZone(null); }}
@@ -1466,10 +1569,11 @@ export default function GymView({
           <div
             className="absolute z-[58] pointer-events-none"
             style={{
-              left: `${(projX(EQ.lockers.cx, EQ.lockers.cz) / CW) * 100}%`,
-              top: `${(projY(EQ.lockers.cz, 62, EQ.lockers.cx) / CH) * 100}%`,
+              left: `${(tagPos("lockers", projX(EQ.lockers.cx, EQ.lockers.cz), 0).x / CW) * 100}%`,
+              top: `${(tagPos("lockers", 0, projY(EQ.lockers.cz, 62, EQ.lockers.cx)).y / CH) * 100}%`,
               transform: "translate(-50%,-100%)",
             }}
+            {...anchorAttrs("lockers")}
             data-testid="gym-locker-new-items-dot"
           >
             <span className="relative flex h-3.5 w-3.5">
@@ -1484,10 +1588,11 @@ export default function GymView({
           <div
             className="absolute z-[58] pointer-events-none"
             style={{
-              left: `${(projX(EQ.trophyB.cx, EQ.trophyB.cz) / CW) * 100}%`,
-              top: `${(projY(EQ.trophyB.cz, 58, EQ.trophyB.cx) / CH) * 100}%`,
+              left: `${(tagPos("trophyB", projX(EQ.trophyB.cx, EQ.trophyB.cz), 0).x / CW) * 100}%`,
+              top: `${(tagPos("trophyB", 0, projY(EQ.trophyB.cz, 58, EQ.trophyB.cx)).y / CH) * 100}%`,
               transform: "translate(-50%,-100%)",
             }}
+            {...anchorAttrs("trophyB")}
             data-testid="gym-refinement-new-dot"
           >
             <span className="relative flex h-3.5 w-3.5">
@@ -1502,10 +1607,11 @@ export default function GymView({
           <div
             className="absolute z-[58] pointer-events-none"
             style={{
-              left: `${(projX(EQ.equipCrate.cx, EQ.equipCrate.cz) / CW) * 100}%`,
-              top: `${(projY(EQ.equipCrate.cz, 30, EQ.equipCrate.cx) / CH) * 100}%`,
+              left: `${(tagPos("equipCrate", projX(EQ.equipCrate.cx, EQ.equipCrate.cz), 0).x / CW) * 100}%`,
+              top: `${(tagPos("equipCrate", 0, projY(EQ.equipCrate.cz, 30, EQ.equipCrate.cx)).y / CH) * 100}%`,
               transform: "translate(-50%,-100%)",
             }}
+            {...anchorAttrs("equipCrate")}
             data-testid="gym-equipment-new-dot"
           >
             <span className="relative flex h-3.5 w-3.5">
@@ -1520,6 +1626,7 @@ export default function GymView({
           <div
             className="absolute z-[55] pointer-events-none"
             style={{ left: `${(bonusTagPos.x / CW) * 100}%`, top: `${(bonusTagPos.y / CH) * 100}%`, transform: "translate(-50%,-100%)" }}
+            {...(bonusZone ? anchorAttrs(bonusZone, 4) : {})}
             data-testid="gym-weekly-bonus-tag"
           >
             <span className="inline-block text-[11px] font-black text-black bg-yellow-400 border border-yellow-200 rounded px-1.5 py-0.5 shadow-lg animate-bounce">

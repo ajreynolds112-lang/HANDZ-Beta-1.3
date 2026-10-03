@@ -1,0 +1,26 @@
+{
+  "generator": "tripo3d",
+  "parts": {
+    "body": {
+      "file": "body.glb",
+      "taskId": "22c3b36b-93dd-444c-8712-443030ab172e",
+      "rigged": true,
+      "prompt": "low poly game character, athletic muscular male boxer, bald head, barefoot, bare hands, wearing only plain loose boxing shorts, standing straight in T-pose with arms stretched out horizontally to the sides, legs slightly apart, symmetrical, neutral face, single plain light grey material, no patterns, no logos"
+    },
+    "shoe": {
+      "file": "shoe.glb",
+      "taskId": "8cda937d-b706-4d24-b9b7-3ecf9194d70f",
+      "prompt": "single high-top boxing shoe, low poly game asset, ankle-high boot with front lacing and thin flat sole, plain untextured, side view pointing forward, no logo"
+    },
+    "glove": {
+      "file": "glove.glb",
+      "taskId": "4e58d24f-367e-4d24-9462-a4e6dbdf722c",
+      "prompt": "single boxing glove, low poly game asset, smooth rounded leather glove with a short padded wrist cuff, plain untextured, glove pointing forward, no logo, no laces"
+    },
+    "headgear": {
+      "file": "headgear.glb",
+      "taskId": "1871ff3e-df3c-48df-a217-6520fec32617",
+      "prompt": "boxing sparring headgear helmet only, low poly game asset, padded head guard with open face, cheek pads and forehead pad, plain untextured, no logo, no head inside"
+    }
+  }
+}

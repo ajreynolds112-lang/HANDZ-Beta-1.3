@@ -318,3 +318,12 @@ export function enableSpacialFills(ctx: CanvasRenderingContext2D): void {
   });
   patched.__spacialPatched = true;
 }
+
+/**
+ * The live starfield tile itself, for surfaces that are not a 2D canvas (the
+ * WebGL fighters upload it as a texture). Same clock and redraw throttle as
+ * the canvas pattern, so both views twinkle in step.
+ */
+export function getSpacialTileCanvas(): HTMLCanvasElement | null {
+  return getTile(spacialNow());
+}

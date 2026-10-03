@@ -154,7 +154,17 @@ function updateCamera(state: GameState): void {
   currentCameraYaw += (clampedYaw - currentCameraYaw) * CAM_YAW_LERP;
 }
 
+/**
+ * Bumped by every resetAutoZoom so the 3D broadcast camera, which keeps its own
+ * state, snaps back to the wide shot at the same moments the 2D camera does.
+ */
+let cameraResetEpoch = 0;
+export function getCameraResetEpoch(): number {
+  return cameraResetEpoch;
+}
+
 export function resetAutoZoom(): void {
+  cameraResetEpoch++;
   currentAutoZoom = 1.0;
   delayedFocusX = CAM_SCREEN_CX;
   delayedFocusY = CAM_SCREEN_CY;
@@ -271,10 +281,36 @@ function fillDrawOrder(buf: DrawOrderEntry[], state: GameState): DrawOrderEntry[
   return buf;
 }
 
-export function renderGame(ctx: CanvasRenderingContext2D, state: GameState): void {
+/** Projects an engine floor point (px) plus a height (px) to 800x600 screen space. */
+export type WorldProjector = (wx: number, wz: number, heightPx: number) => { sx: number; sy: number } | null;
+
+export interface RenderGameOptions {
+  /**
+   * HUD-only pass for the 3D view: the canvas is cleared to transparent and the
+   * world (crowd, ring, fighters, referee, ropes) is skipped — the WebGL layer
+   * underneath draws it. Every screen-space overlay and its click hit-test is
+   * unchanged. Camera shake is the 3D camera's job, so the HUD stays still.
+   */
+  hudOnly?: boolean;
+  /** Required with hudOnly: places world-anchored text (hit effects) over the 3D view. */
+  project?: WorldProjector;
+}
+
+export function renderGame(ctx: CanvasRenderingContext2D, state: GameState, options?: RenderGameOptions): void {
   // The ring itself can be bought in the Spacial finish, and it is drawn before
   // any fighter, so this cannot wait for drawFighter to install it.
   enableSpacialFills(ctx);
+  if (options?.hudOnly) {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.restore();
+    ctx.save();
+    if (options.project) drawHitEffectsProjected(ctx, state.hitEffects, options.project);
+    drawScreenOverlays(ctx, state);
+    ctx.restore();
+    return;
+  }
   ctx.save();
 
   if (state.shakeIntensity > 0 && state.shakeTimer > 0 && !state.isPaused && !state.staticCamera) {
@@ -358,6 +394,13 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState): voi
     gymEnvironmentDrawer(ctx, state);
   }
 
+  drawScreenOverlays(ctx, state);
+
+  ctx.restore();
+}
+
+/** Every screen-space layer drawn over the world: HUD, banners, prompts, pause. */
+function drawScreenOverlays(ctx: CanvasRenderingContext2D, state: GameState): void {
   if ((state.phase === "fighting" || state.phase === "prefight") && !state.menuBackground) {
     drawHUD(ctx, state);
   }
@@ -388,8 +431,6 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState): voi
   if (state.isPaused) {
     drawPauseMenu(ctx, state.pauseSelectedIndex, state.pauseSoundTab, state.pauseControlsTab, state.sparringMode || state.careerFightMode, state);
   }
-
-  ctx.restore();
 }
 
 // Re-draws the fighters on top of whatever has been painted since renderGame.
@@ -956,7 +997,7 @@ const LOWER_LEG_L = 12 * FIGHTER_SCALE;
 const GLOVE_R = 5 * FIGHTER_SCALE;
 const SHOE_H = 4 * FIGHTER_SCALE;
 /** Used when a save predates the editable sock colour. */
-const DEFAULT_SOCK_COLOR = "#f0f0f0";
+export const DEFAULT_SOCK_COLOR = "#f0f0f0";
 const TORSO_W = 11.6 * FIGHTER_SCALE;
 
 /**
@@ -2292,9 +2333,25 @@ function drawStoppageOverlay(ctx: CanvasRenderingContext2D, state: GameState): v
 
 function drawHitEffects(ctx: CanvasRenderingContext2D, effects: HitEffect[]): void {
   effects.forEach(e => {
-    const alpha = Math.min(1, e.timer * 2);
     const rise = (0.6 - e.timer) * 30;
     const pt = projectToScreen(e.x, e.y);
+    drawHitEffectText(ctx, e, pt.sx, pt.sy - rise - 30);
+  });
+}
+
+/** Hit effects over the 3D view: anchored at head height through its camera. */
+function drawHitEffectsProjected(ctx: CanvasRenderingContext2D, effects: HitEffect[], project: WorldProjector): void {
+  for (const e of effects) {
+    const pt = project(e.x, e.y, 90);
+    if (!pt) continue;
+    const rise = (0.6 - e.timer) * 30;
+    drawHitEffectText(ctx, e, pt.sx, pt.sy - rise);
+  }
+}
+
+function drawHitEffectText(ctx: CanvasRenderingContext2D, e: HitEffect, x: number, y: number): void {
+  {
+    const alpha = Math.min(1, e.timer * 2);
     ctx.save();
     ctx.globalAlpha = alpha;
 
@@ -2316,9 +2373,9 @@ function drawHitEffects(ctx: CanvasRenderingContext2D, effects: HitEffect[]): vo
     }
 
     ctx.textAlign = "center";
-    ctx.fillText(e.text, pt.sx, pt.sy - rise - 30);
+    ctx.fillText(e.text, x, y);
     ctx.restore();
-  });
+  }
 }
 
 // The referee reuses the fighter model, dressed in ref clothes: striped white
@@ -3070,14 +3127,14 @@ function drawSoundControls(ctx: CanvasRenderingContext2D): void {
  * used elsewhere in the app, so the partner's headgear reads as the difficulty
  * the session was booked at.
  */
-const SPARRING_HEADGEAR_BY_DIFFICULTY: Record<string, string> = {
+export const SPARRING_HEADGEAR_BY_DIFFICULTY: Record<string, string> = {
   journeyman: "#22aa44",
   contender: "#ddaa00",
   elite: "#cc4400",
   champion: "#cc2222",
 };
 
-const DEFAULT_HEADGEAR_COLOR = "#2244aa";
+export const DEFAULT_HEADGEAR_COLOR = "#2244aa";
 
 /**
  * Padded sparring headgear, shaped like the real thing: a boxy shell with

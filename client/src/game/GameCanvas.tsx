@@ -3,6 +3,8 @@ import { GameState, PauseAction } from "./types";
 import { renderGame, isPauseButtonClick, getPauseMenuClickIndex, getPauseItems, getSoundSliderClick, getControlsBackClick, getTutorialContinueClick } from "./renderer";
 import { soundEngine, musicEngine, DYNAMIC_MUSIC_LEVELS } from "./sound";
 import { updateGame, handleKeyDown, handleKeyUp, clearAllKeys, advanceTutorialContinue } from "./engine";
+import { getGraphicsMode } from "./graphicsSetting";
+import { FightScene3D } from "./three/FightScene3D";
 
 const BASE_W = 800;
 const BASE_H = 600;
@@ -38,6 +40,15 @@ function uiSignature(s: GameState): string {
 /** Safety net: even with no UI-visible change, resync React at this cadence. */
 const THROTTLED_PUSH_MS = 250;
 
+/**
+ * Whether this frame draws through the 3D view. Sparring bouts draw the 3D gym
+ * around the ring (FightScene3D picks the venue); menu-background fights keep
+ * the 2D path.
+ */
+function wants3D(s: GameState, mode3d: boolean): boolean {
+  return mode3d && !s.menuBackground;
+}
+
 interface GameCanvasProps {
   state: GameState;
   onStateChange: (state: GameState) => void;
@@ -66,6 +77,10 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
   const lastPropRef = useRef<GameState | null>(null);
   const lastSigRef = useRef<string>("");
   const lastPushRef = useRef<number>(0);
+  const glCanvasRef = useRef<HTMLCanvasElement>(null);
+  const sceneRef = useRef<FightScene3D | null>(null);
+  // Read once per fight canvas: the setting lives in the main menu.
+  const mode3dRef = useRef<boolean>(getGraphicsMode() === "3d");
 
   if (state !== lastPropRef.current) {
     lastPropRef.current = state;
@@ -128,7 +143,28 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
         ctxRef.current = ctx;
       }
       if (ctx) {
-        renderGame(ctx, stateRef.current);
+        const live = stateRef.current;
+        const glCanvas = glCanvasRef.current;
+        let scene: FightScene3D | null = null;
+        if (glCanvas && wants3D(live, mode3dRef.current)) {
+          if (!sceneRef.current) {
+            try {
+              sceneRef.current = new FightScene3D(glCanvas);
+            } catch (err) {
+              // No WebGL here: say so once and stay on the classic renderer.
+              console.error("[3D] WebGL view unavailable, using Classic 2D", err);
+              mode3dRef.current = false;
+            }
+          }
+          scene = sceneRef.current;
+        }
+        if (glCanvas) glCanvas.style.visibility = scene ? "visible" : "hidden";
+        if (scene) {
+          scene.render(live);
+          renderGame(ctx, live, { hudOnly: true, project: scene.project });
+        } else {
+          renderGame(ctx, live);
+        }
       }
     }
 
@@ -140,6 +176,11 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
     animFrameRef.current = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animFrameRef.current);
   }, [gameLoop]);
+
+  useEffect(() => () => {
+    sceneRef.current?.dispose();
+    sceneRef.current = null;
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -315,16 +356,27 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
     }
   }, [getCanvasCoords, pushState]);
 
+  // The 2D canvas keeps the height-based 4:3 sizing and sets the box; the WebGL
+  // canvas fills that same box underneath it. Clicks land on the 2D canvas, so
+  // every HUD/pause hit-test is unchanged.
   return (
-    <canvas
-      ref={canvasRef}
-      width={BASE_W}
-      height={BASE_H}
-      data-testid="game-canvas"
-      className="cursor-pointer block"
-      style={{ imageRendering: "auto", height: "100vh", width: "auto", maxWidth: "100vw" }}
-      tabIndex={0}
-      onClick={handleClick}
-    />
+    <div className="relative block" style={{ lineHeight: 0 }}>
+      <canvas
+        ref={glCanvasRef}
+        data-testid="game-canvas-3d"
+        className="absolute inset-0 block"
+        style={{ width: "100%", height: "100%", pointerEvents: "none", visibility: "hidden" }}
+      />
+      <canvas
+        ref={canvasRef}
+        width={BASE_W}
+        height={BASE_H}
+        data-testid="game-canvas"
+        className="cursor-pointer block relative"
+        style={{ imageRendering: "auto", height: "100vh", width: "auto", maxWidth: "100vw" }}
+        tabIndex={0}
+        onClick={handleClick}
+      />
+    </div>
   );
 }

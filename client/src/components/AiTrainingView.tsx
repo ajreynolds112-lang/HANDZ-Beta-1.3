@@ -25,8 +25,9 @@ import {
   createInitialState, startFight, updateGame, handleKeyDown, handleKeyUp, clearAllKeys,
 } from "@/game/engine";
 import { initAiBrain } from "@/game/ai";
-import { renderGame, resetAutoZoom } from "@/game/renderer";
+import { resetAutoZoom } from "@/game/renderer";
 import { soundEngine } from "@/game/sound";
+import { useFightScene3D } from "@/game/three/useFightScene3D";
 import { setTrainingNeuralOverrides, promoteToChampion } from "@/components/NeuralNetworkView";
 import {
   FUNDAMENTALS, EXEC_FLOOR, type FundamentalSeed,
@@ -707,6 +708,7 @@ function TraineeFight({ title, minutes, enemyRosterId, buildBrain, onTick, onClo
   tickRef.current = onTick;
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const view3d = useFightScene3D();
 
   if (stateRef.current === null) {
     resetAutoZoom();
@@ -796,8 +798,7 @@ function TraineeFight({ title, minutes, enemyRosterId, buildBrain, onTick, onClo
         stateRef.current = s;
         tickRef.current?.(s, dt);
       }
-      const ctx = canvasRef.current?.getContext("2d");
-      if (ctx) renderGame(ctx, s);
+      view3d.draw(canvasRef.current?.getContext("2d") ?? null, s);
       rafRef.current = requestAnimationFrame(loop);
     };
     rafRef.current = requestAnimationFrame(loop);
@@ -806,7 +807,14 @@ function TraineeFight({ title, minutes, enemyRosterId, buildBrain, onTick, onClo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black" data-testid="trainee-fight">
-      <canvas ref={canvasRef} width={800} height={600} style={{ height: "100vh", width: "auto" }} />
+      <div className="relative" style={{ lineHeight: 0 }}>
+        <canvas
+          ref={view3d.glCanvasRef}
+          className="absolute inset-0 block"
+          style={{ width: "100%", height: "100%", pointerEvents: "none", visibility: "hidden" }}
+        />
+        <canvas ref={canvasRef} width={800} height={600} className="relative block" style={{ height: "100vh", width: "auto" }} />
+      </div>
       <div className="absolute top-3 left-3 text-xs text-white/50">
         {title} · {minutes} min · Esc to leave
       </div>

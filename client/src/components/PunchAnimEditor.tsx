@@ -15,6 +15,8 @@ import {
 } from "@/lib/punchAnimConfig";
 import { renderFighterPunchFrame } from "@/game/renderer";
 import { DEFAULT_PLAYER_COLORS } from "@/game/types";
+import { getGraphicsMode } from "@/game/graphicsSetting";
+import { renderFighterPreview3D } from "@/game/three/fighterPreview3d";
 
 const PUNCH_LABELS: Record<PunchType, string> = {
   jab: "Jab",
@@ -115,6 +117,7 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const use3d = getGraphicsMode() === "3d";
 
     const animate = (now: number) => {
       if (!cycleStartRef.current) cycleStartRef.current = now;
@@ -144,7 +147,15 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
         progress = Math.max(0, Math.min(1, progress));
       }
 
-      renderFighterPunchFrame(
+      // 3D: the punch plays on the model with these timings. The 2D-only
+      // trajectory sliders (distance, arc, drop/rise) shape the classic sprite;
+      // the 3D arm follows the real punch reach instead.
+      const drawn3d = use3d && renderFighterPreview3D(ctx, {
+        colors: DEFAULT_PLAYER_COLORS,
+        bobPhase: now * 0.0025,
+        punch: { type: punchTypeRef.current, extension: progress },
+      });
+      if (!drawn3d) renderFighterPunchFrame(
         ctx, PREVIEW_W, PREVIEW_H,
         DEFAULT_PLAYER_COLORS,
         punchTypeRef.current,

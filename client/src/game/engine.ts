@@ -4256,6 +4256,28 @@ function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRe
   };
 }
 
+/**
+ * Read-only visual helper: where each phase of the punch in flight starts and
+ * ends as a fraction of punchProgress. The fatigue multiplier scales every
+ * phase alike, so the fractions are exact without it. Null when not punching.
+ */
+export function punchPhaseFractions(fighter: FighterState): Record<PunchPhaseType, [number, number]> | null {
+  if (!fighter.isPunching || !fighter.currentPunch) return null;
+  const d = getPunchPhaseDurations(fighter, getEffectivePunchConfig(fighter.currentPunch), fighter.isRePunch);
+  const order: PunchPhaseType[] = ["launchDelay", "armSpeed", "contact", "linger", "retraction"];
+  let total = 0;
+  for (const p of order) total += Math.max(0, d[p]);
+  if (total <= 0) return null;
+  const out = {} as Record<PunchPhaseType, [number, number]>;
+  let acc = 0;
+  for (const p of order) {
+    const s = acc / total;
+    acc += Math.max(0, d[p]);
+    out[p] = [s, acc / total];
+  }
+  return out;
+}
+
 function getTelegraphCooldownZ(_level: number, _punchType: PunchType): number {
   return 2.0;
 }

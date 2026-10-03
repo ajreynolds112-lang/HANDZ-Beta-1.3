@@ -72,7 +72,7 @@ import {
   type CareerOpponentFromRoster,
 } from "@/game/careerRoster";
 import { getRosterDisplayName, ROSTER_DATA, KEY_FIGHTER_IDS } from "@/game/rosterData";
-import FighterStanceCanvas from "@/components/FighterStanceCanvas";
+import FighterStanceCanvas, { playerBoxingStance } from "@/components/FighterStanceCanvas";
 import { BoxingGloveIcon } from "@/components/BoxingGloveIcon";
 import NeuralNetworkView, { fighterHasNeural } from "@/components/NeuralNetworkView";
 import * as localSaves from "@/lib/localSaves";
@@ -2412,7 +2412,7 @@ export default function CareerMode({
 
           <div className="flex items-start justify-center gap-3 my-2">
             <div className="w-48 h-56">
-              <FighterStanceCanvas colors={hubColors} width={192} height={224} />
+              <FighterStanceCanvas colors={hubColors} width={192} height={224} stance={playerBoxingStance()} />
             </div>
             {hubTip && (
               <div className="flex flex-col pt-6 max-w-[110px]">
@@ -3670,7 +3670,7 @@ function OpponentSelectionView({ fighter, rosterState, onSelectOpponent, onBack 
                       })()}
                     </div>
                     <div className="w-12 h-16 shrink-0">
-                      <FighterStanceCanvas colors={fighterColors} width={120} height={144} />
+                      <FighterStanceCanvas colors={fighterColors} width={120} height={144} stance={f.boxingStance} />
                     </div>
                   </div>
                   {isBlocked && (
@@ -3777,7 +3777,7 @@ function RankingsView({ rosterState, fighter, onBack }: {
                     </p>
                   </div>
                   <div className="w-12 h-16 shrink-0">
-                    <FighterStanceCanvas colors={playerColors} width={120} height={144} />
+                    <FighterStanceCanvas colors={playerColors} width={120} height={144} stance={playerBoxingStance()} />
                   </div>
                 </div>
               )}
@@ -3810,7 +3810,7 @@ function RankingsView({ rosterState, fighter, onBack }: {
                   )}
                 </div>
                 <div className="w-12 h-16 shrink-0">
-                  <FighterStanceCanvas colors={fighterColors} width={120} height={144} />
+                  <FighterStanceCanvas colors={fighterColors} width={120} height={144} stance={f.boxingStance} />
                 </div>
               </div>
             </div>
@@ -3831,7 +3831,7 @@ function RankingsView({ rosterState, fighter, onBack }: {
               </p>
             </div>
             <div className="w-12 h-16 shrink-0">
-              <FighterStanceCanvas colors={playerColors} width={120} height={144} />
+              <FighterStanceCanvas colors={playerColors} width={120} height={144} stance={playerBoxingStance()} />
             </div>
           </div>
         )}
@@ -3998,7 +3998,7 @@ function CreateFighter({
               </div>
             </div>
             <div className="w-28 h-36 shrink-0 bg-black/40 border border-white/10 rounded-lg flex items-center justify-center overflow-hidden">
-              <FighterStanceCanvas colors={previewColors} width={160} height={200} showHeadgear />
+              <FighterStanceCanvas colors={previewColors} width={160} height={200} showHeadgear stance={boxingStance} />
             </div>
           </div>
         </div>
@@ -4851,7 +4851,7 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart }: {
 
       <div className="flex-1 flex items-center justify-center overflow-hidden p-4">
         <div className="bg-[#1a1a1a] border border-white/15 rounded-xl p-4 flex items-center justify-center">
-          <FighterStanceCanvas colors={previewColors} width={320} height={560} scale={4} showHeadgear />
+          <FighterStanceCanvas colors={previewColors} width={320} height={560} scale={4} showHeadgear stance={playerBoxingStance()} />
         </div>
       </div>
     </div>
@@ -5813,7 +5813,7 @@ export function RosterEditView({
             {rosterColorField("Waist Stripe", editWaistStripe ?? defaultWaistStripeColor(editTrunks), setEditWaistStripe, "color-edit-waist-stripe", "waistStripe")}
           </div>
           <div className="shrink-0 bg-black/30 border border-border rounded-lg p-2 flex items-center justify-center" data-testid="preview-edit-fighter">
-            <FighterStanceCanvas colors={previewColors} width={180} height={280} scale={2} />
+            <FighterStanceCanvas colors={previewColors} width={180} height={280} scale={2} stance={editedRoster.find(ef => ef.id === editingId)?.boxingStance} />
           </div>
           </div>
           <p className="text-[10px] text-muted-foreground border-t border-border pt-3">
@@ -6204,7 +6204,7 @@ export function RosterEditView({
                   <span className="text-[10px] text-primary">edited</span>
                 )}
                 <div className="w-12 h-16 shrink-0">
-                  <FighterStanceCanvas colors={fighterColors} width={120} height={144} />
+                  <FighterStanceCanvas colors={fighterColors} width={120} height={144} stance={f.boxingStance} />
                 </div>
                 <Pencil className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
               </div>

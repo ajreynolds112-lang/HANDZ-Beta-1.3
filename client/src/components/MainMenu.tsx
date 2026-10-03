@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { BoxingGloveIcon } from "@/components/BoxingGloveIcon";
 import { soundEngine, musicEngine } from "@/game/sound";
 import { isDirectionalPerfectBlockEnabled } from "@/components/NeuralNetworkView";
+import { getGraphicsMode, setGraphicsMode, type GraphicsMode } from "@/game/graphicsSetting";
 
 interface MainMenuProps {
   onQuickFight: () => void;
@@ -111,6 +112,11 @@ function SoundSettings({ onClose, onVolumeChange, onToggleMute }: {
   const volumes = soundEngine.getVolumes();
   const muted = soundEngine.isMuted();
   const [tab, setTab] = useState<"sound" | "controls">("sound");
+  const [graphics, setGraphics] = useState<GraphicsMode>(getGraphicsMode);
+  const chooseGraphics = (mode: GraphicsMode) => {
+    setGraphicsMode(mode);
+    setGraphics(mode);
+  };
   const categories: { label: string; key: "master" | "sfx" | "crowd" | "ui" | "music" }[] = [
     { label: "Master", key: "master" },
     { label: "Music", key: "music" },
@@ -160,6 +166,19 @@ function SoundSettings({ onClose, onVolumeChange, onToggleMute }: {
               />
             </div>
           ))}
+          <div className="mt-4 pt-3 border-t border-border">
+            <h3 className="text-sm font-semibold text-muted-foreground mb-2">GRAPHICS</h3>
+            <div className="flex gap-2">
+              {([["3d", "3D"], ["classic", "Classic 2D"]] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  onClick={() => chooseGraphics(mode)}
+                  className={`flex-1 text-xs py-1.5 rounded font-semibold transition-colors ${graphics === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground bg-muted/40 hover:bg-muted"}`}
+                  data-testid={`button-graphics-${mode}`}
+                >{label}</button>
+              ))}
+            </div>
+          </div>
         </>
       )}
 
