@@ -1089,6 +1089,12 @@ export interface FatigueState {
   snapTimer: number;
   /** Gap between snap stages. Stretches as current stamina falls. */
   snapStagger: number;
+  /**
+   * Full length of the snap animation (staggered torso/arms AND the head dip),
+   * which is the Reset window. Never shorter than the head dip, so a fully
+   * trained stagger of 0 can't collapse the window to a single tick.
+   */
+  snapDuration?: number;
   snapActive: boolean;
   /**
    * Per-arm sway offsets frozen at the instant of a Reset. The torso snaps

@@ -846,9 +846,10 @@ export function tryReset(fighter: FighterState, state: GameState): boolean {
   const f = fighter.fatigue;
   const fc = getFatigueConfig();
   if (fighter.isKnockedDown || state.knockdownActive) return false;
-  // No cooldown: a Reset can be spent whenever one isn't already running. A
-  // window a punch has stripped is still running, so it has to play out first.
-  if (f.resetActive) return false;
+  // No cooldown and no in-window refusal: pressing Reset again mid-snap starts
+  // a fresh snap (and a fresh window), so the button is always live outside a
+  // knockdown or a stun lock. This is also how a window a punch has stripped
+  // gets its benefits back.
   // Stunned fighters cannot buy their way out of it — see applyResetStunLock.
   if (f.resetLockTimer > 0) return false;
 
@@ -941,8 +942,13 @@ export function tryReset(fighter: FighterState, state: GameState): boolean {
   // The window lasts exactly as long as the snap animation: it closes when the
   // rear arm is home (see updateFatigue), so it is always well under a second
   // or two, however gassed the fighter is.
-  f.resetTimer = f.snapStagger * 3;
   f.headDuckTimer = fc.resetHeadDuckTime * snapSlow / snapSpeed;
+  // The window IS the snap animation: torso → lead → rear arm plus the head
+  // dip, whichever runs longer. Sparring mileage can train the stagger all the
+  // way to 0 (RESET_SPEED_MAX equals the default stagger); without the dip in
+  // here that left a head bob with a one-tick window and no Reset.
+  f.snapDuration = Math.max(f.snapStagger * 3, f.headDuckTimer);
+  f.resetTimer = f.snapDuration;
 
   // The rhythm kicks instead of parking. A Reset throws the sway into a
   // full-speed sweep for resetRhythmBurst seconds — running whether or not the
@@ -1011,7 +1017,7 @@ export function aiResetAllowed(state: GameState): boolean {
 
 /**
  * A CPU-controlled fighter spends a Reset the moment it gets stunned or crit —
- * the same read a player is expected to make. Refused on cooldown like anyone
+ * the same read a player is expected to make. Refused while its own snap runs, like before
  * else's, and it pays the panic penalty for resetting while still rocked.
  * Called after the hit has already ended any window that was running.
  */
@@ -1019,6 +1025,9 @@ function aiMaybeReset(fighter: FighterState, state: GameState): void {
   const cpuControlled = !fighter.isPlayer || !!state.playerAiBrain;
   if (!cpuControlled) return;
   if (!aiResetAllowed(state)) return;
+  // Only the player may restart a running snap; the CPU's reflex Reset keeps
+  // the old one-at-a-time behaviour so its output is unchanged.
+  if (fighter.fatigue.resetActive) return;
   tryReset(fighter, state);
 }
 
@@ -1183,6 +1192,11 @@ function updateFlinch(fighter: FighterState, dt: number, state: GameState): void
 }
 
 /** Per-tick fatigue bookkeeping: sway lifecycle, Reset window, timers. */
+/** Length of the running snap animation = the Reset window. Old states lack snapDuration. */
+function snapLength(f: FighterState["fatigue"]): number {
+  return Math.max(f.snapStagger * 3, f.snapDuration ?? 0);
+}
+
 function updateFatigue(fighter: FighterState, dt: number, state: GameState): void {
   const f = fighter.fatigue;
   updateFlinch(fighter, dt, state);
@@ -1199,7 +1213,7 @@ function updateFatigue(fighter: FighterState, dt: number, state: GameState): voi
     f.snapTimer += dt;
     // Three stages now, not two: torso, then lead arm, then rear arm, each
     // easing home over one stagger instead of vanishing at the end of its hold.
-    if (f.snapTimer >= f.snapStagger * 3) {
+    if (f.snapTimer >= snapLength(f)) {
       f.snapActive = false;
       // The whole animation has played: that is what counts as fully reset,
       // and it is also the end of the Reset window.
@@ -1211,7 +1225,7 @@ function updateFatigue(fighter: FighterState, dt: number, state: GameState): voi
   // Deliberately no early return while it runs: a Reset damps fatigue rather
   // than switching it off, so the sway keeps running underneath the window.
   if (f.resetActive) {
-    f.resetTimer = f.snapActive ? Math.max(0, f.snapStagger * 3 - f.snapTimer) : 0;
+    f.resetTimer = f.snapActive ? Math.max(0, snapLength(f) - f.snapTimer) : 0;
     if (!f.snapActive) {
       f.resetActive = false;
       f.resetStaminaOnly = false;
@@ -8622,8 +8636,9 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
 
   // Reset (B). Spent on the way UP, like a punch: the read is graded against
   // where the bout is when the key comes back up, not when it went down, so a
-  // held key cannot bank a Reset and drop it into a window later. Refused only
-  // while a Reset window is already running (or a stun lock / knockdown).
+  // held key cannot bank a Reset and drop it into a window later. Always live:
+  // a press mid-snap restarts the snap; refused only during a stun lock or a
+  // knockdown.
   consumePress(RESET_KEY);
   if (consumeRelease(RESET_KEY)) {
     tryReset(player, state);

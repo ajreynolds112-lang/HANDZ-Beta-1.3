@@ -5536,7 +5536,8 @@ function startStringForOffense(
 
 /**
  * Perform an RL utility that isn't a segment. 1 = Reset (only where Reset is
- * allowed; tryReset still refuses while a Reset is running or during a stun lock). 3 = slip, with
+ * allowed and not already running — the player may re-press mid-snap, the AI
+ * doesn't; tryReset still refuses during a stun lock). 3 = slip, with
  * the string held until the slide lands so its first punch is the counter.
  */
 function performRlUtility(
@@ -5548,7 +5549,7 @@ function performRlUtility(
 ): void {
   let applied = false;
   if (utility === 1) {
-    applied = aiResetAllowed(state) && tryReset(enemy, state);
+    applied = aiResetAllowed(state) && !enemy.fatigue?.resetActive && tryReset(enemy, state);
   } else if (utility === 3) {
     if (!enemy.slipActive && enemy.slipDisabledTimer <= 0 && !enemy.isKnockedDown && !enemy.isPunching) {
       const dir: SlipDir = rng.next01() < 0.5 ? "left" : "right";
