@@ -20,10 +20,11 @@ const OUT_DIR = path.resolve(import.meta.dirname, "..", "client", "public", "mod
 const MANIFEST_PATH = path.join(OUT_DIR, "fighter-manifest.json");
 const API_BASE = "https://openapi.tripo3d.ai/v3";
 const MODEL_VERSION = "v3.1-20260211";
+const IMAGE_MODEL_VERSION = "P1-20260311";
 const API_KEY = process.env.TRIPO_API_KEY;
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-interface PartSpec { id: string; prompt: string; faceLimit: number; rig?: boolean }
+interface PartSpec { id: string; prompt: string; faceLimit: number; rig?: boolean; image?: string }
 
 const PARTS: PartSpec[] = [
   {
@@ -33,6 +34,9 @@ const PARTS: PartSpec[] = [
       + "single plain light grey material, no patterns, no logos",
     faceLimit: 10000,
     rig: true,
+    // Proportions from the user's reference: lean, long-legged boxer in T-pose
+    // with gloves, wrist tape, knee-length trunks and high-top boots.
+    image: "attached_assets/Screenshot_2026-10-03_at_3.46.22_PM_1791056894874.png",
   },
   {
     id: "glove",
@@ -112,14 +116,31 @@ function readManifest(): Manifest {
 }
 
 async function generatePart(spec: PartSpec): Promise<Manifest["parts"][string]> {
-  console.log(`${spec.id}: text-to-model`);
-  const { task_id } = await tripo<{ task_id: string }>("/generation/text-to-model", {
-    prompt: spec.prompt,
-    model: MODEL_VERSION,
-    face_limit: spec.faceLimit,
-    texture: false,
-    pbr: false,
-  });
+  let task_id: string;
+  if (spec.image) {
+    console.log(`${spec.id}: image-to-model`);
+    const form = new FormData();
+    form.append("file", new Blob([readFileSync(path.resolve(import.meta.dirname, "..", spec.image))], { type: "image/png" }), "ref.png");
+    const up = await fetch(`${API_BASE}/files`, { method: "POST", headers: { Authorization: `Bearer ${API_KEY}` }, body: form });
+    const upJson: any = await up.json();
+    if (upJson.code !== 0) throw new Error(`upload failed: ${upJson.message}`);
+    ({ task_id } = await tripo<{ task_id: string }>("/generation/image-to-model", {
+      input: upJson.data.file_token,
+      model: IMAGE_MODEL_VERSION,
+      face_limit: spec.faceLimit,
+      texture: false,
+      pbr: false,
+    }));
+  } else {
+    console.log(`${spec.id}: text-to-model`);
+    ({ task_id } = await tripo<{ task_id: string }>("/generation/text-to-model", {
+      prompt: spec.prompt,
+      model: MODEL_VERSION,
+      face_limit: spec.faceLimit,
+      texture: false,
+      pbr: false,
+    }));
+  }
   const modelTask = await waitForTask(task_id);
   if (!spec.rig) {
     const file = `${spec.id}.glb`;

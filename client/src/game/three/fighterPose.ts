@@ -373,13 +373,14 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
     // Ordinary guard: lead glove out in front at chin/eye height, rear glove
     // tucked by the chin, elbows in. Full guard pulls both up to the brow,
     // tight together in front of the face.
-    const down = _a.set(isLead ? 0.34 : 0.22, isLead ? 0.07 : 0.1, -side * (isLead ? 0.12 : 0.14));
+    const down = _a.set(isLead ? 0.4 : 0.22, isLead ? 0.11 : 0.1, -side * (isLead ? 0.13 : 0.14));
     const up = _b.set(isLead ? 0.27 : 0.23, 0.2 + pbOffM, -side * 0.15);
     const guardLocal = down.lerp(up, gb);
     // Guard is held relative to the chest (follows lean and blade), yaw only partly.
     const guard = _c.copy(guardLocal).applyQuaternion(out.chestRot).add(sh);
     g.copy(guard);
-    out.elbowPole[i].set(-0.2, -1, side * 0.35).applyQuaternion(out.chestRot).normalize();
+    // Elbows tucked down over the ribs, not flared.
+    out.elbowPole[i].set(-0.25, -1, side * 0.12).applyQuaternion(out.chestRot).normalize();
     out.maxStretch[i] = 1.04;
 
     const punchDir = _d.set(oppL.x, 0, oppL.z).normalize();

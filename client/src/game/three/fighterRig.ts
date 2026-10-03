@@ -45,6 +45,8 @@ export interface RigInstance {
   gloveCenter: { left: THREE.Object3D; right: THREE.Object3D };
   eyes: THREE.Mesh[];
   headgear: THREE.Object3D;
+  /** Body-space corrections for a bind pose that isn't upright (Tripo: a head pitched down). Applied before the pose. */
+  bindFix?: Partial<Record<BoneName, THREE.Quaternion>>;
   kind: "tripo" | "code";
   dispose(): void;
 }
@@ -328,7 +330,7 @@ function finishRig(
   bones: Record<BoneName, THREE.Object3D>,
   materials: Record<Region, THREE.MeshStandardMaterial>,
   kind: RigInstance["kind"],
-  headInfo: { center: THREE.Vector3; radius: number; frontX: number; eyeY: number },
+  headInfo: { center: THREE.Vector3; radius: number; frontX: number; eyeY: number; eyes?: [THREE.Vector3, THREE.Vector3] },
   ownedGeos: THREE.BufferGeometry[],
   /** Tripo: the model's own fists, centre per side in body space. No mesh gear is added. */
   ownHands?: { left: THREE.Vector3; right: THREE.Vector3 },
@@ -403,7 +405,8 @@ function finishRig(
     const eye = new THREE.Mesh(eyeGeo, eyeMat);
     const r = headInfo.radius * 0.11;
     const place = new THREE.Matrix4().compose(
-      new THREE.Vector3(headInfo.frontX - r * 0.25, headInfo.eyeY, headInfo.center.z + s * headInfo.radius * 0.36),
+      headInfo.eyes?.[s < 0 ? 0 : 1].clone()
+        ?? new THREE.Vector3(headInfo.frontX - r * 0.25, headInfo.eyeY, headInfo.center.z + s * headInfo.radius * 0.36),
       new THREE.Quaternion(), new THREE.Vector3(r * 0.35, r * 0.75, r),
     );
     attachAtBind(eye, head, body, place);
@@ -477,9 +480,12 @@ function buildTripoRig(t: TripoBodyTemplate): RigInstance {
   }
   const C = tripoCache;
   mesh.geometry = C.geo.clone();
-  return finishRig(body, bones, materials, "tripo", {
+  const rigOut = finishRig(body, bones, materials, "tripo", {
     center: C.headInfo.center.clone(), radius: C.headInfo.radius, frontX: C.headInfo.frontX, eyeY: C.headInfo.eyeY,
+    eyes: C.headInfo.eyes && [C.headInfo.eyes[0].clone(), C.headInfo.eyes[1].clone()],
   }, [mesh.geometry], C.ownHands && { left: C.ownHands.left.clone(), right: C.ownHands.right.clone() }, C.headgear?.clone());
+  if (C.bindFix) rigOut.bindFix = { Neck: C.bindFix.Neck.clone(), Head: C.bindFix.Head.clone() };
+  return rigOut;
 }
 
 let tripoCache: ({ tpl: TripoBodyTemplate } & ReturnType<typeof tripoRegions>) | null = null;
@@ -505,8 +511,10 @@ function tripoRegions(srcGeo: THREE.BufferGeometry, toBody: THREE.Matrix4, p: (b
   // The model's own feet are the shoes (boxing high-tops) and its own fists the
   // gloves, with the wrist strap (tape) just behind them: no geometry is added
   // on top, these areas just take the gear colours.
-  const shoeTop = ankleY + 0.1;
-  const sockTop = ankleY + (kneeY - ankleY) * 0.45;
+  // High-top boots run to the moulded cuff about two thirds of the way to the
+  // knee (measured on this model); a short sock top shows above them.
+  const shoeTop = ankleY + (kneeY - ankleY) * 0.65;
+  const sockTop = shoeTop + 0.035;
   const arm = (["Left", "Right"] as const).map(side => {
     const wrist = p(`${side}Hand`);
     const dir = wrist.clone().sub(p(`${side}ForeArm`)).normalize();
@@ -552,8 +560,14 @@ function tripoRegions(srcGeo: THREE.BufferGeometry, toBody: THREE.Matrix4, p: (b
   }, 7);
   // Head metrics from the skull vertices.
   const headInfo = headMetrics(outGeo, toBody, p("Head"), p("Neck"));
-  const headgear = fitHeadgear(outGeo, toBody, headInfo, (arm[0].wrist.y + arm[1].wrist.y) / 2) ?? undefined;
-  return { geo: outGeo, ownHands, headInfo, headgear };
+  const hg = fitHeadgear(outGeo, toBody, headInfo, (arm[0].wrist.y + arm[1].wrist.y) / 2);
+  // The generated body carries its head pitched down (the reference photo was
+  // shot from above): level the face line, split across neck and head.
+  const level = hg ? new THREE.Quaternion().setFromUnitVectors(hg.faceUp, new THREE.Vector3(0, 1, 0)) : null;
+  const bindFix = level && level.w < 0.9998 ? {
+    Neck: new THREE.Quaternion().slerp(level, 0.4), Head: level.clone(),
+  } : undefined;
+  return { geo: outGeo, ownHands, headInfo: { ...headInfo, eyes: hg?.eyes }, headgear: hg?.geo, bindFix };
 }
 
 const _sv = new THREE.Vector3();
@@ -696,74 +710,189 @@ function regionGroupsForSkinned(
 
 /**
  * Amateur headgear shaped to the model's own skull: the head's surface pushed
- * out a couple of centimetres, covering crown, forehead, ears, back and cheeks,
- * with the face (brow to chin) and jaw left open. Body space, or null.
+ * out into a smooth padded shell (crown, forehead pad, cheek protectors, back),
+ * with the face (brow to chin), jaw and ear holes open and a padded rim round
+ * every opening. Built in a head frame from the face profile, so a head that
+ * is pitched in the bind pose still gets a level opening. Body space, or null.
+ * Also returns where the model's eyes are, for the blink spheres.
  */
 function fitHeadgear(
   src: THREE.BufferGeometry, toBody: THREE.Matrix4,
   head: { center: THREE.Vector3; radius: number; frontX: number; eyeY: number },
   armY: number,
-): THREE.BufferGeometry | null {
-  const cz = head.center.z;
-  let g = src;
-  let pos = g.getAttribute("position");
-  let vb = Array.from({ length: pos.count }, (_, i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(toBody));
-  // Crown and chin from the mesh; the rest are face proportions of that height.
-  let crownY = -Infinity, chinY = Infinity;
+): { geo: THREE.BufferGeometry; eyes: [THREE.Vector3, THREE.Vector3]; faceUp: THREE.Vector3 } | null {
+  const c0 = head.center, cz = c0.z;
+  const all = (geo: THREE.BufferGeometry) => {
+    const pos = geo.getAttribute("position");
+    return Array.from({ length: pos.count }, (_, i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(toBody));
+  };
+  let vb = all(src);
+  const isHead = (v: THREE.Vector3) => v.y > armY + 0.05 && Math.abs(v.z - cz) < 0.2 && v.distanceTo(c0) < 0.3;
+  // Face profile: the front-most midline point per 1 cm of height.
+  const prof = new Map<number, number>();
   for (const v of vb) {
-    if (Math.abs(v.z - cz) > 0.2 || v.y < armY + 0.05) continue;
-    crownY = Math.max(crownY, v.y);
-    if (v.x > head.frontX - 0.06 && Math.abs(v.z - cz) < 0.03) chinY = Math.min(chinY, v.y);
+    if (!isHead(v) || Math.abs(v.z - cz) > 0.015 || v.x < c0.x) continue;
+    const k = Math.round((v.y - c0.y) * 100);
+    prof.set(k, Math.max(prof.get(k) ?? -Infinity, v.x));
   }
-  const h = crownY - chinY;
+  const keys = Array.from(prof.keys()).sort((x, y) => x - y);
+  if (keys.length < 10) return null;
+  const maxPX = Math.max(...Array.from(prof.values()));
+  // Chin: the lowest profile point well out in front (the neck sits behind it).
+  const chinK = keys.find(k => prof.get(k)! > c0.x + 0.6 * (maxPX - c0.x))!;
+  const chin = new THREE.Vector3(prof.get(chinK)!, c0.y + chinK / 100, cz);
+  const fhK = keys.reduce((best, k) => Math.abs(k - (chinK + 17)) < Math.abs(best - (chinK + 17)) ? k : best, keys[0]);
+  const fore = new THREE.Vector3(prof.get(fhK)!, c0.y + fhK / 100, cz);
+  const U = fore.clone().sub(chin).normalize();          // up the face
+  const Z = new THREE.Vector3(0, 0, 1);
+  const F = new THREE.Vector3().crossVectors(U, Z).normalize(); // out of the face
+  const loc = (v: THREE.Vector3) => { const d = _sv.copy(v).sub(c0); return { f: d.dot(F), u: d.dot(U), r: v.z - cz }; };
+  let crownU = -Infinity, maxF = -Infinity;
+  for (const v of vb) if (isHead(v)) { const l = loc(v); crownU = Math.max(crownU, l.u); maxF = Math.max(maxF, l.f); }
+  const chinU = loc(chin).u;
+  const h = crownU - chinU;
   if (!isFinite(h) || h < 0.15 || h > 0.5) return null;
-  const browY = crownY - 0.47 * h;        // top of the face opening, just over the brows
-  const cheekLow = crownY - 0.8 * h;      // cheek pads stop at mouth level
-  const openHalf = 0.2 * h;               // half-width of the face opening
-  const faceX = head.frontX - 0.09;       // in front of this is "face side"
-  const bottomY = chinY + 0.04;           // back of the neck stays bare
-  const THICK = 0.02;
-  // Cut along every edge of the opening so it is a clean line, not triangle teeth.
-  for (const f of [
-    (v: THREE.Vector3) => v.y - browY, (v: THREE.Vector3) => v.y - cheekLow, (v: THREE.Vector3) => v.y - bottomY,
-    (v: THREE.Vector3) => v.x - faceX, (v: THREE.Vector3) => v.z - cz - openHalf, (v: THREE.Vector3) => v.z - cz + openHalf,
-  ]) g = cutSkinnedAlong(g, toBody, f);
-  pos = g.getAttribute("position");
-  vb = Array.from({ length: pos.count }, (_, i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(toBody));
-  const index = g.index ? g.index.array : Array.from({ length: pos.count }, (_, i) => i);
-  const inHead = (v: THREE.Vector3) => v.y > bottomY - 0.01 && Math.abs(v.z - cz) < 0.17;
-  const keep = (c: THREE.Vector3) => {
-    if (c.y < bottomY) return false;
-    const front = c.x > faceX;
-    if (front && Math.abs(c.z - cz) < openHalf && c.y < browY) return false; // face
-    if (front && c.y < cheekLow) return false;                               // jaw & chin
+  const browU = crownU - 0.44 * h;        // forehead pad ends just over the brows
+  const cheekLowU = crownU - 0.82 * h;    // cheek protectors stop at mouth level
+  const openHalf = 0.21 * h;              // half-width of the face opening
+  const faceF = maxF - 0.085;             // in front of this is "face side"
+  const bottomU = chinU + 0.03;           // back of the neck stays bare
+  const eyeU = crownU - 0.52 * h;
+  // Ear holes: the outermost point of each ear.
+  const ear = [-1, 1].map(sd => {
+    let best: { f: number; u: number; r: number } | null = null;
+    for (const v of vb) {
+      if (!isHead(v)) continue;
+      const l = loc(v);
+      if (l.u < chinU + 0.3 * h || l.u > crownU - 0.35 * h || Math.sign(l.r) !== sd) continue;
+      if (!best || Math.abs(l.r) > Math.abs(best.r)) best = { ...l };
+    }
+    return best;
+  });
+  const EAR_R = 0.024;
+  const earField = (k: number) => (v: THREE.Vector3) => {
+    const e = ear[k]; if (!e) return 1;
+    const l = loc(v);
+    if (Math.sign(l.r) !== Math.sign(e.r) || Math.abs(l.r) < Math.abs(e.r) * 0.5) return 1;
+    return Math.hypot(l.f - e.f, l.u - e.u) - EAR_R;
+  };
+  let g = src;
+  for (const fld of [
+    (v: THREE.Vector3) => loc(v).u - browU, (v: THREE.Vector3) => loc(v).u - cheekLowU, (v: THREE.Vector3) => loc(v).u - bottomU,
+    (v: THREE.Vector3) => loc(v).f - faceF, (v: THREE.Vector3) => loc(v).r - openHalf, (v: THREE.Vector3) => loc(v).r + openHalf,
+    earField(0), earField(1),
+  ]) g = cutSkinnedAlong(g, toBody, fld);
+  vb = all(g);
+  const index = g.index ? g.index.array : Array.from({ length: vb.length }, (_, i) => i);
+  const inHead = (v: THREE.Vector3) => isHead(v) && loc(v).u > bottomU - 0.02;
+  const keep = (cc: THREE.Vector3) => {
+    const l = loc(cc);
+    if (l.u < bottomU) return false;
+    const front = l.f > faceF;
+    if (front && Math.abs(l.r) < openHalf && l.u < browU) return false; // face
+    if (front && l.u < cheekLowU) return false;                         // jaw & chin
+    if (earField(0)(cc) < 0 || earField(1)(cc) < 0) return false;       // ear holes
     return true;
   };
-  // Smooth outward normals, welded by position so the shell stays closed.
-  const key = (v: THREE.Vector3) => `${v.x.toFixed(4)},${v.y.toFixed(4)},${v.z.toFixed(4)}`;
-  const nrm = new Map<string, THREE.Vector3>();
+  // Weld by position (1 mm grid: cut points from neighbouring triangles land a
+  // hair apart): one shell vertex per surface point.
+  const key = (v: THREE.Vector3) => `${Math.round(v.x * 1000)},${Math.round(v.y * 1000)},${Math.round(v.z * 1000)}`;
+  const weld = new Map<string, number>();
+  const base: THREE.Vector3[] = [], nrm: THREE.Vector3[] = [];
+  const wid = (v: THREE.Vector3) => {
+    const k = key(v);
+    let i = weld.get(k);
+    if (i === undefined) { i = base.length; weld.set(k, i); base.push(v.clone()); nrm.push(new THREE.Vector3()); }
+    return i;
+  };
   const tris: number[] = [];
-  const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Vector3();
+  const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), n = new THREE.Vector3(), cc = new THREE.Vector3();
   for (let t = 0; t < index.length; t += 3) {
     const a = vb[index[t]], b = vb[index[t + 1]], d = vb[index[t + 2]];
     if (!inHead(a) || !inHead(b) || !inHead(d)) continue;
+    const ia = wid(a), ib = wid(b), id = wid(d);
     n.crossVectors(e1.subVectors(b, a), e2.subVectors(d, a));
-    for (const v of [a, b, d]) { const k = key(v); (nrm.get(k) ?? nrm.set(k, new THREE.Vector3()).get(k)!).add(n); }
-    c.copy(a).add(b).add(d).multiplyScalar(1 / 3);
-    if (keep(c)) tris.push(index[t], index[t + 1], index[t + 2]);
+    nrm[ia].add(n); nrm[ib].add(n); nrm[id].add(n);
+    cc.copy(a).add(b).add(d).multiplyScalar(1 / 3);
+    if (keep(cc) && ia !== ib && ib !== id && ia !== id) tris.push(ia, ib, id);
   }
-  if (tris.length < 30) return null;
-  const out: number[] = [];
-  for (const i of tris) {
-    const v = vb[i];
-    const nn = nrm.get(key(v))!.clone().normalize();
-    out.push(v.x + nn.x * THICK, v.y + nn.y * THICK, v.z + nn.z * THICK);
+  if (tris.length < 90) return null;
+  for (const v of nrm) v.normalize();
+  // Edges used once are the openings' borders.
+  const edgeCount = new Map<string, number>();
+  const ek = (x: number, y: number) => x < y ? `${x}_${y}` : `${y}_${x}`;
+  for (let t = 0; t < tris.length; t += 3) for (let j = 0; j < 3; j++) {
+    const k = ek(tris[t + j], tris[t + (j + 1) % 3]);
+    edgeCount.set(k, (edgeCount.get(k) ?? 0) + 1);
+  }
+  const used = Array.from(new Set(tris));
+  const nb = new Map<number, Set<number>>();
+  const border = new Set<number>();
+  for (let t = 0; t < tris.length; t += 3) for (let j = 0; j < 3; j++) {
+    const x = tris[t + j], y = tris[t + (j + 1) % 3];
+    const isB = edgeCount.get(ek(x, y)) === 1;
+    if (isB) { border.add(x); border.add(y); }
+    for (const [p, q] of [[x, y], [y, x]]) (nb.get(p) ?? nb.set(p, new Set()).get(p)!).add(q);
+  }
+  // Padding: thick, then smoothed so the skull's detail (ears, brow, nose
+  // bridge) melts into a smooth pad. Borders only smooth along the border.
+  const THICK = 0.028, RIM_IN = 0.004;
+  let P = base.map((v, i) => v.clone().addScaledVector(nrm[i], THICK));
+  for (let it = 0; it < 8; it++) {
+    const Q = P.map(v => v.clone());
+    for (const i of used) {
+      const ns = Array.from(nb.get(i)!).filter(j => !border.has(i) || border.has(j));
+      if (!ns.length) continue;
+      const avg = new THREE.Vector3();
+      for (const j of ns) avg.add(P[j]);
+      avg.divideScalar(ns.length);
+      Q[i].lerp(avg, 0.5);
+    }
+    P = Q;
+  }
+  // Smoothing shrinks the shell; push every vertex back out to its padding depth.
+  for (const i of used) {
+    const out = _sv.copy(P[i]).sub(base[i]).dot(nrm[i]);
+    if (out < THICK * 0.8) P[i].addScaledVector(nrm[i], THICK * 0.8 - out);
+  }
+  const posOut: number[] = [];
+  for (const v of P) posOut.push(v.x, v.y, v.z);
+  const idxOut = [...tris];
+  // Rim: a band from each border edge back down to the head, so the padding has visible thickness.
+  const inner = new Map<number, number>();
+  const innerOf = (i: number) => {
+    let j = inner.get(i);
+    if (j === undefined) {
+      j = posOut.length / 3; inner.set(i, j);
+      const v = base[i].clone().addScaledVector(nrm[i], RIM_IN);
+      posOut.push(v.x, v.y, v.z);
+    }
+    return j;
+  };
+  for (let t = 0; t < tris.length; t += 3) for (let j = 0; j < 3; j++) {
+    const x = tris[t + j], y = tris[t + (j + 1) % 3];
+    if (edgeCount.get(ek(x, y)) !== 1) continue;
+    const xi = innerOf(x), yi = innerOf(y);
+    idxOut.push(y, x, xi, y, xi, yi);
   }
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(out, 3));
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(posOut, 3));
+  geo.setIndex(idxOut);
   geo.computeVertexNormals();
-  geo.addGroup(0, out.length / 3, 0);
-  return geo;
+  geo.addGroup(0, idxOut.length, 0);
+  // Eyes: the front-most surface point at eye height, a little in from the midline.
+  const eyes = [-1, 1].map(sd => {
+    let best: THREE.Vector3 | null = null, bf = -Infinity;
+    for (const v of vb) {
+      if (!isHead(v)) continue;
+      const l = loc(v);
+      if (Math.abs(l.u - eyeU) > 0.012 || Math.abs(l.r - sd * 0.033) > 0.01) continue;
+      if (l.f > bf) { bf = l.f; best = v; }
+    }
+    return (best ?? c0.clone().addScaledVector(F, maxF - 0.02).addScaledVector(U, eyeU).add(new THREE.Vector3(0, 0, sd * 0.033)))
+      .clone().addScaledVector(F, -0.006);
+  }) as [THREE.Vector3, THREE.Vector3];
+  return { geo, eyes, faceUp: U.clone() };
 }
 
 function headMetrics(geo: THREE.BufferGeometry, toBody: THREE.Matrix4, headP: THREE.Vector3, neckP: THREE.Vector3) {

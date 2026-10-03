@@ -296,9 +296,13 @@ export class Fighter3D {
     }
     this.fk("Neck");
     tmp.slerpQuaternions(P.chestRot, P.headRot, 0.5);
+    const fix = this.rig.bindFix;
+    if (fix?.Neck) tmp.multiply(fix.Neck);
     this.setBody("Neck", tmp.multiply(B.Neck.bodyQ));
     this.fk("Head");
-    this.setBody("Head", tmp.copy(P.headRot).multiply(B.Head.bodyQ));
+    tmp.copy(P.headRot);
+    if (fix?.Head) tmp.multiply(fix.Head);
+    this.setBody("Head", tmp.multiply(B.Head.bodyQ));
 
     const sides = ["Left", "Right"] as const;
     sides.forEach((s, i) => {
