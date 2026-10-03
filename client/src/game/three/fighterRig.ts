@@ -332,6 +332,8 @@ function finishRig(
   ownedGeos: THREE.BufferGeometry[],
   /** Tripo: the model's own fists, centre per side in body space. No mesh gear is added. */
   ownHands?: { left: THREE.Vector3; right: THREE.Vector3 },
+  /** Tripo: headgear shaped to this model's skull, in body space. */
+  fittedHeadgear?: THREE.BufferGeometry,
 ): RigInstance {
   body.updateMatrixWorld(true);
   const gloveLen = 0.3;
@@ -379,10 +381,19 @@ function finishRig(
     headInfo.center.clone().add(new THREE.Vector3(-headInfo.radius * 0.08, headInfo.radius * 0.12, 0)),
     new THREE.Quaternion(), new THREE.Vector3().setScalar(headInfo.radius * 3.6),
   );
-  const headgear = new THREE.Mesh(gearSet.headgear.geo, materials.headgear);
+  const headgear = new THREE.Mesh(fittedHeadgear ?? gearSet.headgear.geo, materials.headgear);
   headgear.castShadow = true;
   headgear.visible = false;
-  attachAtBind(headgear, head, body, hgPlace);
+  if (fittedHeadgear) {
+    ownedGeos.push(fittedHeadgear);
+    materials.headgear.side = THREE.DoubleSide; // the inside shows through the face opening
+  }
+  // The headgear's origin doubles as the head centre for the pose driver, so
+  // the fitted (body-space) shell is re-centred on it.
+  if (fittedHeadgear) fittedHeadgear.translate(-headInfo.center.x, -headInfo.center.y, -headInfo.center.z);
+  attachAtBind(headgear, head, body, fittedHeadgear
+    ? new THREE.Matrix4().makeTranslation(headInfo.center.x, headInfo.center.y, headInfo.center.z)
+    : hgPlace);
 
   const eyeGeo = new THREE.SphereGeometry(1, 10, 8);
   ownedGeos.push(eyeGeo);
@@ -456,66 +467,202 @@ function buildTripoRig(t: TripoBodyTemplate): RigInstance {
   body.updateMatrixWorld(true);
 
   const materials = newMaterials();
-  // Regions from bind-pose heights: trunks band, stripe at its top, socks above the shoe.
+  mesh.material = [...BODY_REGIONS.map(r => materials[r]), materials.glove, materials.shoe, materials.tape];
+  mesh.castShadow = true;
+  mesh.frustumCulled = false;
+  // The cut/region/headgear work is ~150 ms, so it runs once per loaded template.
+  if (tripoCache?.tpl !== t) {
+    const toBody = new THREE.Matrix4().copy(body.matrixWorld).invert().multiply(mesh.matrixWorld);
+    tripoCache = { tpl: t, ...tripoRegions(mesh.geometry, toBody, p) };
+  }
+  const C = tripoCache;
+  mesh.geometry = C.geo.clone();
+  return finishRig(body, bones, materials, "tripo", {
+    center: C.headInfo.center.clone(), radius: C.headInfo.radius, frontX: C.headInfo.frontX, eyeY: C.headInfo.eyeY,
+  }, [mesh.geometry], C.ownHands && { left: C.ownHands.left.clone(), right: C.ownHands.right.clone() }, C.headgear?.clone());
+}
+
+let tripoCache: ({ tpl: TripoBodyTemplate } & ReturnType<typeof tripoRegions>) | null = null;
+
+/** Colour-region groups, own-hand centres, head metrics and fitted headgear for the Tripo body. */
+function tripoRegions(srcGeo: THREE.BufferGeometry, toBody: THREE.Matrix4, p: (b: BoneName) => THREE.Vector3) {
+  // Colour regions, all from the bind pose in body space. Every region edge is a
+  // level line of a scalar field, and the mesh is first cut along each one
+  // (same surface, a few extra vertices) so the colour edges are straight
+  // instead of following the low-poly triangles' teeth into the skin.
   const hipsY = p("Hips").y;
   const kneeY = (p("LeftLeg").y + p("RightLeg").y) / 2;
   const ankleY = (p("LeftFoot").y + p("RightFoot").y) / 2;
   const chestY = p("Spine2").y;
-  const waistY = hipsY + (chestY - hipsY) * 0.22;
-  const hemY = kneeY + (hipsY - kneeY) * 0.42;
-  const sockTop = ankleY + (kneeY - ankleY) * 0.3;
-  const toBody = new THREE.Matrix4().copy(body.matrixWorld).invert().multiply(mesh.matrixWorld);
-  // The model's own hands are the gloves and its own feet the shoes: no extra
-  // geometry goes on top, they just take the glove/shoe colours. Decided per
-  // vertex by the bone that carries most of its weight; the heel, which the
-  // auto-rig weights to the shin, is caught by height instead.
-  const skelNames = mesh.skeleton.bones.map(b => t.boneMap.get(b.name) ?? null);
-  const shoeTop = ankleY + 0.035;
-  const handSum = { left: new THREE.Vector3(), right: new THREE.Vector3() };
-  const handN = { left: 0, right: 0 };
-  const domBone = (g: THREE.BufferGeometry, i: number): BoneName | null => {
-    const si = g.getAttribute("skinIndex"), sw = g.getAttribute("skinWeight");
-    if (!si || !sw) return null;
-    let best = -1, bi = 0;
-    for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > best) { best = w; bi = si.getComponent(i, k); } }
-    return skelNames[bi] ?? null;
+  // The model's shorts have a moulded waistband that sits higher at the back:
+  // its top edge is a tilted plane (measured on the Tripo boxer, relative to
+  // the hips), and the whole band is the stripe colour.
+  void chestY;
+  const waistTop = (v: THREE.Vector3) => hipsY + 0.166 - 0.124 * v.x;
+  const stripeY = hipsY + 0.028;
+  const hemY = findShortsHem(srcGeo, toBody, p("LeftUpLeg"), p("LeftLeg"), kneeY, hipsY)
+    ?? kneeY + (hipsY - kneeY) * 0.42;
+  // The model's own feet are the shoes (boxing high-tops) and its own fists the
+  // gloves, with the wrist strap (tape) just behind them: no geometry is added
+  // on top, these areas just take the gear colours.
+  const shoeTop = ankleY + 0.1;
+  const sockTop = ankleY + (kneeY - ankleY) * 0.45;
+  const arm = (["Left", "Right"] as const).map(side => {
+    const wrist = p(`${side}Hand`);
+    const dir = wrist.clone().sub(p(`${side}ForeArm`)).normalize();
+    const zSign = Math.sign(wrist.z) || (side === "Left" ? -1 : 1);
+    const minZ = Math.abs(p(`${side}Arm`).z) * 0.9 + Math.abs(wrist.z) * 0.1;
+    return { wrist, dir, zSign, minZ };
+  });
+  const GLOVE_FROM = -0.02, TAPE_FROM = -0.095; // along the forearm from the wrist joint (m)
+  const armS = (v: THREE.Vector3, k: number): number => {
+    const a = arm[k];
+    if (Math.sign(v.z) !== a.zSign || Math.abs(v.z) < a.minZ) return -1;
+    return _sv.copy(v).sub(a.wrist).dot(a.dir);
   };
+  const fields: ((v: THREE.Vector3) => number)[] = [
+    v => v.y - waistTop(v), v => v.y - stripeY, v => v.y - hemY, v => v.y - sockTop, v => v.y - shoeTop,
+    v => armS(v, 0) - GLOVE_FROM, v => armS(v, 0) - TAPE_FROM,
+    v => armS(v, 1) - GLOVE_FROM, v => armS(v, 1) - TAPE_FROM,
+  ];
+  let geo = srcGeo;
+  for (const fld of fields) geo = cutSkinnedAlong(geo, toBody, fld);
+  const handSum = [new THREE.Vector3(), new THREE.Vector3()];
+  const handN = [0, 0];
   {
-    const g = mesh.geometry, pos = g.getAttribute("position"), v = new THREE.Vector3();
+    const pos = geo.getAttribute("position"), v = new THREE.Vector3();
     for (let i = 0; i < pos.count; i++) {
-      const b = domBone(g, i);
-      if (b === "LeftHand" || b === "RightHand") {
-        const side = b === "LeftHand" ? "left" : "right";
-        handSum[side].add(v.fromBufferAttribute(pos, i).applyMatrix4(toBody));
-        handN[side]++;
-      }
+      v.fromBufferAttribute(pos, i).applyMatrix4(toBody);
+      for (let k = 0; k < 2; k++) if (armS(v, k) > GLOVE_FROM + 0.005) { handSum[k].add(v); handN[k]++; }
     }
   }
-  const ownHands = handN.left > 0 && handN.right > 0
-    ? { left: handSum.left.divideScalar(handN.left), right: handSum.right.divideScalar(handN.right) }
+  const ownHands = handN[0] > 0 && handN[1] > 0
+    ? { left: handSum[0].divideScalar(handN[0]), right: handSum[1].divideScalar(handN[1]) }
     : undefined;
-  mesh.geometry = regionGroupsForSkinned(mesh.geometry, toBody, (y, verts) => {
-    let hand = 0, foot = 0;
-    for (const i of verts) {
-      const b = domBone(mesh.geometry, i);
-      if (b === "LeftHand" || b === "RightHand") hand++;
-      else if (b === "LeftFoot" || b === "RightFoot" || b === "LeftToeBase" || b === "RightToeBase") foot++;
-    }
-    if (ownHands && hand >= 2) return 4;
-    if (foot >= 2 || y < shoeTop) return 5;
-    if (y > waistY) return 0;
-    if (y > waistY - 0.055) return 2;
-    if (y > hemY) return 1;
-    if (y < sockTop) return 3;
+  const outGeo = regionGroupsForSkinned(geo, toBody, c => {
+    const s = Math.max(armS(c, 0), armS(c, 1));
+    if (ownHands && s > GLOVE_FROM) return 4;
+    if (ownHands && s > TAPE_FROM) return 6;
+    if (c.y < shoeTop) return 5;
+    if (c.y > waistTop(c)) return 0;
+    if (c.y > stripeY) return 2;
+    if (c.y > hemY) return 1;
+    if (c.y < sockTop) return 3;
     return 0;
-  }, 6);
-  mesh.material = [...BODY_REGIONS.map(r => materials[r]), materials.glove, materials.shoe];
-  mesh.castShadow = true;
-  mesh.frustumCulled = false;
+  }, 7);
+  // Head metrics from the skull vertices.
+  const headInfo = headMetrics(outGeo, toBody, p("Head"), p("Neck"));
+  const headgear = fitHeadgear(outGeo, toBody, headInfo, (arm[0].wrist.y + arm[1].wrist.y) / 2) ?? undefined;
+  return { geo: outGeo, ownHands, headInfo, headgear };
+}
 
-  // Head metrics from vertices bound mostly to the Head bone.
-  const headInfo = headMetrics(mesh, toBody, p("Head"), p("Neck"));
-  return finishRig(body, bones, materials, "tripo", headInfo, [mesh.geometry], ownHands);
+const _sv = new THREE.Vector3();
+
+/**
+ * Where the shorts end: walking up from just above the knee, the first height
+ * where the leg's silhouette flares out past the bare thigh. Null if no flare.
+ */
+function findShortsHem(g: THREE.BufferGeometry, toBody: THREE.Matrix4, hip: THREE.Vector3, knee: THREE.Vector3, kneeY: number, hipsY: number): number | null {
+  const pos = g.getAttribute("position");
+  const axis = knee.clone().sub(hip);
+  const len = axis.length();
+  axis.normalize();
+  const v = new THREE.Vector3(), d = new THREE.Vector3();
+  const pts: { y: number; r: number }[] = [];
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i).applyMatrix4(toBody);
+    if (Math.sign(v.z) !== Math.sign(hip.z || -1)) continue;
+    const t = d.copy(v).sub(hip).dot(axis);
+    if (t < 0 || t > len) continue;
+    pts.push({ y: v.y, r: d.addScaledVector(axis, -t).length() });
+  }
+  const p95 = (y: number) => {
+    const rs = pts.filter(q => Math.abs(q.y - y) <= 0.015).map(q => q.r).sort((a, b) => a - b);
+    return rs.length < 4 ? null : rs[Math.floor(rs.length * 0.95)];
+  };
+  const base = p95(kneeY + 0.04);
+  if (base == null) return null;
+  for (let y = kneeY + 0.05; y < kneeY + (hipsY - kneeY) * 0.7; y += 0.005) {
+    const r = p95(y);
+    if (r != null && r > base * 1.25) return y - 0.012;
+  }
+  return null;
+}
+
+/**
+ * Cut a skinned indexed geometry along the zero line of `field` (evaluated on
+ * bind positions in body space). Triangles crossing it are split in three;
+ * new vertices interpolate position/normal/uv and merge the two ends' skin
+ * weights (top four kept, renormalised). The surface doesn't change.
+ */
+function cutSkinnedAlong(g: THREE.BufferGeometry, toBody: THREE.Matrix4, field: (v: THREE.Vector3) => number): THREE.BufferGeometry {
+  const names = Object.keys(g.attributes);
+  const src = names.map(n => g.getAttribute(n) as THREE.BufferAttribute);
+  const data = src.map(a => Array.from(a.array as ArrayLike<number>));
+  const sizes = src.map(a => a.itemSize);
+  const posI = names.indexOf("position"), siI = names.indexOf("skinIndex"), swI = names.indexOf("skinWeight");
+  const n0 = src[posI].count;
+  const fv: number[] = new Array(n0);
+  const v = new THREE.Vector3();
+  for (let i = 0; i < n0; i++) fv[i] = field(v.fromBufferAttribute(src[posI], i).applyMatrix4(toBody));
+  let count = n0;
+  const edgeCache = new Map<string, number>();
+  const EPS = 1e-6;
+  const mid = (a: number, b: number): number => {
+    const key = a < b ? `${a}_${b}` : `${b}_${a}`;
+    const hit = edgeCache.get(key);
+    if (hit !== undefined) return hit;
+    const t = fv[a] / (fv[a] - fv[b]);
+    names.forEach((_, k) => {
+      const sz = sizes[k], arr = data[k];
+      if (k === siI || k === swI) return;
+      for (let c = 0; c < sz; c++) arr.push(arr[a * sz + c] + (arr[b * sz + c] - arr[a * sz + c]) * t);
+    });
+    if (siI >= 0 && swI >= 0) {
+      const w = new Map<number, number>();
+      for (const [vi, f] of [[a, 1 - t], [b, t]] as [number, number][]) {
+        for (let c = 0; c < 4; c++) {
+          const bi = data[siI][vi * 4 + c], bw = data[swI][vi * 4 + c] * f;
+          if (bw > 0) w.set(bi, (w.get(bi) ?? 0) + bw);
+        }
+      }
+      const top = Array.from(w.entries()).sort((x, y) => y[1] - x[1]).slice(0, 4);
+      const sum = top.reduce((s2, e) => s2 + e[1], 0) || 1;
+      for (let c = 0; c < 4; c++) { data[siI].push(top[c]?.[0] ?? 0); data[swI].push((top[c]?.[1] ?? 0) / sum); }
+    }
+    fv.push(0);
+    edgeCache.set(key, count);
+    return count++;
+  };
+  const index = g.index ? Array.from(g.index.array) : Array.from({ length: n0 }, (_, i) => i);
+  const out: number[] = [];
+  for (let t = 0; t < index.length; t += 3) {
+    const tri = [index[t], index[t + 1], index[t + 2]];
+    const sg = tri.map(i => (fv[i] > EPS ? 1 : fv[i] < -EPS ? -1 : 0));
+    if (!(sg.includes(1) && sg.includes(-1))) { out.push(...tri); continue; }
+    // Rotate so vertex 0 is the one alone on its side (or the one on the line).
+    let r = 0;
+    for (let k = 0; k < 3; k++) {
+      const a = sg[k], b = sg[(k + 1) % 3], c = sg[(k + 2) % 3];
+      if (a === 0 || (b !== a && c !== a && b !== 0 && c !== 0)) { r = k; break; }
+    }
+    const [A, B, C] = [tri[r], tri[(r + 1) % 3], tri[(r + 2) % 3]];
+    if (sg[r] === 0) {
+      // A on the line, B and C on opposite sides: split edge BC only.
+      const m = mid(B, C);
+      out.push(A, B, m, A, m, C);
+    } else {
+      const mab = mid(A, B), mac = mid(A, C);
+      out.push(A, mab, mac, mab, B, C, mab, C, mac);
+    }
+  }
+  const res = new THREE.BufferGeometry();
+  names.forEach((n, k) => {
+    const Arr = (src[k].array as any).constructor as { new (a: number[]): ArrayLike<number> };
+    res.setAttribute(n, new THREE.BufferAttribute(Arr === Uint8Array || Arr === Uint16Array ? new (Arr as any)(data[k]) : new Float32Array(data[k]), sizes[k], src[k].normalized));
+  });
+  res.setIndex(out);
+  return res;
 }
 
 function findSkinned(o: THREE.Object3D): THREE.SkinnedMesh | null {
@@ -527,16 +674,16 @@ function findSkinned(o: THREE.Object3D): THREE.SkinnedMesh | null {
 /** Reorder an indexed skinned geometry's triangles into region groups (bind positions in body space). */
 function regionGroupsForSkinned(
   g: THREE.BufferGeometry, toBody: THREE.Matrix4,
-  classify: (y: number, verts: [number, number, number]) => number, nGroups = BODY_REGIONS.length,
+  classify: (centroid: THREE.Vector3) => number, nGroups = BODY_REGIONS.length,
 ): THREE.BufferGeometry {
   const pos = g.getAttribute("position");
   const index = g.index ? Array.from(g.index.array) : Array.from({ length: pos.count }, (_, i) => i);
-  const v = new THREE.Vector3();
+  const v = new THREE.Vector3(), c = new THREE.Vector3();
   const buckets: number[][] = Array.from({ length: nGroups }, () => []);
   for (let t = 0; t < index.length; t += 3) {
-    let y = 0;
-    for (let k = 0; k < 3; k++) y += v.fromBufferAttribute(pos, index[t + k]).applyMatrix4(toBody).y;
-    const r = classify(y / 3, [index[t], index[t + 1], index[t + 2]]);
+    c.set(0, 0, 0);
+    for (let k = 0; k < 3; k++) c.add(v.fromBufferAttribute(pos, index[t + k]).applyMatrix4(toBody));
+    const r = classify(c.multiplyScalar(1 / 3));
     buckets[Math.max(0, Math.min(nGroups - 1, r))].push(index[t], index[t + 1], index[t + 2]);
   }
   const flat: number[] = [];
@@ -547,8 +694,80 @@ function regionGroupsForSkinned(
   return g;
 }
 
-function headMetrics(mesh: THREE.SkinnedMesh, toBody: THREE.Matrix4, headP: THREE.Vector3, neckP: THREE.Vector3) {
-  const pos = mesh.geometry.getAttribute("position");
+/**
+ * Amateur headgear shaped to the model's own skull: the head's surface pushed
+ * out a couple of centimetres, covering crown, forehead, ears, back and cheeks,
+ * with the face (brow to chin) and jaw left open. Body space, or null.
+ */
+function fitHeadgear(
+  src: THREE.BufferGeometry, toBody: THREE.Matrix4,
+  head: { center: THREE.Vector3; radius: number; frontX: number; eyeY: number },
+  armY: number,
+): THREE.BufferGeometry | null {
+  const cz = head.center.z;
+  let g = src;
+  let pos = g.getAttribute("position");
+  let vb = Array.from({ length: pos.count }, (_, i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(toBody));
+  // Crown and chin from the mesh; the rest are face proportions of that height.
+  let crownY = -Infinity, chinY = Infinity;
+  for (const v of vb) {
+    if (Math.abs(v.z - cz) > 0.2 || v.y < armY + 0.05) continue;
+    crownY = Math.max(crownY, v.y);
+    if (v.x > head.frontX - 0.06 && Math.abs(v.z - cz) < 0.03) chinY = Math.min(chinY, v.y);
+  }
+  const h = crownY - chinY;
+  if (!isFinite(h) || h < 0.15 || h > 0.5) return null;
+  const browY = crownY - 0.47 * h;        // top of the face opening, just over the brows
+  const cheekLow = crownY - 0.8 * h;      // cheek pads stop at mouth level
+  const openHalf = 0.2 * h;               // half-width of the face opening
+  const faceX = head.frontX - 0.09;       // in front of this is "face side"
+  const bottomY = chinY + 0.04;           // back of the neck stays bare
+  const THICK = 0.02;
+  // Cut along every edge of the opening so it is a clean line, not triangle teeth.
+  for (const f of [
+    (v: THREE.Vector3) => v.y - browY, (v: THREE.Vector3) => v.y - cheekLow, (v: THREE.Vector3) => v.y - bottomY,
+    (v: THREE.Vector3) => v.x - faceX, (v: THREE.Vector3) => v.z - cz - openHalf, (v: THREE.Vector3) => v.z - cz + openHalf,
+  ]) g = cutSkinnedAlong(g, toBody, f);
+  pos = g.getAttribute("position");
+  vb = Array.from({ length: pos.count }, (_, i) => new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(toBody));
+  const index = g.index ? g.index.array : Array.from({ length: pos.count }, (_, i) => i);
+  const inHead = (v: THREE.Vector3) => v.y > bottomY - 0.01 && Math.abs(v.z - cz) < 0.17;
+  const keep = (c: THREE.Vector3) => {
+    if (c.y < bottomY) return false;
+    const front = c.x > faceX;
+    if (front && Math.abs(c.z - cz) < openHalf && c.y < browY) return false; // face
+    if (front && c.y < cheekLow) return false;                               // jaw & chin
+    return true;
+  };
+  // Smooth outward normals, welded by position so the shell stays closed.
+  const key = (v: THREE.Vector3) => `${v.x.toFixed(4)},${v.y.toFixed(4)},${v.z.toFixed(4)}`;
+  const nrm = new Map<string, THREE.Vector3>();
+  const tris: number[] = [];
+  const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Vector3();
+  for (let t = 0; t < index.length; t += 3) {
+    const a = vb[index[t]], b = vb[index[t + 1]], d = vb[index[t + 2]];
+    if (!inHead(a) || !inHead(b) || !inHead(d)) continue;
+    n.crossVectors(e1.subVectors(b, a), e2.subVectors(d, a));
+    for (const v of [a, b, d]) { const k = key(v); (nrm.get(k) ?? nrm.set(k, new THREE.Vector3()).get(k)!).add(n); }
+    c.copy(a).add(b).add(d).multiplyScalar(1 / 3);
+    if (keep(c)) tris.push(index[t], index[t + 1], index[t + 2]);
+  }
+  if (tris.length < 30) return null;
+  const out: number[] = [];
+  for (const i of tris) {
+    const v = vb[i];
+    const nn = nrm.get(key(v))!.clone().normalize();
+    out.push(v.x + nn.x * THICK, v.y + nn.y * THICK, v.z + nn.z * THICK);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(out, 3));
+  geo.computeVertexNormals();
+  geo.addGroup(0, out.length / 3, 0);
+  return geo;
+}
+
+function headMetrics(geo: THREE.BufferGeometry, toBody: THREE.Matrix4, headP: THREE.Vector3, neckP: THREE.Vector3) {
+  const pos = geo.getAttribute("position");
   const pts: THREE.Vector3[] = [];
   const box = new THREE.Box3();
   // The skull: everything a little above the head joint, near the midline.
