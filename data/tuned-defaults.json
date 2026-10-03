@@ -1,7 +1,7 @@
 {
   "kind": "handz-neural-parameters",
   "version": 1,
-  "exportedAt": "2026-10-03T20:34:25.713Z",
+  "exportedAt": "2026-10-03T20:49:17.898Z",
   "params": {
     "handz_punch_anim": {
       "jab": {
@@ -19,16 +19,17 @@
         "dropPhase": 0.35,
         "riseArcFactor": 0.85,
         "distanceMult": 1,
+        "leanMult": 0,
         "hitRangePx": 75,
         "damage": 4.01,
         "staminaCost": 1
       },
       "cross": {
-        "launchDelayMult": 1.57,
-        "armSpeedMult": 1.43,
+        "launchDelayMult": 1.81,
+        "armSpeedMult": 1.31,
         "lingerMult": 0.99,
         "retractionMult": 2.39,
-        "lockoutMs": 120,
+        "lockoutMs": 95,
         "angle": -13,
         "reachMult": 1,
         "arcAmplitude": 15,
@@ -38,6 +39,7 @@
         "dropPhase": 0.35,
         "riseArcFactor": 0.85,
         "distanceMult": 1,
+        "leanMult": 0.25,
         "hitRangePx": 59,
         "damage": 5.17,
         "staminaCost": 1.2
@@ -46,7 +48,7 @@
         "launchDelayMult": 1,
         "armSpeedMult": 0.28,
         "lingerMult": 0.15,
-        "retractionMult": 1,
+        "retractionMult": 0.29,
         "lockoutMs": 100,
         "angle": -13,
         "reachMult": 1,
@@ -57,6 +59,7 @@
         "dropPhase": 0.35,
         "riseArcFactor": 0.85,
         "distanceMult": 0.9,
+        "leanMult": 1,
         "hitRangePx": 45,
         "damage": 4.59,
         "staminaCost": 1.1
@@ -76,6 +79,7 @@
         "dropPhase": 0.35,
         "riseArcFactor": 0.85,
         "distanceMult": 0.9,
+        "leanMult": 1,
         "hitRangePx": 45,
         "damage": 5.74,
         "staminaCost": 1.15
@@ -95,6 +99,7 @@
         "dropPhase": 0.17,
         "riseArcFactor": 0.85,
         "distanceMult": 1.9,
+        "leanMult": 0,
         "hitRangePx": 32,
         "damage": 6.5,
         "staminaCost": 3
@@ -114,6 +119,7 @@
         "dropPhase": 0.15,
         "riseArcFactor": 0.85,
         "distanceMult": 1.25,
+        "leanMult": 0.25,
         "hitRangePx": 32,
         "damage": 7,
         "staminaCost": 3

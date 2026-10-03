@@ -86,13 +86,19 @@ export interface PoseMemory {
   bodyVel: [number, number];
   /** Per arm: displayed telegraph pull-back 0..1. */
   pullback: [number, number];
+  /** Per arm: how far the punch's shoulder-joint rotation (Punch Animation Editor) is blended in, 0..1. */
+  shW: [number, number];
+  /** The punch whose shoulder rotation that arm is showing (latched while it eases out). */
+  shPunch: [PunchType | null, PunchType | null];
+  /** Per arm: 1 = the glove takes the punch's outbound path (hook arc, uppercut U), 0 = straight home to the guard. */
+  arcK: [number, number];
 }
 
 export function newPoseMemory(): PoseMemory {
   return {
     stanceBlend: 0, walkPhase: 0, walkAmt: 0, lastX: 0, lastZ: 0, init: false,
     armExt: [0, 0], armPunch: [null, null], armBody: [false, false], bodyExt: [0, 0], pullback: [0, 0],
-    armVel: [0, 0], bodyVel: [0, 0],
+    armVel: [0, 0], bodyVel: [0, 0], shW: [0, 0], shPunch: [null, null], arcK: [1, 1],
   };
 }
 
@@ -159,8 +165,14 @@ export function punchExtension(f: FighterState): number {
     // Ease in AND out: an ease-out starts at full speed, which reads as the
     // glove popping out of the guard.
     e = smooth(t);
-  } else if (phase === "contact" || phase === "linger") e = 1;
-  else e = 1 - smooth(f.retractionProgress || 0);
+  } else if (phase === "contact") e = 1;
+  else if (phase === "linger") {
+    // Hooks don't hang out wide after contact: they start home through the linger.
+    if (f.currentPunch.includes("Hook")) {
+      const [a, b] = fr.linger;
+      e = 1 - HOOK_LINGER_RETURN * smooth(b > a ? (p - a) / (b - a) : 1);
+    } else e = 1;
+  } else e = (f.currentPunch.includes("Hook") ? 1 - HOOK_LINGER_RETURN : 1) * (1 - smooth(f.retractionProgress || 0));
   // A feint is a short sold punch: it stops well short and comes back.
   return f.isFeinting ? e * 0.42 : e;
 }
@@ -173,6 +185,9 @@ export function punchHitsHead(f: FighterState, punch: PunchType): boolean {
   const hitsHead = PUNCH_CONFIGS[punch]?.hitsHead ?? true;
   return f.defenseState === "duck" ? (f.punchAimsHead && hitsHead) : hitsHead;
 }
+
+/** Share of a hook's way home covered during its linger (the rest in retraction). */
+const HOOK_LINGER_RETURN = 0.6;
 
 /** Lunge cap (m): past this, the arm stretches instead so contact always lands. */
 const MAX_REACH_LUNGE = 0.45;
@@ -214,6 +229,7 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
   const enginePunch = f.isPunching ? f.currentPunch : null;
   const firstFrame = !mem.armExt; // memory from before these fields existed
   if (firstFrame || !mem.armVel) Object.assign(mem, { armExt: [0, 0], armPunch: [null, null], armBody: [false, false], bodyExt: [0, 0], pullback: [0, 0], armVel: [0, 0], bodyVel: [0, 0] });
+  if (!mem.shW) Object.assign(mem, { shW: [0, 0], shPunch: [null, null], arcK: [1, 1] });
   for (let i = 0; i < 2; i++) {
     const isLeft = i === 0;
     const mine = !!enginePunch && LEFT_PUNCHES.has(enginePunch) === isLeft;
@@ -236,6 +252,20 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
     if (!mine && mem.armExt[i] < 0.002 && mem.bodyExt[i] < 0.002) {
       mem.armExt[i] = 0; mem.bodyExt[i] = 0; mem.armVel[i] = 0; mem.bodyVel[i] = 0; mem.armPunch[i] = null;
     }
+    // Shoulder-joint rotation: eases in from the moment the punch is committed
+    // (telegraph or launch), holds through contact, eases out over the retraction.
+    const ph = mine ? f.punchPhase : null;
+    const tele = f.telegraphPhase !== "none" && f.telegraphPunchType && LEFT_PUNCHES.has(f.telegraphPunchType) === isLeft
+      ? f.telegraphPunchType : null;
+    let shTarget = 0;
+    if (mine) { mem.shPunch[i] = enginePunch; shTarget = ph === "retraction" ? 1 - smooth(f.retractionProgress || 0) : 1; }
+    else if (tele) { mem.shPunch[i] = tele; shTarget = 1; }
+    mem.shW[i] = snapAll ? shTarget : follow(mem.shW[i], shTarget, 24, dt * 7, dt);
+    if (shTarget === 0 && mem.shW[i] < 0.002) { mem.shW[i] = 0; mem.shPunch[i] = null; }
+    // Outbound path vs straight home: once the punch has landed (linger/retraction)
+    // or been dropped, the glove heads straight back to the guard.
+    const homing = !mine || ph === "linger" || ph === "retraction";
+    mem.arcK[i] = homing ? (snapAll ? 0 : follow(mem.arcK[i], 0, 25, dt * 8, dt)) : 1;
     // Telegraph pull-back eases out into the punch instead of vanishing.
     let pbTarget = 0;
     if (!mine && f.telegraphPhase !== "none" && f.telegraphPunchType && LEFT_PUNCHES.has(f.telegraphPunchType) === isLeft) {
@@ -293,12 +323,14 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
     const bShot = mem.armBody[i];
     const reach = getPunchReachPx(f, p) / PX_PER_UNIT;
     const along = Math.max(0.25, Math.min(oppDist, reach) - (bShot ? 0.2 : 0.14));
-    const deficit = along - (Math.max(0, dims.shoulder[i].x) + dims.armLen * 1.05);
-    reachLunge = Math.max(reachLunge, Math.min(MAX_REACH_LUNGE, Math.max(0, deficit)) * be);
-    punchYaw += (left ? -1 : 1) * (hook ? 0.75 : upper ? 0.4 : rear ? 0.6 : 0.18) * be;
     // Per-punch "Lean forward" (Punch Animation Editor) scales the torso tilt and
-    // body step into the punch; the real-reach lunge above is left alone.
+    // every step into the punch, the reach step included: at 0 the feet stay put
+    // and the arm alone covers the distance.
     const leanK = Math.max(0, animCfg[p as keyof typeof animCfg]?.leanMult ?? 1);
+    // An uppercut lands with the elbow still bent, so it steps in further.
+    const deficit = along - (Math.max(0, dims.shoulder[i].x) + dims.armLen * (upper ? 0.62 : 1.05));
+    reachLunge = Math.max(reachLunge, Math.min(MAX_REACH_LUNGE, Math.max(0, deficit)) * be * leanK);
+    punchYaw += (left ? -1 : 1) * (hook ? 0.75 : upper ? 0.4 : rear ? 0.6 : 0.18) * be;
     if (!upper) lunge = Math.max(lunge, (hook ? 0.05 : rear ? 0.12 : 0.09) * be * leanK);
     if (bShot) bodyDip = Math.max(bodyDip, 0.09 * be);
     if (upper) upperDip = Math.max(upperDip, 0.05 * Math.sin(Math.PI * be));
@@ -403,23 +435,42 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
       // Distance is measured from this fighter's origin; the reach lunge moved the
       // shoulders, not the target.
       const target = _e.set(punchDir.x * along, aimHead ? headY : bodyY, punchDir.z * along);
+      const arcK = mem.arcK[i];
       if (isHook) {
-        // Wide arc in from the outside, elbow up level with the fist.
-        const arc = Math.sin(Math.PI * ext);
+        // Wide arc in from the outside, elbow up level with the fist; home in a
+        // straight line to the guard once it has landed.
+        const arc = Math.sin(Math.PI * ext) * arcK;
         g.lerpVectors(guard, target, ext);
         const outward = _f.set(-punchDir.z, 0, punchDir.x).multiplyScalar(side * 0.32 * arc);
         g.add(outward);
         g.y += 0.05 * arc;
-        out.elbowPole[i].set(0, 0.6, side).normalize();
+        out.elbowPole[i].set(0, 0.6 * arcK - 1 * (1 - arcK), side).normalize();
       } else if (isUpper) {
-        // Dip to load, then drive up (to the body: the engine scores uppercuts as body shots).
-        const dipPeak = 0.32;
-        let yOff: number;
-        if (ext < dipPeak) yOff = -0.16 * Math.sin((ext / dipPeak) * Math.PI * 0.5);
-        else yOff = -0.16 * (1 - smooth((ext - dipPeak) / (1 - dipPeak)));
-        g.lerpVectors(guard, target, smooth(ext));
-        g.y += yOff;
-        out.elbowPole[i].set(0.2, -1, side * 0.3).normalize();
+        // A real uppercut: the glove drops to belt level and a touch back to
+        // load, sweeps forward along the bottom of a U, then drives UP into the
+        // target with the elbow tucked under the fist (the body steps in so the
+        // arm lands bent, not reaching out like a jab). The path ends where the
+        // U-lift shoulder tilt below carries it exactly onto the target.
+        const liftEnd = (animCfg[punch as keyof typeof animCfg]?.uLiftDeg ?? 15) * THREE.MathUtils.DEG2RAD;
+        const end = _f.copy(target).sub(sh).applyQuaternion(_q.setFromAxisAngle(_zAxis, -liftEnd)).add(sh);
+        const load = _b.copy(guard).addScaledVector(punchDir, -0.06);
+        load.y = sh.y - 0.5; // down by the belt
+        const dipPeak = 0.3;
+        const u = _uc.copy(guard); // (_c holds the guard itself)
+        if (ext < dipPeak) u.lerp(load, smooth(ext / dipPeak));
+        else {
+          const s = (ext - dipPeak) / (1 - dipPeak);
+          // Forward travel finishes early, the climb comes late: the U's far wall.
+          const fwd = smooth(Math.min(1, s / 0.6));
+          u.x = load.x + (end.x - load.x) * fwd;
+          u.z = load.z + (end.z - load.z) * fwd;
+          u.y = load.y + (end.y - load.y) * smooth(s) * s;
+        }
+        // Homing: straight back from wherever the U left the glove.
+        const straight = _a.lerpVectors(guard, target, ext);
+        g.copy(straight).lerp(u, arcK);
+        // Elbow down and a little out, under the fist.
+        out.elbowPole[i].set(0.1, -1, side * 0.35).normalize();
       } else {
         g.lerpVectors(guard, target, ext);
         out.elbowPole[i].set(-0.3, -1, side * 0.5).normalize();
@@ -427,6 +478,23 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
       // Never truncate a valid reach. The IK only stretches as far as the target is,
       // so the margin covers the gap between the estimated and real shoulder.
       out.maxStretch[i] = Math.max(1.45, sh.distanceTo(g) / Math.max(0.1, dims.armLen) + 0.25);
+    }
+    // Shoulder joint (Punch Animation Editor, body axes, degrees) plus the
+    // uppercut's U-lift, rotating the whole arm about the shoulder.
+    const shPunch = mem.shPunch[i];
+    const shCfg = shPunch ? animCfg[shPunch as keyof typeof animCfg] : undefined;
+    const sw = mem.shW[i];
+    let rx = 0, ry = 0, rz = 0;
+    if (shCfg && sw > 0) { rx = (shCfg.shoulderX ?? 0) * sw; ry = (shCfg.shoulderY ?? 0) * sw; rz = (shCfg.shoulderZ ?? 0) * sw; }
+    if (punch && punch.includes("Uppercut") && ext > 0) {
+      const lift = animCfg[punch as keyof typeof animCfg]?.uLiftDeg ?? 15;
+      rz += lift * smooth((ext - 0.55) / 0.45) * mem.arcK[i];
+    }
+    if (rx !== 0 || ry !== 0 || rz !== 0) {
+      const D = THREE.MathUtils.DEG2RAD;
+      _q.setFromEuler(_eul.set(rx * D, ry * D, rz * D, "YXZ"));
+      g.sub(sh).applyQuaternion(_q).add(sh);
+      out.elbowPole[i].applyQuaternion(_q);
     }
     if (mem.pullback[i] > 0) g.addScaledVector(punchDir, -mem.pullback[i] * TELEGRAPH_PULLBACK_M);
 
@@ -445,6 +513,9 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
 const _chest = new THREE.Vector3(), _sh = new THREE.Vector3();
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
 const _d = new THREE.Vector3(), _e = new THREE.Vector3(), _f = new THREE.Vector3();
+const _eul = new THREE.Euler();
+const _uc = new THREE.Vector3();
+const _zAxis = new THREE.Vector3(0, 0, 1);
 
 export function newPoseTargets(): PoseTargets {
   const v = () => new THREE.Vector3();

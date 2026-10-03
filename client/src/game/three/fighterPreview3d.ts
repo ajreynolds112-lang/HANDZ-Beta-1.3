@@ -12,7 +12,7 @@
  * fight); the engine is only read, never stepped.
  */
 import * as THREE from "three";
-import type { BoxingStance, FighterColors, FighterState, GameState, PunchType } from "../types";
+import type { BoxingStance, FighterColors, FighterState, GameState, PunchPhaseType, PunchType } from "../types";
 import { createInitialState, punchPhaseFractions } from "../engine";
 import { Fighter3D } from "./fighterModel";
 import { ensureFighterAssets } from "./fighterRig";
@@ -26,7 +26,7 @@ export interface FighterPreviewPose {
   yaw?: number;
   headgear?: boolean;
   /** Punch editor: punch type and arm extension 0..1. Side-on framing. */
-  punch?: { type: PunchType; extension: number } | null;
+  punch?: { type: PunchType; extension: number; phase?: PunchPhaseType; phaseT?: number } | null;
 }
 
 /** Most previews rendered in one animation frame; the rest wait their turn. */
@@ -96,7 +96,18 @@ class PreviewRenderer {
     f.isFeinting = false;
     f.isRePunch = false;
     f.retractionProgress = 0;
-    if (punch && punch.extension > 0) {
+    if (punch && punch.phase) {
+      // Punch editor: play the engine's own phase timeline (wind-up, linger and
+      // retraction included) so shoulder rotation and hook/uppercut homing show.
+      f.isPunching = true;
+      f.currentPunch = punch.type;
+      f.punchPhase = punch.phase;
+      const fr = punchPhaseFractions(f);
+      const t = Math.max(0, Math.min(1, punch.phaseT ?? 0));
+      const [a, b] = fr ? fr[punch.phase] : [0, 1];
+      f.punchProgress = a + t * (b - a);
+      f.retractionProgress = punch.phase === "retraction" ? t : 0;
+    } else if (punch && punch.extension > 0) {
       f.isPunching = true;
       f.currentPunch = punch.type;
       // Drive the arm with the engine's own phase reading: inside armSpeed the

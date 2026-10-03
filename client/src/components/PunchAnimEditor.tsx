@@ -14,7 +14,7 @@ import {
   invalidatePunchAnimCache,
 } from "@/lib/punchAnimConfig";
 import { renderFighterPunchFrame } from "@/game/renderer";
-import { DEFAULT_PLAYER_COLORS } from "@/game/types";
+import { DEFAULT_PLAYER_COLORS, type PunchPhaseType } from "@/game/types";
 import { getGraphicsMode } from "@/game/graphicsSetting";
 import { renderFighterPreview3D } from "@/game/three/fighterPreview3d";
 
@@ -153,13 +153,23 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
         progress = Math.max(0, Math.min(1, progress));
       }
 
+      // 3D plays the same timeline as engine phases, then rests in guard for a
+      // beat so the shoulder easing back to normal is visible.
+      const REST = 0.3;
+      const t3 = ((now - cycleStartRef.current) % (CYCLE_MS * (1 + REST))) / CYCLE_MS;
+      let phase3: PunchPhaseType | undefined, phaseT = 0;
+      if (t3 < lF) { phase3 = "launchDelay"; phaseT = lF > 0 ? t3 / lF : 1; }
+      else if (t3 < lF + aF) { phase3 = "armSpeed"; phaseT = aF > 0 ? (t3 - lF) / aF : 1; }
+      else if (t3 < lF + aF + liF) { phase3 = "linger"; phaseT = liF > 0 ? (t3 - lF - aF) / liF : 1; }
+      else if (t3 < 1) { phase3 = "retraction"; phaseT = rF > 0 ? (t3 - lF - aF - liF) / rF : 1; }
+
       // 3D: the punch plays on the model with these timings. The 2D-only
       // trajectory sliders (distance, arc, drop/rise) shape the classic sprite;
       // the 3D arm follows the real punch reach instead.
       const drawn3d = use3d && renderFighterPreview3D(ctx, {
         colors: DEFAULT_PLAYER_COLORS,
         bobPhase: now * 0.0025,
-        punch: { type: punchTypeRef.current, extension: progress },
+        punch: phase3 ? { type: punchTypeRef.current, extension: progress, phase: phase3, phaseT } : { type: punchTypeRef.current, extension: 0 },
         yaw: (spinRef.current * Math.PI) / 180,
       });
       if (!drawn3d) renderFighterPunchFrame(
@@ -505,6 +515,18 @@ export default function PunchAnimEditor({ defaultExpanded = false }: PunchAnimEd
                   </span>
                 </p>
                 <div className="space-y-3">
+                  <div className="rounded border border-border p-2 space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Shoulder joint (3D) — eases in as the punch starts, back to normal after retraction
+                    </p>
+                    {([["shoulderX", "Shoulder X", "Roll about the forward axis (°)"],
+                       ["shoulderY", "Shoulder Y", "Turn about the vertical axis (°)"],
+                       ["shoulderZ", "Shoulder Z", "Tilt about the side axis — positive lifts the arm (°)"]] as const).map(([k, label, desc]) => (
+                      <SliderRow key={k} label={label} desc={desc}
+                        value={p[k] ?? 0} min={-90} max={90} step={1} defaultVal={0}
+                        onChange={v => updateParam(activePunch, k, v)} />
+                    ))}
+                  </div>
                   <SliderRow
                     label="Lean Forward"
                     desc="How far the body leans and steps forward into this punch (×default, 0 = stays upright). Visual only — hit range is unchanged"
@@ -563,6 +585,14 @@ export default function PunchAnimEditor({ defaultExpanded = false }: PunchAnimEd
                   )}
                   {cat === "uppercut" && (
                     <>
+                      <SliderRow
+                        label="U Lift (3D)"
+                        desc="How far the shoulder tilts the arm upward approaching the peak — the rising wall of the U (°)"
+                        value={p.uLiftDeg ?? 15}
+                        min={0} max={60} step={1}
+                        defaultVal={15}
+                        onChange={v => updateParam(activePunch, "uLiftDeg", v)}
+                      />
                       <SliderRow
                         label="Load Depth"
                         desc="How far the fist sinks during the wind-up before rising"
