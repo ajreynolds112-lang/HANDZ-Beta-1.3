@@ -40,6 +40,8 @@ export interface PunchProfile {
   speed: Key[];
   /** Loop Start (animation time): past it the animation plays back in reverse to τ=0 by the end. */
   loopStart?: number;
+  /** What happens past Loop Start: play back in reverse ("loop", default) or ease back to the guard ("slide"). */
+  loopMode?: "loop" | "slide";
 }
 export interface ProfileStore {
   slots: Record<PunchType, (PunchProfile | null)[]>;
@@ -81,6 +83,7 @@ export function cleanProfile(v: unknown): PunchProfile | null {
   const out: PunchProfile = { name: typeof o.name === "string" ? o.name.slice(0, 40) : "", bones, speed: cleanKeys(o.speed, SPEED_MIN, SPEED_MAX) };
   const ls = validLoopStart(o.loopStart);
   if (ls != null) out.loopStart = ls;
+  if (ls != null && o.loopMode === "slide") out.loopMode = "slide";
   return out;
 }
 function emptyStore(): ProfileStore {
@@ -251,6 +254,14 @@ export function loopTime(loopStart: number | null | undefined, tau: number): num
   return Math.max(0, L * (1 - tau) / (1 - L));
 }
 
+/** Slide Back progress 0..1 past Loop Start (0 before it / in loop mode), eased at both ends. */
+export function slideWeight(p: Pick<PunchProfile, "loopStart" | "loopMode">, tau: number): number {
+  const L = validLoopStart(p.loopStart);
+  if (L == null || p.loopMode !== "slide" || tau <= L) return 0;
+  const x = Math.max(0, Math.min(1, (tau - L) / (1 - L)));
+  return x * x * x * (x * (x * 6 - 15) + 10);
+}
+
 export function evalProfileOffsets(p: PunchProfile, tau: number): PoseOffsets {
   const out: PoseOffsets = {};
   for (const [b, axes] of Object.entries(p.bones) as [BoneName, AxisTracks][]) {
@@ -320,6 +331,8 @@ export interface ActivePunchProfile {
   fighter: FighterState;
   /** Joint offsets at this instant, already mirrored for a southpaw. */
   offsets: PoseOffsets;
+  /** Slide Back blend toward the guard pose, 0..1 (fighter/offsets are then held at Loop Start). */
+  slide: number;
 }
 /** The profile a punching fighter wears this frame, or null for the stock animation. */
 export function activePunchProfile(f: FighterState): ActivePunchProfile | null {
@@ -329,8 +342,11 @@ export function activePunchProfile(f: FighterState): ActivePunchProfile | null {
   const role = enginePunchForRole(f.currentPunch, southpaw);
   const p = profileForRole(f, role);
   if (!p) return null;
-  const tau = loopTime(p.loopStart, warpTime(p.speed, u));
+  const raw = warpTime(p.speed, u);
+  const slide = slideWeight(p, raw);
+  const L = validLoopStart(p.loopStart);
+  const tau = p.loopMode === "slide" ? (L != null ? Math.min(raw, L) : raw) : loopTime(p.loopStart, raw);
   const offs = evalProfileOffsets(p, tau);
-  const retimed = p.speed.length > 0 || validLoopStart(p.loopStart) != null;
-  return { fighter: retimed ? fighterAtPunchTime(f, tau) : f, offsets: southpaw ? mirrorPose(offs) : offs };
+  const retimed = p.speed.length > 0 || L != null;
+  return { fighter: retimed ? fighterAtPunchTime(f, tau) : f, offsets: southpaw ? mirrorPose(offs) : offs, slide };
 }

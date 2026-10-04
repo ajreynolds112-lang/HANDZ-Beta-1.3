@@ -29,6 +29,8 @@ interface LaneProps {
   playhead: number;
   /** Loop Start (animation time) or null; past it the pose is read mirrored. */
   loopStart?: number | null;
+  /** Past Loop Start the pose eases back to the guard instead of reversing. */
+  slideMode?: boolean;
   bands: PhaseBand[];
   height?: number;
   /** Called once at the start of every edit gesture (undo checkpoint). */
@@ -46,7 +48,7 @@ const clipboard: Partial<Record<LaneProps["kind"], number>> = {};
  * key copies its value; shift-right-click pastes it (onto a key: replaces its
  * value; on empty space: adds a key there with the copied value).
  */
-export default function PunchTimelineLane({ label, kind, color, keys, playhead, loopStart = null, bands, height = 64, onBeginEdit, onChange, testId }: LaneProps) {
+export default function PunchTimelineLane({ label, kind, color, keys, playhead, loopStart = null, slideMode = false, bands, height = 64, onBeginEdit, onChange, testId }: LaneProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ key: Key; pointerId: number } | null>(null);
   const keysRef = useRef(keys);
@@ -141,9 +143,9 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
           <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" opacity={0.9} />
         </svg>
         {loopStart != null && (<>
-          <div className="absolute inset-y-0 right-0 bg-cyan-400/10 pointer-events-none" style={{ left: `${loopStart * 100}%` }} />
-          <div className="absolute inset-y-0 w-px bg-cyan-400 pointer-events-none" style={{ left: `${loopStart * 100}%` }} />
-          {playhead > loopStart && (
+          <div className={`absolute inset-y-0 right-0 pointer-events-none ${slideMode ? "bg-violet-400/10" : "bg-cyan-400/10"}`} style={{ left: `${loopStart * 100}%` }} />
+          <div className={`absolute inset-y-0 w-px pointer-events-none ${slideMode ? "bg-violet-400" : "bg-cyan-400"}`} style={{ left: `${loopStart * 100}%` }} />
+          {!slideMode && playhead > loopStart && (
             <div className="absolute inset-y-0 w-px bg-yellow-300/50 pointer-events-none" style={{ left: `${loopTime(loopStart, playhead) * 100}%` }} />
           )}
         </>)}

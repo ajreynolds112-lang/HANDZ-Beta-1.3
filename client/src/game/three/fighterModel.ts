@@ -196,7 +196,13 @@ export class Fighter3D {
     // A punch-animation profile re-times the pose solve (visual only) and adds
     // its keyframed joint rotations on top of the stance edits.
     const prof = f.isKnockedDown ? null : activePunchProfile(f);
-    solvePose(prof?.fighter ?? f, this.dims, this.mem, { opponent, dt }, this.pose);
+    const sliding = !!prof && prof.slide > 0;
+    if (sliding && !this.slideFrom) this.captureSlideFrom(prof!, opponent);
+    if (!sliding) this.slideFrom = null;
+    // Sliding back: the live solve already heads home (its springs end at the
+    // guard when the punch does); it's blended in from the held Loop Start pose.
+    const solveF = sliding ? { ...f, isPunching: false, currentPunch: null } : (prof?.fighter ?? f);
+    solvePose(solveF, this.dims, this.mem, { opponent, dt }, this.pose);
     // Knockdown fall / canvas / get-up, layered over the standing solve.
     if (applyKnockdownPose(f, state, this.dims, this.kd, dt, epoch, this.pose, this.tilt)) {
       this.rig.body.quaternion.copy(this.tilt.q);
@@ -207,7 +213,9 @@ export class Fighter3D {
     }
     this.applyPose();
     if (!f.isKnockedDown) this.applyPoseOffsets(getPoseOffsets(this.mem.stanceBlend >= 0.5 ? "southpaw" : "orthodox"), true);
-    if (prof) this.applyPoseOffsets(prof.offsets, false);
+    if (prof && !sliding) this.applyPoseOffsets(prof.offsets, false);
+    if (sliding) this.blendFromSlide(prof!.slide);
+    this.preSlide = !!prof && !sliding;
     this.applyLook(f, colors, state, frame);
     if (f.isKnockedDown) for (const e of this.rig.eyes) e.scale.y = e.userData.baseScale.y * 0.15;
   }
@@ -329,6 +337,40 @@ export class Fighter3D {
     });
   }
 
+  // ── Slide Back ──
+  /** Local bone rotations (+ hips position) held at Loop Start while sliding back. */
+  private slideFrom: { q: THREE.Quaternion[]; hips: THREE.Vector3 } | null = null;
+  /** Last frame showed a profiled punch before its Loop Start (so the bones hold that pose). */
+  private preSlide = false;
+  private snapBones(): { q: THREE.Quaternion[]; hips: THREE.Vector3 } {
+    return { q: BONE_NAMES.map(n => this.bind[n].bone.quaternion.clone()), hips: this.bind.Hips.bone.position.clone() };
+  }
+  private captureSlideFrom(prof: { fighter: FighterState; offsets: PoseOffsets }, opponent: FighterState | null): void {
+    // Played straight into the slide: the bones still hold the last frame — exactly
+    // the pose at Loop Start, springs and all. Jumped in (scrub): solve it fresh.
+    if (!this.preSlide) {
+      const scratch: PoseMemory = JSON.parse(JSON.stringify(this.mem));
+      solvePose(prof.fighter, this.dims, scratch, { opponent, dt: 1 }, this.pose);
+      this.rig.body.quaternion.identity();
+      this.rig.body.position.set(0, 0, 0);
+      this.applyPose();
+      this.applyPoseOffsets(getPoseOffsets(scratch.stanceBlend >= 0.5 ? "southpaw" : "orthodox"), true, scratch);
+      this.applyPoseOffsets(prof.offsets, false);
+    }
+    this.slideFrom = this.snapBones();
+  }
+  /** Shortest-arc slerp per joint from the held pose to the live guard: no joint ever spins the long way. */
+  private blendFromSlide(w: number): void {
+    const A = this.slideFrom;
+    if (!A) return;
+    BONE_NAMES.forEach((n, i) => {
+      const bone = this.bind[n].bone;
+      this._oq.copy(A.q[i]).slerp(bone.quaternion, w);
+      bone.quaternion.copy(this._oq);
+    });
+    this.bind.Hips.bone.position.lerpVectors(A.hips, this.bind.Hips.bone.position, w);
+  }
+
   private _oq = new THREE.Quaternion();
   private _ob = new THREE.Quaternion();
   private _oe = new THREE.Euler();
@@ -337,7 +379,7 @@ export class Fighter3D {
    * so a joint carries its children. With fadeWithPunch a punching arm's offsets
    * fade out with its extension (stance edits); punch profiles apply in full.
    */
-  private applyPoseOffsets(offs: PoseOffsets, fadeWithPunch: boolean): void {
+  private applyPoseOffsets(offs: PoseOffsets, fadeWithPunch: boolean, mem: PoseMemory = this.mem): void {
     let any = false;
     for (const k in offs) { any = true; break; }
     if (!any) return;
@@ -347,7 +389,7 @@ export class Fighter3D {
       if (!r) continue;
       const armSide = name.startsWith("Left") && /Shoulder|Arm|Hand/.test(name) ? 0
         : name.startsWith("Right") && /Shoulder|Arm|Hand/.test(name) ? 1 : -1;
-      const w = fadeWithPunch && armSide >= 0 ? 1 - Math.min(1, this.mem.armExt[armSide] || 0) : 1;
+      const w = fadeWithPunch && armSide >= 0 ? 1 - Math.min(1, mem.armExt[armSide] || 0) : 1;
       if (w <= 0) continue;
       const bone = this.bind[name].bone;
       // B = the bone's current body-space orientation; local delta = B⁻¹·Q·B.

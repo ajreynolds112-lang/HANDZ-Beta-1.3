@@ -206,8 +206,16 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
     if (next == null && cur == null) return;
     checkpoint();
     setDraft(d => {
-      const { loopStart: _drop, ...rest } = d;
-      return next == null ? rest : { ...rest, loopStart: next };
+      const { loopStart: _drop, loopMode: _mode, ...rest } = d;
+      return next == null ? rest : { ...rest, loopStart: next, ...(d.loopMode === "slide" ? { loopMode: "slide" as const } : {}) };
+    });
+  };
+  const slideMode = loopStart != null && draft.loopMode === "slide";
+  const toggleLoopMode = () => {
+    checkpoint();
+    setDraft(d => {
+      const { loopMode: _mode, ...rest } = d;
+      return d.loopMode === "slide" ? rest : { ...rest, loopMode: "slide" };
     });
   };
 
@@ -383,9 +391,9 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
                   </div>
                 ))}
                 {loopStart != null && (<>
-                  <div className="absolute inset-y-0 right-0 bg-cyan-400/15 pointer-events-none" style={{ left: `${realTimeOf(draft.speed, loopStart) * 100}%` }} />
-                  <div className="absolute inset-y-0 w-0.5 bg-cyan-400 pointer-events-none" style={{ left: `${realTimeOf(draft.speed, loopStart) * 100}%` }} data-testid="marker-punchanim-loopstart">
-                    <span className="absolute top-0 left-1 text-[9px] text-cyan-300 whitespace-nowrap">Loop Start</span>
+                  <div className={`absolute inset-y-0 right-0 pointer-events-none ${slideMode ? "bg-violet-400/15" : "bg-cyan-400/15"}`} style={{ left: `${realTimeOf(draft.speed, loopStart) * 100}%` }} />
+                  <div className={`absolute inset-y-0 w-0.5 pointer-events-none ${slideMode ? "bg-violet-400" : "bg-cyan-400"}`} style={{ left: `${realTimeOf(draft.speed, loopStart) * 100}%` }} data-testid="marker-punchanim-loopstart">
+                    <span className={`absolute top-0 left-1 text-[9px] whitespace-nowrap ${slideMode ? "text-violet-300" : "text-cyan-300"}`}>{slideMode ? "Slide Back" : "Loop Start"}</span>
                   </div>
                 </>)}
                 <div className="absolute inset-y-0 w-0.5 bg-yellow-300" style={{ left: `${u * 100}%` }} />
@@ -393,6 +401,11 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
               <span className="w-24 text-[11px] text-muted-foreground tabular-nums text-right">
                 {(u * duration).toFixed(2)}s / {duration.toFixed(2)}s
               </span>
+              <Button size="sm" variant="outline" className="h-7 w-[86px] px-1 text-[11px]" disabled={loopStart == null} onClick={toggleLoopMode}
+                title={loopStart == null ? "Right-click the playback bar to set a Loop Start first" : "Switch between reversing back and easing back to the guard"}
+                data-testid="button-punchanim-loopmode">
+                {slideMode ? "Slide Back" : "Loop Back"}
+              </Button>
             </div>
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground pl-[88px]">
               <span className="font-semibold text-foreground mr-auto">{JOINT_LABEL[selected]}</span>
@@ -403,9 +416,9 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
             </div>
             {AXIS_LANES.map((ax, i) => (
               <PunchTimelineLane key={`${selected}-${i}`} label={ax.label} kind="rotation" color={ax.color} keys={tracks[i]}
-                playhead={tau} loopStart={loopStart} bands={bands} onBeginEdit={checkpoint} onChange={k => setAxis(i, k)} testId={`lane-punchanim-${"xyz"[i]}`} />
+                playhead={tau} loopStart={loopStart} slideMode={slideMode} bands={bands} onBeginEdit={checkpoint} onChange={k => setAxis(i, k)} testId={`lane-punchanim-${"xyz"[i]}`} />
             ))}
-            <PunchTimelineLane label="Speed" kind="speed" color="#eab308" keys={draft.speed} playhead={tau} loopStart={loopStart} bands={bands} height={52}
+            <PunchTimelineLane label="Speed" kind="speed" color="#eab308" keys={draft.speed} playhead={tau} loopStart={loopStart} slideMode={slideMode} bands={bands} height={52}
               onBeginEdit={checkpoint} onChange={k => setDraft(d => ({ ...d, speed: k }))} testId="lane-punchanim-speed" />
           </Card>
         </>
