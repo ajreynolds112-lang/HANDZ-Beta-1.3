@@ -218,7 +218,7 @@ export class Fighter3D {
     // Sliding back: the live solve already heads home (its springs end at the
     // guard when the punch does); it's blended in from the held Loop Start pose.
     const solveF = sliding ? { ...f, isPunching: false, currentPunch: null } : (prof?.fighter ?? f);
-    solvePose(solveF, this.dims, this.mem, { opponent, dt }, this.pose);
+    solvePose(solveF, this.dims, this.mem, { opponent, dt, snapPunch: !!prof && !sliding }, this.pose);
     // Knockdown fall / canvas / get-up, layered over the standing solve.
     if (applyKnockdownPose(f, state, this.dims, this.kd, dt, epoch, this.pose, this.tilt)) {
       this.rig.body.quaternion.copy(this.tilt.q);

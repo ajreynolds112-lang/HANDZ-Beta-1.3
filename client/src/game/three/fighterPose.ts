@@ -126,6 +126,12 @@ function follow(cur: number, target: number, rate: number, maxStep: number, dt: 
 export interface PoseContext {
   opponent: FighterState | null;
   dt: number;
+  /**
+   * Keyframed (profiled) punch: the punching arm follows the engine's extension
+   * exactly instead of through the follow-through springs. Fight punches last
+   * well under the springs' ~0.13s rise, so smoothing them leaves a twitch.
+   */
+  snapPunch?: boolean;
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -244,7 +250,8 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
       mem.armBody[i] = !punchHitsHead(f, enginePunch!);
     }
     const target = mine ? rawExt : 0;
-    if (snapAll) { mem.armExt[i] = target; mem.armVel[i] = 0; mem.bodyExt[i] = target; mem.bodyVel[i] = 0; }
+    const snapArm = snapAll || (!!ctx.snapPunch && mine);
+    if (snapArm) { mem.armExt[i] = target; mem.armVel[i] = 0; mem.bodyExt[i] = target; mem.bodyVel[i] = 0; }
     else {
       const w = target >= mem.armExt[i] ? ARM_OMEGA : ARM_BACK_OMEGA;
       [mem.armExt[i], mem.armVel[i]] = spring(mem.armExt[i], mem.armVel[i], target, w, dt);
@@ -265,12 +272,12 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
     let shTarget = 0;
     if (mine) { mem.shPunch[i] = enginePunch; shTarget = ph === "retraction" ? 1 - smooth(f.retractionProgress || 0) : 1; }
     else if (tele) { mem.shPunch[i] = tele; shTarget = 1; }
-    mem.shW[i] = snapAll ? shTarget : follow(mem.shW[i], shTarget, 24, dt * 7, dt);
+    mem.shW[i] = snapArm ? shTarget : follow(mem.shW[i], shTarget, 24, dt * 7, dt);
     if (shTarget === 0 && mem.shW[i] < 0.002) { mem.shW[i] = 0; mem.shPunch[i] = null; }
     // Outbound path vs straight home: once the punch has landed (linger/retraction)
     // or been dropped, the glove heads straight back to the guard.
     const homing = !mine || ph === "linger" || ph === "retraction";
-    mem.arcK[i] = homing ? (snapAll ? 0 : follow(mem.arcK[i], 0, 25, dt * 8, dt)) : 1;
+    mem.arcK[i] = homing ? (snapArm ? 0 : follow(mem.arcK[i], 0, 25, dt * 8, dt)) : 1;
     // Telegraph pull-back eases out into the punch instead of vanishing.
     let pbTarget = 0;
     if (!mine && f.telegraphPhase !== "none" && f.telegraphPunchType && LEFT_PUNCHES.has(f.telegraphPunchType) === isLeft) {
