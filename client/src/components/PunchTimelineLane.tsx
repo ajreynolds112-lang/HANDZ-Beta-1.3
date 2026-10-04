@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { ROT_MAX, SPEED_MAX, SPEED_MIN, type Key, evalRotation, evalSpeed } from "@/game/three/punchProfiles";
+import { ROT_MAX, SPEED_MAX, SPEED_MIN, type Key, evalRotation, evalSpeed, loopTime } from "@/game/three/punchProfiles";
 
 export type LaneKind = "rotation" | "speed";
 
@@ -27,6 +27,8 @@ interface LaneProps {
   keys: Key[];
   /** Animation-time playhead 0..1. */
   playhead: number;
+  /** Loop Start (animation time) or null; past it the pose is read mirrored. */
+  loopStart?: number | null;
   bands: PhaseBand[];
   height?: number;
   /** Called once at the start of every edit gesture (undo checkpoint). */
@@ -44,7 +46,7 @@ const clipboard: Partial<Record<LaneProps["kind"], number>> = {};
  * key copies its value; shift-right-click pastes it (onto a key: replaces its
  * value; on empty space: adds a key there with the copied value).
  */
-export default function PunchTimelineLane({ label, kind, color, keys, playhead, bands, height = 64, onBeginEdit, onChange, testId }: LaneProps) {
+export default function PunchTimelineLane({ label, kind, color, keys, playhead, loopStart = null, bands, height = 64, onBeginEdit, onChange, testId }: LaneProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ key: Key; pointerId: number } | null>(null);
   const keysRef = useRef(keys);
@@ -138,6 +140,13 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
         <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox={`0 0 ${VB_W} ${height}`} preserveAspectRatio="none">
           <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" opacity={0.9} />
         </svg>
+        {loopStart != null && (<>
+          <div className="absolute inset-y-0 right-0 bg-cyan-400/10 pointer-events-none" style={{ left: `${loopStart * 100}%` }} />
+          <div className="absolute inset-y-0 w-px bg-cyan-400 pointer-events-none" style={{ left: `${loopStart * 100}%` }} />
+          {playhead > loopStart && (
+            <div className="absolute inset-y-0 w-px bg-yellow-300/50 pointer-events-none" style={{ left: `${loopTime(loopStart, playhead) * 100}%` }} />
+          )}
+        </>)}
         <div className="absolute inset-y-0 w-px bg-yellow-300 pointer-events-none" style={{ left: `${playhead * 100}%` }} />
         {keys.map((k, i) => (
           <div key={i}

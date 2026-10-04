@@ -38,6 +38,8 @@ export interface PunchProfile {
   name: string;
   bones: Partial<Record<BoneName, AxisTracks>>;
   speed: Key[];
+  /** Loop Start (animation time): past it the animation plays back in reverse to τ=0 by the end. */
+  loopStart?: number;
 }
 export interface ProfileStore {
   slots: Record<PunchType, (PunchProfile | null)[]>;
@@ -76,7 +78,10 @@ export function cleanProfile(v: unknown): PunchProfile | null {
       if (axes.some(a => a.length)) bones[b as BoneName] = axes;
     }
   }
-  return { name: typeof o.name === "string" ? o.name.slice(0, 40) : "", bones, speed: cleanKeys(o.speed, SPEED_MIN, SPEED_MAX) };
+  const out: PunchProfile = { name: typeof o.name === "string" ? o.name.slice(0, 40) : "", bones, speed: cleanKeys(o.speed, SPEED_MIN, SPEED_MAX) };
+  const ls = validLoopStart(o.loopStart);
+  if (ls != null) out.loopStart = ls;
+  return out;
 }
 function emptyStore(): ProfileStore {
   const slots = {} as ProfileStore["slots"], active = {} as ProfileStore["active"];
@@ -232,6 +237,20 @@ export function warpTime(keys: Key[], u: number): number {
   return (lo + (span > 0 ? (x - tab.cum[lo]) / span : 0)) / WARP_N;
 }
 
+/** A usable Loop Start, or null (off / out of range). */
+export function validLoopStart(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) && v > 0.005 && v < 0.995 ? v : null;
+}
+/**
+ * The animation time the pose is read at. Up to Loop Start it's τ itself; past
+ * it the timeline runs backwards so the end lands exactly on the first frame.
+ */
+export function loopTime(loopStart: number | null | undefined, tau: number): number {
+  const L = validLoopStart(loopStart);
+  if (L == null || tau <= L) return tau;
+  return Math.max(0, L * (1 - tau) / (1 - L));
+}
+
 export function evalProfileOffsets(p: PunchProfile, tau: number): PoseOffsets {
   const out: PoseOffsets = {};
   for (const [b, axes] of Object.entries(p.bones) as [BoneName, AxisTracks][]) {
@@ -310,7 +329,8 @@ export function activePunchProfile(f: FighterState): ActivePunchProfile | null {
   const role = enginePunchForRole(f.currentPunch, southpaw);
   const p = profileForRole(f, role);
   if (!p) return null;
-  const tau = warpTime(p.speed, u);
+  const tau = loopTime(p.loopStart, warpTime(p.speed, u));
   const offs = evalProfileOffsets(p, tau);
-  return { fighter: p.speed.length ? fighterAtPunchTime(f, tau) : f, offsets: southpaw ? mirrorPose(offs) : offs };
+  const retimed = p.speed.length > 0 || validLoopStart(p.loopStart) != null;
+  return { fighter: retimed ? fighterAtPunchTime(f, tau) : f, offsets: southpaw ? mirrorPose(offs) : offs };
 }

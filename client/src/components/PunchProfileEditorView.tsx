@@ -18,7 +18,7 @@ import type { BoneName } from "@/game/three/fighterRig";
 import {
   PROFILE_SLOTS, PUNCH_ROLES, PUNCH_ROLE_LABEL, type AxisTracks, type Key, type PunchProfile,
   copyProfileSlot, enginePunchForRole, fighterAtPunchTime, loadProfileStore, saveProfile, setDefaultSlot,
-  evalSpeed, realTimeOf, setPunchProfileDraft, SPEED_MIN, speedSlowdown, warpTime,
+  evalSpeed, realTimeOf, setPunchProfileDraft, validLoopStart, SPEED_MIN, speedSlowdown, warpTime,
 } from "@/game/three/punchProfiles";
 
 const AXIS_LANES = [
@@ -195,6 +195,21 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
     tauRef.current = Math.min(0.9999, warpTime(speedRef.current, real));
     setTau(tauRef.current);
   };
+  // Right-click toggles the Loop Start: on the marker removes it, anywhere else places it there.
+  const loopStart = validLoopStart(draft.loopStart);
+  const toggleLoopAt = (clientX: number) => {
+    const r = scrubRef.current!.getBoundingClientRect();
+    const real = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+    const cur = validLoopStart(draftRef.current.loopStart);
+    const hitMarker = cur != null && Math.abs(realTimeOf(speedRef.current, cur) - real) * r.width < 8;
+    const next = hitMarker ? null : validLoopStart(warpTime(speedRef.current, real));
+    if (next == null && cur == null) return;
+    checkpoint();
+    setDraft(d => {
+      const { loopStart: _drop, ...rest } = d;
+      return next == null ? rest : { ...rest, loopStart: next };
+    });
+  };
 
   // ── editing ──
   const tracks = draft.bones[selected] ?? EMPTY_TRACKS();
@@ -358,6 +373,8 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
                 style={{ touchAction: "none" }}
                 onPointerDown={e => { if (e.button !== 0) return; e.currentTarget.setPointerCapture(e.pointerId); scrubAt(e.clientX); }}
                 onPointerMove={e => { if (e.currentTarget.hasPointerCapture(e.pointerId)) scrubAt(e.clientX); }}
+                onContextMenu={e => { e.preventDefault(); toggleLoopAt(e.clientX); }}
+                title="Right-click to set or remove the Loop Start"
                 data-testid="track-punchanim-playback">
                 {realBands.map((b, i) => (
                   <div key={b.label} className="absolute inset-y-0 flex items-center justify-center text-[9px] text-white/45 overflow-hidden"
@@ -365,6 +382,12 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
                     {b.to - b.from > 0.08 ? b.label : ""}
                   </div>
                 ))}
+                {loopStart != null && (<>
+                  <div className="absolute inset-y-0 right-0 bg-cyan-400/15 pointer-events-none" style={{ left: `${realTimeOf(draft.speed, loopStart) * 100}%` }} />
+                  <div className="absolute inset-y-0 w-0.5 bg-cyan-400 pointer-events-none" style={{ left: `${realTimeOf(draft.speed, loopStart) * 100}%` }} data-testid="marker-punchanim-loopstart">
+                    <span className="absolute top-0 left-1 text-[9px] text-cyan-300 whitespace-nowrap">Loop Start</span>
+                  </div>
+                </>)}
                 <div className="absolute inset-y-0 w-0.5 bg-yellow-300" style={{ left: `${u * 100}%` }} />
               </div>
               <span className="w-24 text-[11px] text-muted-foreground tabular-nums text-right">
@@ -373,16 +396,16 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
             </div>
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground pl-[88px]">
               <span className="font-semibold text-foreground mr-auto">{JOINT_LABEL[selected]}</span>
-              <span>Right-click adds or removes a point · drag a point to move it · Shift-click copies a point · Shift-right-click pastes</span>
+              <span>Right-click adds or removes a point · drag a point to move it · Shift-click copies a point · Shift-right-click pastes · right-click the playback bar toggles Loop Start</span>
               <Button size="sm" variant="ghost" className="h-6 text-[11px]" disabled={!draft.bones[selected]} onClick={clearJoint} data-testid="button-punchanim-clear-joint">
                 <RotateCcw className="w-3 h-3 mr-1" /> Clear joint
               </Button>
             </div>
             {AXIS_LANES.map((ax, i) => (
               <PunchTimelineLane key={`${selected}-${i}`} label={ax.label} kind="rotation" color={ax.color} keys={tracks[i]}
-                playhead={tau} bands={bands} onBeginEdit={checkpoint} onChange={k => setAxis(i, k)} testId={`lane-punchanim-${"xyz"[i]}`} />
+                playhead={tau} loopStart={loopStart} bands={bands} onBeginEdit={checkpoint} onChange={k => setAxis(i, k)} testId={`lane-punchanim-${"xyz"[i]}`} />
             ))}
-            <PunchTimelineLane label="Speed" kind="speed" color="#eab308" keys={draft.speed} playhead={tau} bands={bands} height={52}
+            <PunchTimelineLane label="Speed" kind="speed" color="#eab308" keys={draft.speed} playhead={tau} loopStart={loopStart} bands={bands} height={52}
               onBeginEdit={checkpoint} onChange={k => setDraft(d => ({ ...d, speed: k }))} testId="lane-punchanim-speed" />
           </Card>
         </>
