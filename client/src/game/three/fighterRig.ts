@@ -301,6 +301,7 @@ export function ensureFighterAssets(isDisposed: () => boolean): void {
           });
           const missing = BONE_NAMES.filter(b => !Array.from(boneMap.values()).includes(b) && !b.endsWith("ToeBase"));
           if (missing.length > 0) throw new Error(`rig is missing bones: ${missing.join(", ")}`);
+          rescaleArmSegments(gltf.scene, boneMap);
           tripoBody = { scene: gltf.scene, boneMap };
         }).catch(err => console.warn("[3D] boxer body unavailable, using code rig", err)));
       }
@@ -308,6 +309,72 @@ export function ensureFighterAssets(isDisposed: () => boolean): void {
       if (!isDisposed()) assetEpoch++;
     })
     .catch(err => console.warn("[3D] fighter manifest unavailable, using code rig", err));
+}
+
+/** Boxer arm proportions relative to the source model: shorter upper arm, longer forearm. */
+const UPPER_ARM_SCALE = 0.9;
+const FOREARM_SCALE = 1.15;
+
+/**
+ * Re-proportions the arms in the loaded body's BIND pose, once per load: the
+ * elbow and wrist joints move along the arm and every arm vertex slides with
+ * them (piecewise along the shoulder→wrist line, weighted by how much of it is
+ * skinned to that arm), then the bone inverses are rebuilt. Everything
+ * downstream (region cuts, own hands, IK lengths) reads the new bind.
+ */
+function rescaleArmSegments(scene: THREE.Object3D, boneMap: Map<string, BoneName>): void {
+  const mesh = findSkinned(scene);
+  if (!mesh) return;
+  scene.updateMatrixWorld(true);
+  const byName = {} as Partial<Record<BoneName, THREE.Bone>>;
+  scene.traverse(o => { const cb = boneMap.get(o.name); if (cb && !byName[cb]) byName[cb] = o as THREE.Bone; });
+  const wp = (b: THREE.Object3D) => new THREE.Vector3().setFromMatrixPosition(b.matrixWorld);
+  const skelBones = mesh.skeleton.bones;
+  const arms = (["Left", "Right"] as const).flatMap(side => {
+    const arm = byName[`${side}Arm`], fore = byName[`${side}ForeArm`], hand = byName[`${side}Hand`];
+    if (!arm || !fore || !hand) return [];
+    const S = wp(arm), E = wp(fore), H = wp(hand);
+    const E2 = S.clone().lerp(E, UPPER_ARM_SCALE);
+    const H2 = E2.clone().add(H.clone().sub(E).multiplyScalar(FOREARM_SCALE));
+    const dir = H.clone().sub(S);
+    const len = dir.length();
+    dir.divideScalar(len);
+    const members = new Set<number>();
+    skelBones.forEach((b, j) => { let o: THREE.Object3D | null = b; while (o) { if (o === arm) { members.add(j); break; } o = o.parent; } });
+    return [{ fore, hand, S, dir, tE: E.clone().sub(S).dot(dir), tH: len, dE: E2.sub(E), dH: H2.sub(H), members }];
+  });
+  if (arms.length === 0) return;
+
+  const geo = mesh.geometry;
+  const pos = geo.attributes.position, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
+  const bind = mesh.bindMatrix, bindInv = mesh.bindMatrixInverse;
+  const v = new THREE.Vector3(), d = new THREE.Vector3();
+  for (let k = 0; k < pos.count; k++) {
+    v.fromBufferAttribute(pos, k).applyMatrix4(bind);
+    for (const a of arms) {
+      let w = 0;
+      for (let c = 0; c < 4; c++) if (a.members.has(si.getComponent(k, c))) w += sw.getComponent(k, c);
+      if (w <= 0) continue;
+      const t = d.copy(v).sub(a.S).dot(a.dir);
+      if (t <= 0) continue;
+      if (t < a.tE) d.copy(a.dE).multiplyScalar(t / a.tE);
+      else if (t < a.tH) d.copy(a.dE).lerp(a.dH, (t - a.tE) / (a.tH - a.tE));
+      else d.copy(a.dH);
+      v.addScaledVector(d, w);
+    }
+    v.applyMatrix4(bindInv);
+    pos.setXYZ(k, v.x, v.y, v.z);
+  }
+  pos.needsUpdate = true;
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
+
+  for (const a of arms) {
+    a.fore.position.multiplyScalar(UPPER_ARM_SCALE);
+    a.hand.position.multiplyScalar(FOREARM_SCALE);
+  }
+  scene.updateMatrixWorld(true);
+  mesh.skeleton.calculateInverses();
 }
 
 // ───────────────────────── instance builders ─────────────────────────
@@ -933,12 +1000,12 @@ const CODE_BIND: Record<BoneName, [BoneName | null, number, number, number]> = {
   Head: ["Neck", 0.01, 1.68, 0],
   LeftShoulder: ["Spine2", 0, 1.54, -0.06],
   LeftArm: ["LeftShoulder", 0, 1.56, -0.21],
-  LeftForeArm: ["LeftArm", 0, 1.56, -0.53],
-  LeftHand: ["LeftForeArm", 0, 1.56, -0.82],
+  LeftForeArm: ["LeftArm", 0, 1.56, -(0.21 + 0.32 * UPPER_ARM_SCALE)],
+  LeftHand: ["LeftForeArm", 0, 1.56, -(0.21 + 0.32 * UPPER_ARM_SCALE + 0.29 * FOREARM_SCALE)],
   RightShoulder: ["Spine2", 0, 1.54, 0.06],
   RightArm: ["RightShoulder", 0, 1.56, 0.21],
-  RightForeArm: ["RightArm", 0, 1.56, 0.53],
-  RightHand: ["RightForeArm", 0, 1.56, 0.82],
+  RightForeArm: ["RightArm", 0, 1.56, 0.21 + 0.32 * UPPER_ARM_SCALE],
+  RightHand: ["RightForeArm", 0, 1.56, 0.21 + 0.32 * UPPER_ARM_SCALE + 0.29 * FOREARM_SCALE],
   LeftUpLeg: ["Hips", 0, 0.96, -0.11],
   LeftLeg: ["LeftUpLeg", 0, 0.52, -0.11],
   LeftFoot: ["LeftLeg", 0, 0.09, -0.11],
