@@ -82,7 +82,8 @@ for (const d of POINT_COEF_DEFS) {
 }
 ok("all " + POINT_COEF_DEFS.length + " coefficients evaluate", true);
 ok("power still reaches 16x", near(POINT_COEF_DEFS.find(d => d.id === "powerDamage")!.atPoints(15, 1000, caps), 16));
-ok("speed still caps at 2.57x", near(POINT_COEF_DEFS.find(d => d.id === "speedPunch")!.atPoints(1.427, 1000, caps), 1 + 1.1 * 1.427));
+ok("punch speed tops out at 2.5x at 1000 pts", near(POINT_COEF_DEFS.find(d => d.id === "speedPunchAt1000")!.atPoints(2.5, 1000, caps), 2.5));
+ok("punch speed is 1x at 0 pts", near(POINT_COEF_DEFS.find(d => d.id === "speedPunchAt1000")!.atPoints(2.5, 0, caps), 1));
 ok("regen still caps at 1.75x", near(POINT_COEF_DEFS.find(d => d.id === "staminaRegen")!.atPoints(0.6, 1000, caps), 1.75));
 ok("telegraph-chase speed is uncapped at 7.7x",
   near(POINT_COEF_DEFS.find(d => d.id === "speedChaseOnTelegraph")!.atPoints(0.65, 1000, caps), 7.7));

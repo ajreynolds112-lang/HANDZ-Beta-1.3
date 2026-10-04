@@ -100,13 +100,6 @@ const tSpeed = (pts: number, caps: ScalingCaps) => Math.min(pts, caps.speedSoftC
 /** Stamina regen has its own, lower cap. */
 const tRegen = (pts: number, caps: ScalingCaps) => Math.min(caps.staminaRegenCap, pts) / caps.staminaRegenDivisor;
 
-/** The full speed → telegraph-length curve, shared by its two knobs. */
-function telegraphCurve(pts: number, c200: number, c1000: number): number {
-  if (pts <= 0) return 1.0;
-  if (pts <= 200) return 1.0 - (pts / 200) * c200;
-  return (1.0 - c200) - Math.min(1, (pts - 200) / 800) * c1000;
-}
-
 function autoGuardSeconds(coef: number, ramp: number, pts: number, caps: ScalingCaps): number {
   const t = tFull(pts, caps);
   return t * coef * (1 + ramp * Math.min(1, Math.max(0, (t - 0.2) / 0.8)));
@@ -115,18 +108,14 @@ function autoGuardSeconds(coef: number, ramp: number, pts: number, caps: Scaling
 export const POINT_COEF_DEFS: PointCoefDef[] = [
   { id: "powerDamage", label: "Damage multiplier (quadratic)", stat: "Power", value: 5, unit: "x", note: "both corners, identical",
     atPoints: (c, p, k) => 1 + c * tFull(p, k) ** 2 },
-  { id: "speedPunch", label: "Punch speed", stat: "Speed", value: 1.427, unit: "x",
-    atPoints: (c, p, k) => 1 + tSpeed(p, k) * c },
+  { id: "speedPunchAt1000", label: "Punch speed at 1000 pts (whole punch incl. telegraph)", stat: "Speed", value: 2.5, unit: "x", note: "linear from 1x at 0 pts",
+    atPoints: (c, p, k) => 1 + (Math.max(1, c) - 1) * Math.min(1, Math.max(0, p / k.maxSp)) },
   { id: "speedMove", label: "Move speed", stat: "Speed", value: 0.15, unit: "x",
     atPoints: (c, p, k) => 1 + tSpeed(p, k) * c },
   { id: "speedDuck", label: "Duck speed", stat: "Speed", value: 0.6, unit: "x",
     atPoints: (c, p, k) => 1 + tSpeed(p, k) * c },
   { id: "speedChaseOnTelegraph", label: "Chase speed while you telegraph", stat: "Speed", value: 0.65, unit: "x", note: "AI only, ignores the soft cap",
     atPoints: (c, p, k) => 1.2 + Math.min(1, p / k.maxSp) * c },
-  { id: "speedTelegraphAt200", label: "Telegraph length, 0→200 pts", stat: "Speed", value: 0.75, unit: "x", note: "lower is better",
-    atPoints: (c, p) => telegraphCurve(p, c, pointCoef("speedTelegraphAt1000", 0.125)) },
-  { id: "speedTelegraphAt1000", label: "Telegraph length, 200→1000 pts", stat: "Speed", value: 0.125, unit: "x", note: "lower is better",
-    atPoints: (c, p) => telegraphCurve(p, pointCoef("speedTelegraphAt200", 0.75), c) },
   { id: "defenseBlock", label: "Block strength", stat: "Defense", value: 0.6, unit: "x",
     atPoints: (c, p, k) => 1 + tFull(p, k) * c },
   { id: "defenseCritResist", label: "Crit resistance", stat: "Defense", value: 0.27, unit: "x", note: "lower is better",

@@ -2982,7 +2982,7 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
     // Both corners run this identical line — no player-only champion boost.
     // The coefficient is the whole power term: maxed Power tops out at 6x.
     player.damageMult *= 1 + pointCoef("powerDamage", 5) * pT * pT;
-    player.punchSpeedMult *= 1 + sT * pointCoef("speedPunch", 1.427);
+    player.punchSpeedMult *= speedPunchRatio(sp.speed);
     player.moveSpeed *= 1 + sT * pointCoef("speedMove", 0.15);
     player.duckSpeedMult = 1 + sT * pointCoef("speedDuck", 0.6);
     player.blockMult = 1 + dT * pointCoef("defenseBlock", 0.6);
@@ -3226,7 +3226,7 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
     const estT = Math.min(STAMINA_REGEN_CAP, esp.stamina) / SC.caps.staminaRegenDivisor;
     const estPoolT = Math.min(1, esp.stamina / MAX_SP);
     enemy.damageMult *= 1 + pointCoef("powerDamage", 5) * epT * epT;
-    enemy.punchSpeedMult *= 1 + esT * pointCoef("speedPunch", 1.427);
+    enemy.punchSpeedMult *= speedPunchRatio(esp.speed);
     enemy.moveSpeed *= 1 + esT * pointCoef("speedMove", 0.15);
     enemy.duckSpeedMult = 1 + esT * pointCoef("speedDuck", 0.6);
     enemy.blockMult = 1 + edT * pointCoef("defenseBlock", 0.6);
@@ -3814,7 +3814,7 @@ function buildDoghouseEnemy(state: GameState): { fighter: FighterState; brain: A
     const estPoolT = Math.min(1, dhSP.stamina / MAX_SP);
     const efT = Math.min(1, (dhSP.focus || 0) / MAX_SP);
     fighter.damageMult *= 1 + pointCoef("powerDamage", 5) * epT * epT;
-    fighter.punchSpeedMult *= 1 + esT * pointCoef("speedPunch", 1.427);
+    fighter.punchSpeedMult *= speedPunchRatio(dhSP.speed);
     fighter.moveSpeed *= 1 + esT * pointCoef("speedMove", 0.15);
     fighter.duckSpeedMult = 1 + esT * pointCoef("speedDuck", 0.6);
     fighter.blockMult = 1 + edT * pointCoef("defenseBlock", 0.6);
@@ -4346,15 +4346,18 @@ function getTelegraphBaseDuration(level: number, punchType: PunchType): number {
   return levelScale(level, 0.60, 0.50, "telegraphJab"); // jab/cross
 }
 
+/**
+ * How much faster the Speed stat makes a whole punch (arm phases and telegraph
+ * alike): 1x at 0 points rising linearly to `speedPunchAt1000` (2.5x) at the
+ * stat cap, so even a maxed fighter's punch animations stay readable.
+ */
+function speedPunchRatio(rawSpeed: number): number {
+  const R = Math.max(1, pointCoef("speedPunchAt1000", 2.5));
+  return 1 + (R - 1) * Math.max(0, Math.min(1, rawSpeed / getScaling().caps.maxSp));
+}
+/** Telegraph length multiplier from the Speed stat: the same ratio as the arm phases. */
 function speedTelegraphMult(rawSpeed: number): number {
-  if (rawSpeed <= 0) return 1.0;
-  const c200 = pointCoef("speedTelegraphAt200", 0.75);
-  const c1000 = pointCoef("speedTelegraphAt1000", 0.125);
-  if (rawSpeed <= 200) {
-    return 1.0 - (rawSpeed / 200) * c200;
-  }
-  const t = Math.min(1, (rawSpeed - 200) / 800);
-  return (1.0 - c200) - t * c1000;
+  return 1 / speedPunchRatio(rawSpeed);
 }
 
 function shouldTelegraph(fighter: FighterState, _isRePunch: boolean, _punchType: PunchType = "jab"): boolean {
