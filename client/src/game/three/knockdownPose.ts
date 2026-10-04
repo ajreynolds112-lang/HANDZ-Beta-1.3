@@ -76,7 +76,6 @@ export function lerpPose(a: PoseTargets, b: PoseTargets, t: number, out: PoseTar
   for (let i = 0; i < 2; i++) {
     out.glove[i].lerpVectors(a.glove[i], b.glove[i], t);
     out.elbowPole[i].lerpVectors(a.elbowPole[i], b.elbowPole[i], t).normalize();
-    out.maxStretch[i] = a.maxStretch[i] + (b.maxStretch[i] - a.maxStretch[i]) * t;
     out.ankle[i].lerpVectors(a.ankle[i], b.ankle[i], t);
     out.kneePole[i].lerpVectors(a.kneePole[i], b.kneePole[i], t).normalize();
     out.toeDir[i].lerpVectors(a.toeDir[i], b.toeDir[i], t).normalize();
@@ -111,7 +110,6 @@ function kneelPose(dims: RigDims, curl: number, out: PoseTargets): PoseTargets {
     hang.lerp(clutch, curl);
     onTorso(dims, out, hang.x, hang.y, hang.z, out.glove[i]);
     out.elbowPole[i].set(-0.3, -1, side * 0.8).normalize();
-    out.maxStretch[i] = 1;
   }
   return out;
 }
@@ -141,7 +139,6 @@ function takeKneePose(dims: RigDims, f: FighterState, out: PoseTargets): PoseTar
       out.elbowPole[i].set(-0.3, -1, side * 0.8).normalize();
     }
     out.toeDir[i].set(1, 0, 0);
-    out.maxStretch[i] = 1;
   }
   return out;
 }
@@ -167,7 +164,6 @@ function lyingBackPose(dims: RigDims, out: PoseTargets): PoseTargets {
   out.kneePole[1].set(1, 0, 0.25).normalize();
   out.toeDir[0].set(0.4, 0, -1).normalize();
   out.toeDir[1].set(1, 0, 0.3).normalize();
-  out.maxStretch[0] = out.maxStretch[1] = 1;
   return out;
 }
 

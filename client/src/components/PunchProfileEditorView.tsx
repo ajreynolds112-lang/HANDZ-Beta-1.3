@@ -27,6 +27,8 @@ const AXIS_LANES = [
   { label: "Z tilt", color: "#3b82f6" },
 ];
 const RATES = [0.1, 0.25, 0.5, 1];
+/** 1× playback spreads the punch over this many times its engine duration (the raw engine clock read as 10× too fast). */
+const PLAYBACK_STRETCH = 10;
 const PHASE_LABEL: Record<string, string> = { launchDelay: "Launch", armSpeed: "Extend", contact: "Contact", linger: "Linger", retraction: "Retract" };
 const EMPTY_TRACKS = (): AxisTracks => [[], [], []];
 const blank = (): PunchProfile => ({ name: "", bones: {}, speed: [] });
@@ -50,7 +52,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   const [selected, setSelected] = useState<BoneName>("LeftArm");
   const [southpaw, setSouthpaw] = useState(false);
   const [playing, setPlaying] = useState(true);
-  const [rate, setRate] = useState(0.25);
+  const [rate, setRate] = useState(1);
   const [u, setU] = useState(0);
   const [copyTo, setCopyTo] = useState(1);
   const [confirmSave, setConfirmSave] = useState(false);
@@ -126,7 +128,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
       last = now;
       const p = playRef.current;
       if (!p.playing) return;
-      uRef.current = (uRef.current + dt * p.rate / p.duration) % 1;
+      uRef.current = (uRef.current + dt * p.rate / (p.duration * PLAYBACK_STRETCH)) % 1;
       setU(uRef.current);
     };
     raf = requestAnimationFrame(tick);
