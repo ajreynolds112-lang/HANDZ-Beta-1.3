@@ -51,6 +51,11 @@ export const SPEED_MAX = 3;
  * stretch), so it plays exactly as authored whatever the real distance.
  */
 export const PROFILE_VIEW_OPP_PX = 160;
+/**
+ * Keyframed punches play this many times slower than the stock engine timing,
+ * which is exactly the editor's 1x playback (user: fights must match 1x).
+ */
+export const PROFILE_TIME_SCALE = 10;
 
 export interface Key { t: number; v: number }
 export type AxisTracks = [Key[], Key[], Key[]];
@@ -351,11 +356,16 @@ export function profileForRole(f: FighterState, role: PunchType): PunchProfile |
 }
 
 // The engine reads the speed track through this hook (it can't import us).
+// A profiled punch runs at the editor's 1x playback speed in fights: stock
+// timing stretched by PROFILE_TIME_SCALE, then re-timed by its speed track.
+// The fighter's own punch speed (Speed stat, Fast Twitch, fatigue...) still
+// scales it from there; the editor previews a stat-less fighter.
 setPunchSpeedWarp(f => {
   if (!f.currentPunch) return null;
   const p = profileForRole(f, enginePunchForRole(f.currentPunch, f.boxingStance === "southpaw"));
-  const keys = p?.speed;
-  return keys && keys.length ? (a, b) => speedSlowdown(keys, a, b) : null;
+  if (!p) return null;
+  const keys = p.speed;
+  return keys.length ? (a, b) => PROFILE_TIME_SCALE * speedSlowdown(keys, a, b) : () => PROFILE_TIME_SCALE;
 });
 
 export interface ActivePunchProfile {

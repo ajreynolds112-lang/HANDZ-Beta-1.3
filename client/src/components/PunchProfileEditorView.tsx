@@ -18,7 +18,7 @@ import type { BoneName } from "@/game/three/fighterRig";
 import {
   PROFILE_SLOTS, PUNCH_ROLES, PUNCH_ROLE_LABEL, type AxisTracks, type Key, type PunchProfile,
   copyProfileSlot, enginePunchForRole, fighterAtPunchTime, loadProfileStore, saveProfile, setDefaultSlot,
-  evalSpeed, realTimeOf, setPunchProfileDraft, validLoopStart, SPEED_MIN, speedSlowdown, warpTime,
+  evalSpeed, realTimeOf, setPunchProfileDraft, validLoopStart, SPEED_MIN, speedSlowdown, warpTime, PROFILE_TIME_SCALE,
   ROT_MAX, boneLimits, type AxisLimits,
 } from "@/game/three/punchProfiles";
 
@@ -28,8 +28,8 @@ const AXIS_LANES = [
   { label: "Z tilt", color: "#3b82f6" },
 ];
 const RATES = [0.1, 0.25, 0.5, 1];
-/** 1× playback spreads the punch over this many times its engine duration (the raw engine clock read as 10× too fast). */
-const PLAYBACK_STRETCH = 10;
+/** 1× playback = the real fight speed of a keyframed punch (stock engine timing × PROFILE_TIME_SCALE). */
+const PLAYBACK_STRETCH = PROFILE_TIME_SCALE;
 const PHASE_LABEL: Record<string, string> = { launchDelay: "Launch", armSpeed: "Extend", contact: "Contact", linger: "Linger", retraction: "Retract" };
 const EMPTY_TRACKS = (): AxisTracks => [[], [], []];
 const blank = (): PunchProfile => ({ name: "", bones: {}, speed: [] });
@@ -122,7 +122,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
       : [];
     const rb = b.map(x => ({ ...x, from: realTimeOf(draft.speed, x.from), to: realTimeOf(draft.speed, x.to) }));
     const base = Math.max(0.01, punchTotalDuration(f, punch, true));
-    return { duration: Math.max(0.01, base * speedSlowdown(draft.speed, 0, 1)), baseDuration: base, bands: b, realBands: rb };
+    return { duration: Math.max(0.01, base * PLAYBACK_STRETCH * speedSlowdown(draft.speed, 0, 1)), baseDuration: base, bands: b, realBands: rb };
   }, [role, southpaw, sample, draft.speed]);
 
   // ── playback clock ──
