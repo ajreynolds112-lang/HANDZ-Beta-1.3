@@ -4482,7 +4482,71 @@ export function updatePerfectBlockRhythmLatch(defender: FighterState, attacker: 
   }
 }
 
+/**
+ * Centre-to-centre distance (px) at which the two fighters' guards meet: each
+ * guard glove sits ~0.45 m in front of its owner, so gloves/forearms touch at
+ * roughly 0.9 m apart. Lead feet are bladed to opposite sides and never get
+ * there first.
+ */
+export const LIMB_CONTACT_DIST = 46;
+
+/**
+ * How exposed a fighter's rhythm is right now, 0..1: 1 with the marker at an
+ * end of the arc (where the vulnerability window lives), 0 at the centre. Off
+ * (0) when the rhythm isn't running or the duck's immunity is in, matching
+ * isRhythmVulnerable.
+ */
+export function rhythmExposure(f: FighterState): number {
+  if (f.isKnockedDown || f.rhythmLevel <= 0) return 0;
+  if (!f.rhythmWalking) return 0;
+  if (isDuckLive(f)) return 0;
+  const p = Math.max(0, Math.min(1, f.rhythmProgress));
+  return 1 - 2 * Math.min(p, 1 - p);
+}
+
+function isHoldingFeint(f: FighterState): boolean {
+  return !!f.isFeinting && !!f.isPunching && f.punchPhase === "linger";
+}
+
+/**
+ * Limb contact: once the guards touch, the fighter whose rhythm is the more
+ * exposed is pinned (can't walk in, can't jab); if the other is holding a
+ * feint into the contact, the pinned fighter's straights fail too. Stamped
+ * once per tick before either corner moves or punches.
+ */
+export function updateLimbContact(state: GameState): void {
+  const a = state.player, b = state.enemy;
+  a.limbContactPinned = b.limbContactPinned = false;
+  a.limbContactStraightsLocked = b.limbContactStraightsLocked = false;
+  if (a.isKnockedDown || b.isKnockedDown) return;
+  if (getDistance(a, b) > LIMB_CONTACT_DIST) return;
+  const ea = rhythmExposure(a), eb = rhythmExposure(b);
+  if (ea === eb) return;
+  const [pinned, other] = ea > eb ? [a, b] : [b, a];
+  pinned.limbContactPinned = true;
+  pinned.limbContactStraightsLocked = isHoldingFeint(other);
+}
+
+/** Does limb contact refuse this punch input? Feints are never refused. */
+export function isPunchContactLocked(f: FighterState, punchType: PunchType, isFeint: boolean): boolean {
+  if (isFeint) return false;
+  if (f.limbContactPinned && punchType === "jab") return true;
+  return !!f.limbContactStraightsLocked && (punchType === "jab" || punchType === "cross");
+}
+
+/** Removes the component of a move direction that points at the opponent. */
+export function stripMoveTowardOpponent(self: FighterState, opp: FighterState, moveX: number, moveZ: number): [number, number] {
+  const tx = opp.x - self.x, tz = opp.z - self.z;
+  const len = Math.sqrt(tx * tx + tz * tz);
+  if (len <= 0.01) return [moveX, moveZ];
+  const nx = tx / len, nz = tz / len;
+  const dot = moveX * nx + moveZ * nz;
+  if (dot <= 0) return [moveX, moveZ];
+  return [moveX - dot * nx, moveZ - dot * nz];
+}
+
 function startTelegraph(fighter: FighterState, punchType: PunchType, isFeint: boolean, isCharged: boolean, telegraphMult: number, opponent: FighterState): boolean {
+  if (isPunchContactLocked(fighter, punchType, isFeint)) return false;
   if (isFeint && isPerfectBlockEngaged(fighter)) return false;
   // Snap-punch zones: scale with rawPower — 90% shorter telegraph, damage scales with power
   fighter.punchLaunchDamageMult = 1;
@@ -4918,6 +4982,7 @@ export function collectDrilledActions(state: GameState | null | undefined): Dril
 
 function attemptPunch(fighter: FighterState, punchType: PunchType, isFeint: boolean = false, isCharged: boolean = false, isRePunch: boolean = false, practiceMode: boolean = false, roundElapsed: number = 999, opponent?: FighterState): boolean {
   if (fighter.isKnockedDown) return false;
+  if (isPunchContactLocked(fighter, punchType, isFeint)) return false;
   if (fighter.telegraphIsLockout) return false;
 
   // Technician L20+: a real punch input while holding a feint cancels the feint
@@ -8305,6 +8370,9 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
     moveX /= mag;
     moveZ /= mag;
 
+    if (player.limbContactPinned) {
+      [moveX, moveZ] = stripMoveTowardOpponent(player, enemy, moveX, moveZ);
+    }
     if (enemy.feintTouchingOpponent) {
       const toEnemyX = enemy.x - player.x;
       const toEnemyZ = enemy.z - player.z;
@@ -10312,6 +10380,7 @@ export function updateGame(state: GameState, dt: number): GameState {
     return state;
   }
 
+  updateLimbContact(state);
   if (state.cpuVsCpu) {
     updatePlayerAI(state, dt);
   } else {
@@ -10384,13 +10453,16 @@ export function updateGame(state: GameState, dt: number): GameState {
     const enemyAtWall = !isInsideDiamond(state.enemy.x, state.enemy.z, 30);
 
     if (playerAtWall && !enemyAtWall) {
-      state.enemy.x -= nx * (overlap + 1);
-      state.enemy.z -= nz * (overlap + 1);
+      state.enemy.x -= nx * overlap;
+      state.enemy.z -= nz * overlap;
     } else if (enemyAtWall && !playerAtWall) {
-      state.player.x += nx * (overlap + 1);
-      state.player.z += nz * (overlap + 1);
+      state.player.x += nx * overlap;
+      state.player.z += nz * overlap;
     } else {
-      const push = overlap / 2 + 1;
+      // Resolved exactly, no extra margin: a +1 px overshoot here pushed a
+      // fighter walking in back past where they started every other tick,
+      // which read as a jitter whenever the two walked into each other.
+      const push = overlap / 2;
       state.player.x += nx * push;
       state.player.z += nz * push;
       state.enemy.x -= nx * push;

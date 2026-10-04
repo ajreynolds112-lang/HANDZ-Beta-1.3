@@ -1,7 +1,7 @@
 {
   "kind": "handz-neural-parameters",
   "version": 1,
-  "exportedAt": "2026-10-04T13:37:09.068Z",
+  "exportedAt": "2026-10-04T13:58:04.249Z",
   "params": {
     "handz_punch_anim": {
       "jab": {
@@ -20,7 +20,7 @@
         "riseArcFactor": 0.85,
         "distanceMult": 1,
         "leanMult": 0.05,
-        "shoulderX": 0,
+        "shoulderX": 32,
         "shoulderY": 0,
         "shoulderZ": 0,
         "uLiftDeg": 15,
@@ -44,9 +44,9 @@
         "riseArcFactor": 0.85,
         "distanceMult": 0.65,
         "leanMult": 0.25,
-        "shoulderX": 9,
-        "shoulderY": -18,
-        "shoulderZ": 10,
+        "shoulderX": -26,
+        "shoulderY": 0,
+        "shoulderZ": 19,
         "uLiftDeg": 15,
         "hitRangePx": 46,
         "damage": 5.17,

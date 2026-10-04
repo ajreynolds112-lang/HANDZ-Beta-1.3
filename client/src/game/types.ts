@@ -1513,6 +1513,12 @@ export interface FighterState {
   feintHoldTimer: number;
   feintTouchingOpponent: boolean;
   feintDuckTouchingOpponent: boolean;
+  /** Limbs are touching and this fighter's rhythm is the more exposed of the
+   *  two: no walking toward the opponent and no jabs. Recomputed every tick. */
+  limbContactPinned?: boolean;
+  /** Pinned AND the opponent is holding a feint into the contact: jab and
+   *  cross inputs fail outright. Recomputed every tick. */
+  limbContactStraightsLocked?: boolean;
   /** F was tapped: the next punch launched while feintArmTimer runs goes out as
    *  a feint. Launching it spends the arm immediately, with no cooldown. */
   feintArmed?: boolean;
