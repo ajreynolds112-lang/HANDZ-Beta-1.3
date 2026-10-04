@@ -4852,7 +4852,7 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart }: {
 
       <div className="flex-1 flex items-center justify-center overflow-hidden p-4">
         <div className="bg-[#1a1a1a] border border-white/15 rounded-xl p-4 flex items-center justify-center">
-          <FighterStanceCanvas colors={previewColors} width={320} height={560} scale={4} showHeadgear stance={playerBoxingStance()} />
+          <FighterStanceCanvas colors={previewColors} width={320} height={560} showHeadgear stance={playerBoxingStance()} />
         </div>
       </div>
     </div>
@@ -5814,7 +5814,7 @@ export function RosterEditView({
             {rosterColorField("Waist Stripe", editWaistStripe ?? defaultWaistStripeColor(editTrunks), setEditWaistStripe, "color-edit-waist-stripe", "waistStripe")}
           </div>
           <div className="shrink-0 bg-black/30 border border-border rounded-lg p-2 flex items-center justify-center" data-testid="preview-edit-fighter">
-            <FighterStanceCanvas colors={previewColors} width={180} height={280} scale={2} stance={editedRoster.find(ef => ef.id === editingId)?.boxingStance} />
+            <FighterStanceCanvas colors={previewColors} width={180} height={280} stance={editedRoster.find(ef => ef.id === editingId)?.boxingStance} />
           </div>
           </div>
           <p className="text-[10px] text-muted-foreground border-t border-border pt-3">

@@ -1,7 +1,7 @@
 import { useRef, useEffect } from "react";
 import { GameState, FighterColors, SKIN_COLOR_PRESETS, Archetype } from "@/game/types";
 import { createInitialState, startFight, updateGame } from "@/game/engine";
-import { renderGame, resetAutoZoom } from "@/game/renderer";
+import { resetAutoZoom } from "@/game/renderer";
 import { soundEngine } from "@/game/sound";
 import { ROSTER_DATA } from "@/game/rosterData";
 import { useFightScene3D } from "@/game/three/useFightScene3D";
@@ -138,7 +138,7 @@ export default function MenuBackgroundFight() {
       }
 
       const ctx = canvasRef.current?.getContext("2d") ?? null;
-      view3d.draw(ctx, stateRef.current, { hud: false, fallback2D: c => renderGame(c, stateRef.current) });
+      view3d.draw(ctx, stateRef.current, { hud: false });
 
       animFrameRef.current = requestAnimationFrame(loop);
     };

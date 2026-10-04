@@ -13,9 +13,7 @@ import {
   hasSavedPunchAnimConfig,
   invalidatePunchAnimCache,
 } from "@/lib/punchAnimConfig";
-import { renderFighterPunchFrame } from "@/game/renderer";
 import { DEFAULT_PLAYER_COLORS, type PunchPhaseType } from "@/game/types";
-import { getGraphicsMode } from "@/game/graphicsSetting";
 import { renderFighterPreview3D } from "@/game/three/fighterPreview3d";
 
 const PUNCH_LABELS: Record<PunchType, string> = {
@@ -104,12 +102,11 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
   const paramsRef = useRef(params);
   const punchTypeRef = useRef(punchType);
   const cycleStartRef = useRef(0);
-  // View spin in degrees (3D only): drag the preview or use the slider for a full 360°.
+  // View spin in degrees: drag the preview or use the slider for a full 360°.
   const [spin, setSpin] = useState(0);
   const spinRef = useRef(0);
   spinRef.current = spin;
   const dragRef = useRef<{ x: number; start: number } | null>(null);
-  const use3dView = getGraphicsMode() === "3d";
 
   useEffect(() => { paramsRef.current = params; }, [params]);
 
@@ -123,7 +120,6 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const use3d = getGraphicsMode() === "3d";
 
     const animate = (now: number) => {
       if (!cycleStartRef.current) cycleStartRef.current = now;
@@ -163,30 +159,14 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
       else if (t3 < lF + aF + liF) { phase3 = "linger"; phaseT = liF > 0 ? (t3 - lF - aF) / liF : 1; }
       else if (t3 < 1) { phase3 = "retraction"; phaseT = rF > 0 ? (t3 - lF - aF - liF) / rF : 1; }
 
-      // 3D: the punch plays on the model with these timings. The 2D-only
-      // trajectory sliders (distance, arc, drop/rise) shape the classic sprite;
-      // the 3D arm follows the real punch reach instead.
-      const drawn3d = use3d && renderFighterPreview3D(ctx, {
+      // The trajectory sliders (distance, arc, drop/rise) don't change this
+      // preview: the 3D arm follows the real punch reach.
+      renderFighterPreview3D(ctx, {
         colors: DEFAULT_PLAYER_COLORS,
         bobPhase: now * 0.0025,
         punch: phase3 ? { type: punchTypeRef.current, extension: progress, phase: phase3, phaseT } : { type: punchTypeRef.current, extension: 0 },
         yaw: (spinRef.current * Math.PI) / 180,
       });
-      if (!drawn3d) renderFighterPunchFrame(
-        ctx, PREVIEW_W, PREVIEW_H,
-        DEFAULT_PLAYER_COLORS,
-        punchTypeRef.current,
-        progress,
-        now * 0.0025,
-        1,
-        {
-          distanceMult: paramsRef.current.distanceMult ?? 1.0,
-          arcAmplitude:  paramsRef.current.arcAmplitude,
-          dropDepth:     paramsRef.current.dropDepth,
-          riseHeight:    paramsRef.current.riseHeight,
-          dropPhase:     paramsRef.current.dropPhase,
-        }
-      );
 
       rafRef.current = requestAnimationFrame(animate);
     };
@@ -203,10 +183,9 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
           width={PREVIEW_W}
           height={PREVIEW_H}
           data-testid="canvas-punch-preview"
-          className={use3dView ? "cursor-grab active:cursor-grabbing" : undefined}
+          className="cursor-grab active:cursor-grabbing"
           style={{ touchAction: "none" }}
           onPointerDown={e => {
-            if (!use3dView) return;
             dragRef.current = { x: e.clientX, start: spinRef.current };
             e.currentTarget.setPointerCapture(e.pointerId);
           }}
@@ -220,7 +199,7 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
           onPointerCancel={() => { dragRef.current = null; }}
         />
       </div>
-      {use3dView && (
+      {(
         <div className="flex items-center gap-2 px-1">
           <span className="text-[10px] text-muted-foreground shrink-0">Spin</span>
           <input type="range" min={0} max={360} step={1} value={spin} onChange={e => setSpin(Number(e.target.value))}

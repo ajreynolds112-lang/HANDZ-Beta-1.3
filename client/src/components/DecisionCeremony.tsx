@@ -212,7 +212,7 @@ export default function DecisionCeremony({
         >
           <div className="flex flex-col items-center" style={{ gap: 8 }}>
             <div style={{ width: 260, height: 520 }}>
-              <FighterStanceCanvas colors={playerColors} width={260} height={520} scale={4} force2d />
+              <FighterStanceCanvas colors={playerColors} width={260} height={520} />
             </div>
             <div
               className="font-black tracking-widest uppercase text-center"
@@ -240,7 +240,7 @@ export default function DecisionCeremony({
 
           <div className="flex flex-col items-center" style={{ gap: 8 }}>
             <div style={{ width: 260, height: 520, transform: "scaleX(-1)" }}>
-              <FighterStanceCanvas colors={enemyColors} width={260} height={520} scale={4} force2d />
+              <FighterStanceCanvas colors={enemyColors} width={260} height={520} />
             </div>
             <div
               className="font-black tracking-widest uppercase text-center text-[#00000061]"

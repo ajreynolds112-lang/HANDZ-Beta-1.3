@@ -3,7 +3,6 @@ import { GameState, PauseAction } from "./types";
 import { renderGame, isPauseButtonClick, getPauseMenuClickIndex, getPauseItems, getSoundSliderClick, getControlsBackClick, getTutorialContinueClick } from "./renderer";
 import { soundEngine, musicEngine, DYNAMIC_MUSIC_LEVELS } from "./sound";
 import { updateGame, handleKeyDown, handleKeyUp, clearAllKeys, advanceTutorialContinue } from "./engine";
-import { getGraphicsMode } from "./graphicsSetting";
 import { FightScene3D } from "./three/FightScene3D";
 
 const BASE_W = 800;
@@ -40,15 +39,6 @@ function uiSignature(s: GameState): string {
 /** Safety net: even with no UI-visible change, resync React at this cadence. */
 const THROTTLED_PUSH_MS = 250;
 
-/**
- * Whether this frame draws through the 3D view. Sparring bouts draw the 3D gym
- * around the ring (FightScene3D picks the venue); menu-background fights keep
- * the 2D path.
- */
-function wants3D(s: GameState, mode3d: boolean): boolean {
-  return mode3d && !s.menuBackground;
-}
-
 interface GameCanvasProps {
   state: GameState;
   onStateChange: (state: GameState) => void;
@@ -80,7 +70,8 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
   const glCanvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<FightScene3D | null>(null);
   // Read once per fight canvas: the setting lives in the main menu.
-  const mode3dRef = useRef<boolean>(getGraphicsMode() === "3d");
+  // Set once WebGL has refused to start, so we stop retrying every frame.
+  const webglFailedRef = useRef(false);
 
   if (state !== lastPropRef.current) {
     lastPropRef.current = state;
@@ -146,14 +137,13 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
         const live = stateRef.current;
         const glCanvas = glCanvasRef.current;
         let scene: FightScene3D | null = null;
-        if (glCanvas && wants3D(live, mode3dRef.current)) {
+        if (glCanvas && !webglFailedRef.current) {
           if (!sceneRef.current) {
             try {
               sceneRef.current = new FightScene3D(glCanvas);
             } catch (err) {
-              // No WebGL here: say so once and stay on the classic renderer.
-              console.error("[3D] WebGL view unavailable, using Classic 2D", err);
-              mode3dRef.current = false;
+              console.error("[3D] WebGL view unavailable", err);
+              webglFailedRef.current = true;
             }
           }
           scene = sceneRef.current;
@@ -161,9 +151,9 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
         if (glCanvas) glCanvas.style.visibility = scene ? "visible" : "hidden";
         if (scene) {
           scene.render(live);
-          renderGame(ctx, live, { hudOnly: true, project: scene.project });
+          renderGame(ctx, live, scene.project);
         } else {
-          renderGame(ctx, live);
+          renderGame(ctx, live, null);
         }
       }
     }

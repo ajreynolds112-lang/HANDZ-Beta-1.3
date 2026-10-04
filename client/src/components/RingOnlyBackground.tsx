@@ -1,7 +1,6 @@
 import { useRef, useEffect } from "react";
 import { GameState } from "@/game/types";
 import { createInitialState } from "@/game/engine";
-import { renderRingOnly } from "@/game/renderer";
 import { ringColorsOf, type RingColors } from "@/game/ringColors";
 import { useFightScene3D } from "@/game/three/useFightScene3D";
 
@@ -55,7 +54,6 @@ export default function RingOnlyBackground({ colors }: { colors?: RingColors | n
       view3d.draw(ctx, stateRef.current, {
         hud: false,
         scene: { hideFighters: true },
-        fallback2D: c => renderRingOnly(c, stateRef.current),
       });
 
       animFrameRef.current = requestAnimationFrame(loop);
