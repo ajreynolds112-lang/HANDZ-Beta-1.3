@@ -439,7 +439,8 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
               <PunchTimelineLane key={`${selected}-${i}`} label={ax.label} kind="rotation" color={ax.color} keys={tracks[i]}
                 playhead={tau} loopStart={loopStart} slideMode={slideMode} bands={bands} limit={limits[i]} onLimitChange={v => setLimit(i, v)} onBeginEdit={checkpoint} onChange={k => setAxis(i, k)} testId={`lane-punchanim-${"xyz"[i]}`} />
             ))}
-            {/* The speed track stays in the profile and still re-times punches in game; it's just not editable here. */}
+            <PunchTimelineLane label="Speed" kind="speed" color="#eab308" keys={draft.speed} playhead={tau} loopStart={loopStart} slideMode={slideMode} bands={bands} height={52}
+              onBeginEdit={checkpoint} onChange={k => setDraft(d => ({ ...d, speed: k }))} testId="lane-punchanim-speed" />
           </Card>
         </>
       )}

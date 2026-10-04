@@ -52,6 +52,7 @@ export function solveRefereePose(state: GameState, dims: RigDims, mem: RefereeMe
     T.ankle[i].set(0.03, dims.ankleY, side * 0.17);
     T.kneePole[i].set(1, 0, side * 0.15).normalize();
     T.toeDir[i].set(1, 0, side * 0.25).normalize();
+    T.maxStretch[i] = 1;
     T.elbowPole[i].set(-0.4, -1, side * 0.5).normalize();
     const g = T.glove[i];
     if (action === "count") {

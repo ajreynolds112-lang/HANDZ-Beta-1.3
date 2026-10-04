@@ -83,6 +83,7 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
     raf = requestAnimationFrame(loop);
     if (!fig && fighterAssetEpoch() > 0) {
       fig = new Fighter3D();
+      fig.noStretch = true;
       scene.add(fig.root);
     }
     const v = read();

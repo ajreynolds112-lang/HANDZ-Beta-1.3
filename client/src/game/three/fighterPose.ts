@@ -14,9 +14,9 @@
  * extension follows the engine's on a critically damped spring (accelerates
  * out of the guard, decelerates into the target, never overshoots), an arm
  * that stops punching eases home along the punch it was throwing, and the
- * body (rotation, lean) follows the arms on a slower spring. Arms never stretch:
- * a target beyond the arm's length gets a fully straight arm aimed at it, so at
- * the far end of the real hit range the glove stops short of the opponent.
+ * body (lunge, rotation, lean) follows the arms on a slower spring. Gloves still land at the real hit
+ * range because the target is measured from the fighter's origin and the arm IK
+ * stretches for whatever the body hasn't covered yet.
  *
  * Punch reach uses the real hit range (getPunchReachPx), never the visual-only
  * reach sliders, so a glove that lands in 3D is a punch that can land.
@@ -60,6 +60,7 @@ export interface PoseTargets {
   headRot: THREE.Quaternion;  // body space
   glove: [THREE.Vector3, THREE.Vector3];
   elbowPole: [THREE.Vector3, THREE.Vector3];
+  maxStretch: [number, number];
   ankle: [THREE.Vector3, THREE.Vector3];
   kneePole: [THREE.Vector3, THREE.Vector3];
   toeDir: [THREE.Vector3, THREE.Vector3];
@@ -434,6 +435,7 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
     g.copy(guard);
     // Elbows tucked down over the ribs, not flared.
     out.elbowPole[i].set(-0.25, -1, side * (0.12 - 0.2 * dp)).applyQuaternion(guardRot).normalize();
+    out.maxStretch[i] = 1.04;
 
     const punchDir = _d.set(oppL.x, 0, oppL.z).normalize();
     const punch = mem.armPunch[i];
@@ -492,6 +494,9 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
         g.lerpVectors(guard, target, ext);
         out.elbowPole[i].set(-0.3, -1, side * 0.5).normalize();
       }
+      // Never truncate a valid reach. The IK only stretches as far as the target is,
+      // so the margin covers the gap between the estimated and real shoulder.
+      out.maxStretch[i] = Math.max(1.45, sh.distanceTo(g) / Math.max(0.1, dims.armLen) + 0.25);
     }
     // Shoulder joint (Punch Animation Editor, body axes, degrees) plus the
     // uppercut's U-lift, rotating the whole arm about the shoulder.
@@ -536,7 +541,7 @@ export function newPoseTargets(): PoseTargets {
   const v = () => new THREE.Vector3();
   return {
     pelvisOffset: v(), pelvisRot: new THREE.Quaternion(), chestRot: new THREE.Quaternion(), headRot: new THREE.Quaternion(),
-    glove: [v(), v()], elbowPole: [v(), v()],
+    glove: [v(), v()], elbowPole: [v(), v()], maxStretch: [1, 1],
     ankle: [v(), v()], kneePole: [v(), v()], toeDir: [v(), v()],
   };
 }

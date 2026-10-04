@@ -103,6 +103,10 @@ export class Fighter3D {
   private lastT = -1;
   private armLens: [number, number][] = [];
   private legLens: [number, number][] = [];
+  /** Editor previews: arms keep their bind length (in fights they stretch to reach the real hit range). */
+  noStretch = false;
+  /** Hand joint → glove centre, the part of the arm that never stretches. */
+  private gloveTail: [number, number] = [0, 0];
   // FK scratch: current body-space pose of every bone.
   private cq = {} as Record<BoneName, THREE.Quaternion>;
   private cp = {} as Record<BoneName, THREE.Vector3>;
@@ -168,6 +172,7 @@ export class Fighter3D {
       [P("LeftArm").distanceTo(P("LeftForeArm")), P("LeftForeArm").distanceTo(gl)],
       [P("RightArm").distanceTo(P("RightForeArm")), P("RightForeArm").distanceTo(gr)],
     ];
+    this.gloveTail = [P("LeftHand").distanceTo(gl), P("RightHand").distanceTo(gr)];
     this.legLens = [
       [P("LeftUpLeg").distanceTo(P("LeftLeg")), P("LeftLeg").distanceTo(P("LeftFoot"))],
       [P("RightUpLeg").distanceTo(P("RightLeg")), P("RightLeg").distanceTo(P("RightFoot"))],
@@ -321,13 +326,13 @@ export class Fighter3D {
       this.fk(`${s}Shoulder`);
       this.keepBind(`${s}Shoulder`);
       const S = this.fk(`${s}Arm`).clone();
-      this.limb(`${s}Arm`, `${s}ForeArm`, `${s}Hand`, S, P.glove[i], P.elbowPole[i], this.armLens[i], new THREE.Vector3(1, 0, 0));
+      this.limb(`${s}Arm`, `${s}ForeArm`, `${s}Hand`, S, P.glove[i], P.elbowPole[i], this.armLens[i], this.noStretch ? 1 : P.maxStretch[i], new THREE.Vector3(1, 0, 0), this.gloveTail[i]);
       this.fk(`${s}Hand`);
       this.keepBind(`${s}Hand`);
     });
     sides.forEach((s, i) => {
       const H = this.fk(`${s}UpLeg`).clone();
-      this.limb(`${s}UpLeg`, `${s}Leg`, `${s}Foot`, H, P.ankle[i], P.kneePole[i], this.legLens[i], new THREE.Vector3(-1, 0, 0));
+      this.limb(`${s}UpLeg`, `${s}Leg`, `${s}Foot`, H, P.ankle[i], P.kneePole[i], this.legLens[i], 1.0, new THREE.Vector3(-1, 0, 0));
       this.fk(`${s}Foot`);
       // Foot: turn the bind foot about y so its +x heads down toeDir.
       const yaw = Math.atan2(-P.toeDir[i].z, P.toeDir[i].x);
@@ -408,16 +413,22 @@ export class Fighter3D {
   private _d = new THREE.Vector3();
   private _n = new THREE.Vector3();
 
-  /** Two-bone IK (bones never stretch: a target out of reach gets a straight limb pointed at it); `fold` is the bind-pose direction the lower bone folds toward. */
+  /** Two-bone IK with optional stretch; `fold` is the bind-pose direction the lower bone folds toward. */
   private limb(upper: BoneName, lower: BoneName, end: BoneName, S: THREE.Vector3, T: THREE.Vector3, pole: THREE.Vector3,
-    lens: [number, number], fold: THREE.Vector3): void {
+    lens: [number, number], maxStretch: number, fold: THREE.Vector3, tailLen = 0): void {
     const B = this.bind;
-    const [a, b] = lens;
+    let [a, b] = lens;
     const toT = this._u.subVectors(T, S);
     const d = Math.max(1e-4, toT.length());
     toT.divideScalar(d);
-    B[lower].bone.position.copy(B[lower].localPos);
-    B[end].bone.position.copy(B[end].localPos);
+    // Stretch scales the bones, not the unscaled tail past the end joint (the
+    // glove sits a fixed distance beyond the hand), so solve k on the bones only.
+    const tail = Math.min(tailLen, b * 0.9);
+    const bones = a + b - tail;
+    const k = d > (a + b) * 0.999 ? Math.min(maxStretch, (d / 0.999 - tail) / bones) : 1;
+    a *= k; b = (b - tail) * k + tail;
+    B[lower].bone.position.copy(B[lower].localPos).multiplyScalar(k);
+    B[end].bone.position.copy(B[end].localPos).multiplyScalar(k);
     const dc = Math.min(a + b - 1e-4, Math.max(Math.abs(a - b) + 1e-3, d));
     const cosA = Math.max(-1, Math.min(1, (a * a + dc * dc - b * b) / (2 * a * dc)));
     const sinA = Math.sqrt(1 - cosA * cosA);

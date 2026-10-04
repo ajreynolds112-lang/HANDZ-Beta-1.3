@@ -65,9 +65,7 @@ function reachCase(rigLabel: string, stance: "orthodox" | "southpaw", corner: "p
   const st = createInitialState();
   const att = corner === "player" ? st.player : st.enemy;
   const def = corner === "player" ? st.enemy : st.player;
-  // Arms never stretch, so the glove only lands where the target is within arm's
-  // length; test at a close-range distance inside every punch's real hit range.
-  const D = Math.min(getPunchReachPx(att, punch), 40);
+  const D = getPunchReachPx(att, punch);
   att.x = 400; att.z = 300;
   att.facingAngle = angle;
   def.x = att.x + Math.cos(angle) * D;
@@ -102,21 +100,11 @@ function reachCase(rigLabel: string, stance: "orthodox" | "southpaw", corner: "p
   const tag = `${rigLabel} ${stance} ${corner} ${punch}${ducking ? " (ducking)" : ""} @${angle.toFixed(2)}`;
   ok(Math.abs(gap - surface) < 0.07, `${tag}: glove ${gap.toFixed(2)}m from the opponent's centre, want ${surface}`);
   ok(Math.abs(rel.y - wantY) < 0.08, `${tag}: glove at ${rel.y.toFixed(2)}m, want ${head ? "head" : "body"} height ${wantY.toFixed(2)}`);
-  // At the far end of the real range the arm goes straight but never stretches.
-  def.x = att.x + Math.cos(angle) * getPunchReachPx(att, punch) * 1.5;
-  def.z = att.z + Math.sin(angle) * getPunchReachPx(att, punch) * 1.5;
-  fig.update(att, st.playerColors, def, st, 1);
-  fig.root.updateMatrixWorld(true);
-  const s = left ? "Left" : "Right";
-  if (fig.bind) for (const b of [`${s}ForeArm`, `${s}Hand`]) {
-    const bb = fig.bind[b];
-    ok(bb.bone.position.distanceTo(bb.localPos) < 1e-6, `${tag}: ${b} keeps its bind length at long range`);
-  }
   fig.dispose();
 }
 
 function reachSuite(rigLabel: string) {
-  console.log(`2. gloves land in arm range, arms never stretch (${rigLabel} rig)`);
+  console.log(`2. gloves land at the real hit range (${rigLabel} rig)`);
   for (const stance of ["orthodox", "southpaw"] as const)
     for (const corner of ["player", "enemy"] as const)
       for (const punch of PUNCHES)
