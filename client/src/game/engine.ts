@@ -2242,7 +2242,8 @@ function createFighter(
     cleanHitEyeTimer: 0,
     regenPauseTimer: 0,
     moveSpeed: BASE_MOVE_SPEED * stats.speedMult * levelScale(level, 1, 0.72, "moveSpeed"),
-    punchSpeedMult: stats.speedMult * levelScale(level, 2, 1.8, "punchSpeedMult") * 0.1917,
+    // Level no longer makes punches faster — only the Speed stat (and Fast Twitch) do.
+    punchSpeedMult: stats.speedMult * 2 * 0.1917,
     damageMult: stats.damageMult * levelScale(level, 1, 3.5, "damageMult") * 1.1,
     // The additive power pool starts empty. `damageMult` above is the BASE — the
     // level ramp and (later) spent stat points — and everything the fighter earns
@@ -4279,7 +4280,7 @@ function getStockPunchPhaseDurations(fighter: FighterState, config: PunchConfig,
   // Hits are hitbox-based (resolved the moment the extending glove reaches the
   // target, see updatePunch), so there is no dwell-at-contact phase any more.
   const contactBase = 0;
-  const lingerBase = levelScale(fighter.level, 0.2, 0.05, "punchLinger") / speedMult * LINGER_MULT * (animCfg?.lingerMult ?? 1);
+  const lingerBase = 0.2 / speedMult * LINGER_MULT * (animCfg?.lingerMult ?? 1);
   let retractBase = rawLaunchBase * 1.1;
   if (punchType === "cross") retractBase /= rhythmBuffs.crossRetractMult;
   retractBase *= fighter.retractionPenaltyMult;
@@ -4336,14 +4337,14 @@ function getTelegraphCooldownZ(_level: number, _punchType: PunchType): number {
   return 2.0;
 }
 
-function getTelegraphBaseDuration(level: number, punchType: PunchType): number {
+function getTelegraphBaseDuration(_level: number, punchType: PunchType): number {
   const isHook = punchType.includes("Hook");
   const isUppercut = punchType.includes("Uppercut");
-  // Base durations are long enough to be clearly visible at speed 0.
-  // speedTelegraphMult then shortens them proportional to the fighter's speed stat.
-  if (isHook) return levelScale(level, 0.90, 0.75, "telegraphHook");
-  if (isUppercut) return levelScale(level, 1.10, 0.90, "telegraphUppercut");
-  return levelScale(level, 0.60, 0.50, "telegraphJab"); // jab/cross
+  // Fixed base lengths, the same at every level: only the Speed stat and
+  // Fast Twitch shorten them (see telegraphMultFor).
+  if (isHook) return 0.90;
+  if (isUppercut) return 1.10;
+  return 0.60; // jab/cross
 }
 
 /**
@@ -7865,7 +7866,8 @@ function updateBob(fighter: FighterState, dt: number, state?: GameState): void {
     }
   }
 
-  const levelSpeedScale = levelScale(fighter.level, 1, 2.5, "animSpeedScale");
+  // Leg drive is part of the punch, so it no longer speeds up with level.
+  const levelSpeedScale = 1;
   const isRetracting = fighter.isPunching && fighter.punchPhase === "retraction";
   const isDuckCross = fighter.defenseState === "duck" && fighter.isPunching && fighter.currentPunch === "cross";
   const isLeftHook = fighter.isPunching && fighter.currentPunch === "leftHook";
