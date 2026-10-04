@@ -1610,9 +1610,22 @@ function getHitPunchConfig(punchType: PunchType): PunchConfig {
 // gate tryHit() applies, minus the transient rhythm range buff. Exported so the AI
 // can tell whether a punch it is about to throw can physically land.
 export function getPunchReachPx(fighter: FighterState, punchType: PunchType): number {
-  const config = getHitPunchConfig(punchType);
+  // Reach follows the punch's role (southpaw mirrors orthodox), not the literal arm.
+  const config = getHitPunchConfig(punchRole(punchType, fighter.boxingStance));
   const armReachBonus = (fighter.armLength - 65) * PX_PER_INCH;
   return config.range + 20 + armReachBonus + (fighter.precisionStrikerRangeBonus ?? 0);
+}
+
+const STANCE_MIRROR_PUNCH: Record<PunchType, PunchType> = {
+  jab: "cross", cross: "jab", leftHook: "rightHook", rightHook: "leftHook", leftUppercut: "rightUppercut", rightUppercut: "leftUppercut",
+};
+/**
+ * The orthodox-named role of a literal-arm punch: a southpaw's right-hand lead
+ * straight (engine "cross") plays the "jab" role. Used where a punch's shape
+ * (timing, reach) must mirror between stances.
+ */
+export function punchRole(punchType: PunchType, stance: BoxingStance | undefined): PunchType {
+  return stance === "southpaw" ? STANCE_MIRROR_PUNCH[punchType] : punchType;
 }
 
 // Punch names are absolute: jab / leftHook / leftUppercut always come off the LEFT
@@ -4244,7 +4257,11 @@ function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRe
   return d;
 }
 
-function getStockPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRePunch: boolean): Record<PunchPhaseType, number> {
+function getStockPunchPhaseDurations(fighter: FighterState, literalConfig: PunchConfig, isRePunch: boolean): Record<PunchPhaseType, number> {
+  // Timing follows the punch's ROLE, so a southpaw's lead straight (engine
+  // "cross") is timed exactly like an orthodox jab: southpaw is orthodox's mirror.
+  const role = fighter.currentPunch ? punchRole(fighter.currentPunch, fighter.boxingStance) : null;
+  const config = role && role !== fighter.currentPunch ? getEffectivePunchConfig(role) : literalConfig;
   let speedMult = config.speed * fighter.punchSpeedMult;
   if (fighter.isCharging) {
     const guardDown = fighter.handsDown;
@@ -4262,7 +4279,7 @@ function getStockPunchPhaseDurations(fighter: FighterState, config: PunchConfig,
   // with, wherever that punch is thrown -- in the combination or on its own.
   if (fighter.drilledPunch?.mastered) speedMult *= DRILLED_ACTION_CONFIG.masteryPunchSpeedMult;
 
-  const punchType = fighter.currentPunch;
+  const punchType = role;
   if (punchType === "jab") speedMult *= rhythmBuffs.jabSpeedMult;
   if (punchType === "jab" && fighter.defenseState !== "duck") speedMult *= 1.2;
   if (punchType === "cross") speedMult *= rhythmBuffs.crossSpeedMult;

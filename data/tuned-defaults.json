@@ -1,7 +1,7 @@
 {
   "kind": "handz-neural-parameters",
   "version": 1,
-  "exportedAt": "2026-10-04T17:28:11.658Z",
+  "exportedAt": "2026-10-04T18:00:43.624Z",
   "params": {
     "handz_punch_anim": {
       "jab": {
@@ -7635,7 +7635,7 @@
       "knockdownTaken": 0.02
     },
     "handz_ai_range_config": {
-      "baseDesiredDistancePx": 48,
+      "baseDesiredDistancePx": 71,
       "standDistanceOffsetPx": 2
     },
     "handz_rc_config": {

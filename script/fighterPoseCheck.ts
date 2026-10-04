@@ -65,13 +65,13 @@ function reachCase(rigLabel: string, stance: "orthodox" | "southpaw", corner: "p
   const st = createInitialState();
   const att = corner === "player" ? st.player : st.enemy;
   const def = corner === "player" ? st.enemy : st.player;
-  const D = getPunchReachPx(att, punch);
+  att.boxingStance = stance as FS["boxingStance"];
+  const D = getPunchReachPx(att, punch); // stance first: reach follows the punch's role
   att.x = 400; att.z = 300;
   att.facingAngle = angle;
   def.x = att.x + Math.cos(angle) * D;
   def.z = att.z + Math.sin(angle) * D;
   def.facingAngle = angle + Math.PI;
-  att.boxingStance = stance as FS["boxingStance"];
   att.defenseState = (ducking ? "duck" : "none") as FS["defenseState"];
   att.punchAimsHead = !ducking;
   att.isPunching = true;

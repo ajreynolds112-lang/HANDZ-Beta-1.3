@@ -115,7 +115,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   // exactly as the engine does in a fight.
   const { duration, baseDuration, bands, realBands } = useMemo(() => {
     const punch = enginePunchForRole(role, southpaw);
-    const f = { ...sample, isPunching: true, currentPunch: punch, isRePunch: false, isCharging: false };
+    const f = { ...sample, boxingStance: (southpaw ? "southpaw" : "orthodox") as typeof sample.boxingStance, isPunching: true, currentPunch: punch, isRePunch: false, isCharging: false };
     const fr = punchPhaseFractions(f, true);
     const b: PhaseBand[] = fr
       ? Object.entries(fr).filter(([, [a, z]]) => z - a > 1e-6).map(([k, [a, z]]) => ({ label: PHASE_LABEL[k] ?? k, from: a, to: z }))
