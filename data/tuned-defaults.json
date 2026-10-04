@@ -1,7 +1,7 @@
 {
   "kind": "handz-neural-parameters",
   "version": 1,
-  "exportedAt": "2026-10-04T18:44:16.257Z",
+  "exportedAt": "2026-10-04T22:54:39.091Z",
   "params": {
     "handz_punch_anim": {
       "jab": {
@@ -463,14 +463,14 @@
               "RightArm": [
                 [
                   {
-                    "t": 0.321,
-                    "v": 15
+                    "t": 0.325,
+                    "v": 7
                   }
                 ],
                 [
                   {
-                    "t": 0.328,
-                    "v": -26
+                    "t": 0.331,
+                    "v": -44
                   }
                 ],
                 [
