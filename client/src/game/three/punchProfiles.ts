@@ -29,8 +29,8 @@ export const PUNCH_ROLE_LABEL: Record<PunchType, string> = {
 /** Speed track range (multiplier), drawn on a log scale. */
 /** Max joint rotation offset (degrees, either direction) a profile key may hold. */
 export const ROT_MAX = 45;
-export const SPEED_MIN = 0.25;
-export const SPEED_MAX = 4;
+export const SPEED_MIN = 0.1;
+export const SPEED_MAX = 3;
 
 export interface Key { t: number; v: number }
 export type AxisTracks = [Key[], Key[], Key[]];
