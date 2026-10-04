@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createInitialState } from "@/game/engine";
 import type { FighterState, GameState } from "@/game/types";
 import { Fighter3D } from "@/game/three/fighterModel";
+import { PROFILE_VIEW_OPP_PX } from "@/game/three/punchProfiles";
 import { BONE_NAMES, type BoneName, ensureFighterAssets, fighterAssetEpoch } from "@/game/three/fighterRig";
 
 export const JOINT_LABEL: Record<BoneName, string> = {
@@ -91,7 +92,7 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
       const a = st.player, d = st.enemy;
       // Opponent out of shot.
       a.x = 400; a.z = 300; a.facingAngle = 0;
-      d.x = 560; d.z = 300; d.facingAngle = Math.PI;
+      d.x = a.x + PROFILE_VIEW_OPP_PX; d.z = 300; d.facingAngle = Math.PI;
       a.boxingStance = (v.southpaw ? "southpaw" : "orthodox") as typeof a.boxingStance;
       a.guardBlend = v.fullGuard ? 1 : 0;
       a.isPunching = false;

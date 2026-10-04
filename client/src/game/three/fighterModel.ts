@@ -18,7 +18,7 @@ import {
 import { BONE_NAMES, type BoneName, type Region, type RigInstance, createRig, fighterAssetEpoch } from "./fighterRig";
 import { type PoseMemory, type PoseTargets, type RigDims, eyeState, newPoseMemory, newPoseTargets, solvePose } from "./fighterPose";
 import { getPoseOffsets, type PoseOffsets } from "./poseOffsets";
-import { activePunchProfile } from "./punchProfiles";
+import { PROFILE_VIEW_OPP_PX, activePunchProfile } from "./punchProfiles";
 import { MAT_HEIGHT, toSceneX, toSceneYaw, toSceneZ } from "./worldMapping";
 import { type BodyTilt, type KdMemory, applyKnockdownPose, newKdMemory } from "./knockdownPose";
 import { type RefereeMemory, buildRefereeClothes, newRefereeMemory, solveRefereePose } from "./referee3d";
@@ -105,6 +105,8 @@ export class Fighter3D {
   private legLens: [number, number][] = [];
   /** Editor previews: arms keep their bind length (in fights they stretch to reach the real hit range). */
   noStretch = false;
+  /** This frame's arm stretch is off (editor preview, or a profiled punch playing as authored). */
+  private stretchOff = false;
   /** Hand joint → glove centre, the part of the arm that never stretches. */
   private gloveTail: [number, number] = [0, 0];
   // FK scratch: current body-space pose of every bone.
@@ -202,6 +204,15 @@ export class Fighter3D {
     // its keyframed joint rotations on top of the stance edits.
     const prof = f.isKnockedDown ? null : activePunchProfile(f);
     const sliding = !!prof && prof.slide > 0;
+    // Visual only: a profiled punch is solved against the editor's stand-in
+    // opponent (same direction, editor distance, not ducking) with no arm
+    // stretch, so it never compresses or over-reaches. Hits are untouched.
+    this.stretchOff = this.noStretch || !!prof;
+    if (prof && opponent) {
+      const dx = opponent.x - f.x, dz = opponent.z - f.z, d = Math.hypot(dx, dz);
+      const ux = d > 1e-6 ? dx / d : Math.cos(f.facingAngle), uz = d > 1e-6 ? dz / d : Math.sin(f.facingAngle);
+      opponent = { ...opponent, x: f.x + ux * PROFILE_VIEW_OPP_PX, z: f.z + uz * PROFILE_VIEW_OPP_PX, duckProgress: 0 };
+    }
     if (sliding && !this.slideFrom) this.captureSlideFrom(prof!, opponent);
     if (!sliding) this.slideFrom = null;
     // Sliding back: the live solve already heads home (its springs end at the
@@ -326,7 +337,7 @@ export class Fighter3D {
       this.fk(`${s}Shoulder`);
       this.keepBind(`${s}Shoulder`);
       const S = this.fk(`${s}Arm`).clone();
-      this.limb(`${s}Arm`, `${s}ForeArm`, `${s}Hand`, S, P.glove[i], P.elbowPole[i], this.armLens[i], this.noStretch ? 1 : P.maxStretch[i], new THREE.Vector3(1, 0, 0), this.gloveTail[i]);
+      this.limb(`${s}Arm`, `${s}ForeArm`, `${s}Hand`, S, P.glove[i], P.elbowPole[i], this.armLens[i], this.stretchOff ? 1 : P.maxStretch[i], new THREE.Vector3(1, 0, 0), this.gloveTail[i]);
       this.fk(`${s}Hand`);
       this.keepBind(`${s}Hand`);
     });

@@ -45,6 +45,13 @@ export function boneLimits(p: Pick<PunchProfile, "limits">, b: BoneName): AxisLi
 export const SPEED_MIN = 0.1;
 export const SPEED_MAX = 3;
 
+/**
+ * The editor's opponent sits this far straight ahead. A profiled punch in a
+ * fight is drawn against a stand-in opponent at the same spot (and no arm
+ * stretch), so it plays exactly as authored whatever the real distance.
+ */
+export const PROFILE_VIEW_OPP_PX = 160;
+
 export interface Key { t: number; v: number }
 export type AxisTracks = [Key[], Key[], Key[]];
 export interface PunchProfile {
