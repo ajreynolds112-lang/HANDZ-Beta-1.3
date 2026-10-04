@@ -35,9 +35,14 @@ interface LaneProps {
   testId: string;
 }
 
+/** Copied point value, one per lane kind (rotation degrees vs speed multiplier don't mix). Shared by every lane. */
+const clipboard: Partial<Record<LaneProps["kind"], number>> = {};
+
 /**
  * One keyframe lane. Right-click empty space adds a key, right-click a key
- * removes it, left-drag a key moves it in time and value.
+ * removes it, left-drag a key moves it in time and value. Shift-left-click a
+ * key copies its value; shift-right-click pastes it (onto a key: replaces its
+ * value; on empty space: adds a key there with the copied value).
  */
 export default function PunchTimelineLane({ label, kind, color, keys, playhead, bands, height = 64, onBeginEdit, onChange, testId }: LaneProps) {
   const boxRef = useRef<HTMLDivElement>(null);
@@ -62,6 +67,7 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
   const onLaneContext = (e: React.MouseEvent) => {
     e.preventDefault();
     const p = at(e);
+    if (e.shiftKey) return; // shift-right-click pastes on pointerdown
     onBeginEdit();
     const k: Key = { t: Math.round(p.t * 1000) / 1000, v: yToValue(kind, p.y) };
     onChange([...keys, k].sort((a, b) => a.t - b.t));
@@ -69,13 +75,34 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
   const onKeyContext = (e: React.MouseEvent, k: Key) => {
     e.preventDefault();
     e.stopPropagation();
+    if (e.shiftKey) return; // shift-right-click pastes on pointerdown
     onBeginEdit();
     onChange(keys.filter(x => x !== k));
   };
+  // Paste on pointerdown, not contextmenu: Firefox never sends shift-right-click
+  // to the page's contextmenu handler.
+  const onLanePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 2 || !e.shiftKey) return;
+    e.preventDefault();
+    const v = clipboard[kind];
+    if (v === undefined) return;
+    onBeginEdit();
+    onChange([...keys, { t: Math.round(at(e).t * 1000) / 1000, v }].sort((a, b) => a.t - b.t));
+  };
   const onKeyDown = (e: React.PointerEvent, k: Key) => {
+    if (e.button === 2 && e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      const v = clipboard[kind];
+      if (v === undefined) return;
+      onBeginEdit();
+      onChange(keys.map(x => (x === k ? { t: x.t, v } : x)));
+      return;
+    }
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    if (e.shiftKey) { clipboard[kind] = k.v; return; }
     onBeginEdit();
     dragRef.current = { key: k, pointerId: e.pointerId };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -102,7 +129,7 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
         </span>
       </div>
       <div ref={boxRef} className="relative flex-1 rounded border border-border bg-black/40 select-none overflow-hidden"
-        style={{ height }} onContextMenu={onLaneContext}>
+        style={{ height }} onContextMenu={onLaneContext} onPointerDown={onLanePointerDown}>
         {bands.map((b, i) => (
           <div key={b.label} className="absolute inset-y-0 pointer-events-none"
             style={{ left: `${b.from * 100}%`, width: `${(b.to - b.from) * 100}%`, background: i % 2 ? "rgba(255,255,255,0.03)" : "transparent" }} />

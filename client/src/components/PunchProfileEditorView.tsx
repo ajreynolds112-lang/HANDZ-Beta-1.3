@@ -347,7 +347,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
             </div>
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground pl-[88px]">
               <span className="font-semibold text-foreground mr-auto">{JOINT_LABEL[selected]}</span>
-              <span>Right-click adds or removes a point · drag a point to move it</span>
+              <span>Right-click adds or removes a point · drag a point to move it · Shift-click copies a point · Shift-right-click pastes</span>
               <Button size="sm" variant="ghost" className="h-6 text-[11px]" disabled={!draft.bones[selected]} onClick={clearJoint} data-testid="button-punchanim-clear-joint">
                 <RotateCcw className="w-3 h-3 mr-1" /> Clear joint
               </Button>
