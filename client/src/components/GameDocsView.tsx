@@ -198,18 +198,18 @@ const SECTIONS: DocSection[] = [
       {
         t: "p",
         text:
-          "Southpaw does not change which hand is which on screen — it changes which key throws which punch, so the lead hand stays under the same finger. You pick a starting stance in setup, but you are not locked into it: you can switch stance freely in the middle of a round.",
+          "Keys always map to the same glove: W/Q/S throw with the left hand, E/R/D with the right. In southpaw your lead hand is the right one, so your jab is on E and your rear-hand cross is on W. You pick a starting stance in setup, but you are not locked into it: you can switch stance freely in the middle of a round.",
       },
       {
         t: "table",
         head: ["Key", "Punch"],
         rows: [
-          ["W", "Cross"],
-          ["E", "Jab"],
-          ["Q", "Right hook"],
-          ["R", "Left hook"],
-          ["S", "Right uppercut"],
-          ["D", "Left uppercut"],
+          ["W", "Cross (left hand)"],
+          ["E", "Jab (right hand)"],
+          ["Q", "Left hook"],
+          ["R", "Right hook"],
+          ["S", "Left uppercut"],
+          ["D", "Right uppercut"],
         ],
       },
       { t: "h", text: "Switching stance mid-bout" },

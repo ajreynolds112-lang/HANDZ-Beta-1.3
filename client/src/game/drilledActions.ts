@@ -585,8 +585,8 @@ const PUNCH_FAMILY: Record<string, string> = {
  * A link named the way a boxer would name it.
  *
  * Punch names are absolute in this engine: a jab is always the left glove and a
- * cross always the right, in both stances, and southpaw is implemented by
- * remapping the keys. So a southpaw's lead-hand punch is internally a `cross`
+ * cross always the right, in both stances (keys map to gloves, not roles). So a
+ * southpaw's lead-hand punch is internally a `cross`
  * and has to read as "Right Jab", while their rear hand reads as "Left Cross".
  * That remapping is exactly what makes the four jab/cross variants four
  * distinct drilled actions rather than two, so the readout has to show it --

@@ -8845,14 +8845,10 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
     tryReset(player, state);
   }
 
-  const punchKeys: [string, PunchType][] = player.boxingStance === "southpaw" ? [
-    ["w", "cross"],
-    ["e", "jab"],
-    ["q", "rightHook"],
-    ["r", "leftHook"],
-    ["s", "rightUppercut"],
-    ["d", "leftUppercut"],
-  ] : [
+  // Same keys in both stances: the left-side keys (W/Q/S) always throw the
+  // LEFT glove and the right-side keys (E/R/D) the right glove. For a southpaw
+  // that puts the lead (right) hand on E and the rear (left) hand on W.
+  const punchKeys: [string, PunchType][] = [
     ["w", "jab"],
     ["e", "cross"],
     ["q", "leftHook"],
