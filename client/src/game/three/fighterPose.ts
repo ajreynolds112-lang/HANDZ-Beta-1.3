@@ -193,7 +193,7 @@ const UPPER_SLIP = 0.22;
 /** Standing hip drop into bent knees (fraction of leg length)... */
 const STANCE_SIT = 0.09;
 /** ...stood up this much more when not ducking (the duck crouch is separate). */
-const STANCE_STAND_UP = 0.15;
+const STANCE_STAND_UP = 0.4;
 
 
 /** Solve the full pose. `dims` from the rig, `mem` is the caller's per-fighter smoothing. */
