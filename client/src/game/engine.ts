@@ -2254,7 +2254,8 @@ function createFighter(
     critHitTimer: 0,
     cleanHitEyeTimer: 0,
     regenPauseTimer: 0,
-    moveSpeed: BASE_MOVE_SPEED * stats.speedMult * levelScale(level, 1, 0.72, "moveSpeed"),
+    // Flat footspeed: level never changes it. Only the Speed stat and boosts do.
+    moveSpeed: BASE_MOVE_SPEED * stats.speedMult,
     // Level no longer makes punches faster — only the Speed stat (and Fast Twitch) do.
     punchSpeedMult: stats.speedMult * 2 * 0.1917,
     damageMult: stats.damageMult * levelScale(level, 1, 3.5, "damageMult") * 1.1,
@@ -3267,17 +3268,14 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
   // row that needs a new fight to take effect.
   const lvlGap = playerLevel - enemyLevel;
   const gapMult = (id: string, diff: number) => clampGapMult(1 + levelGapAdj(id, diff));
+  // (No level-gap move speed: speed is a flat stat curve plus boosts.)
   player.damageMult *= gapMult("gapDamage", lvlGap);
-  player.moveSpeed *= gapMult("gapMoveSpeed", lvlGap);
   enemy.damageMult *= gapMult("gapDamage", -lvlGap);
-  enemy.moveSpeed *= gapMult("gapMoveSpeed", -lvlGap);
 
   if (aiDifficulty === "champion") {
     enemy.damageMult *= 1.185;
-    enemy.moveSpeed *= 1.05;
   } else if (aiDifficulty === "elite") {
     enemy.damageMult *= 1.133;
-    enemy.moveSpeed *= 1.02;
   } else if (aiDifficulty === "contender") {
     enemy.damageMult *= 1.082;
   } else {
@@ -3693,7 +3691,12 @@ export function applyEquipmentToFighter(fighter: FighterState, levels: Record<st
   if (e.powerPct > 0) fighter.powerBonusPct += e.powerPct;
   if (e.autoGuardPct > 0) fighter.autoGuardDuration *= 1 + e.autoGuardPct;
   // Shoes
-  if (e.moveSpeedPct > 0) fighter.moveSpeed *= 1 + e.moveSpeedPct;
+  // Shoes — a summand alongside the Speed stat and Fast Twitch, not a factor:
+  // move = base × (1 + stat + Fast Twitch + shoes). Equipment is applied last.
+  if (e.moveSpeedPct > 0) {
+    const sum = 1 + moveSpeedAddSum(fighter);
+    fighter.moveSpeed *= (sum + e.moveSpeedPct) / sum;
+  }
   // Trunks — a flat pool addition the fighter walks in with, capped against the
   // tank they already have so the same flat number can't be worth ten times a
   // low-level fighter's whole pool. Applied before the first tick, which is
@@ -4384,19 +4387,19 @@ function telegraphMultFor(f: FighterState): number {
   return 1 / (speedPunchRatio(f.rawSpeed ?? 0) + ft);
 }
 /** Fast Twitch move speed, added onto the Speed stat's move bonus rather than multiplied by it. */
+/** The additive move-speed bonuses already in moveSpeed: Speed stat + Fast Twitch. */
+function moveSpeedAddSum(f: FighterState): number {
+  return (f.speedT ?? 0) * pointCoef("speedMove", 0.15) + (f.fastTwitchRank ?? 0) * refNum("fastTwitch", "movePerLevel");
+}
+
 function applyFastTwitchMove(f: FighterState, rank: number): void {
   const stat = (f.speedT ?? 0) * pointCoef("speedMove", 0.15);
   f.moveSpeed *= (1 + stat + rank * refNum("fastTwitch", "movePerLevel")) / (1 + stat);
 }
 
-function shouldTelegraph(fighter: FighterState, _isRePunch: boolean, _punchType: PunchType = "jab"): boolean {
-  const level = Math.max(1, fighter.level);
-  // Level 1  → 100% chance every punch is telegraphed (fully predictable beginner)
-  // Level 50 → ~50% chance
-  // Level 100+ → 0% (no telegraph, fast/unpredictable)
-  const telegraphChance = levelScale(level, 1, 0, "telegraphChance");
-  if (telegraphChance <= 0) return false;
-  return Math.random() < telegraphChance;
+function shouldTelegraph(_fighter: FighterState, _isRePunch: boolean, _punchType: PunchType = "jab"): boolean {
+  // Every punch has its windup at every level: level never makes punches faster.
+  return true;
 }
 
 function computeSwayZoneMults(fighter: FighterState): void {
@@ -4672,7 +4675,7 @@ function startTelegraph(fighter: FighterState, punchType: PunchType, isFeint: bo
 
   let boostMult = 1 + fighter.feintedTelegraphBoost;
   if (isCharged) {
-    const chargeIncrease = levelScale(fighter.level, 0.15, 0.03, "chargeTelegraphIncrease");
+    const chargeIncrease = 0.15; // flat at every level
     boostMult *= (1 + chargeIncrease);
   }
   baseDur *= boostMult * telegraphMult * fighter.telegraphKdMult * Math.max(0.1, fighter.telegraphSpeedMult);
@@ -4706,7 +4709,7 @@ function startTelegraph(fighter: FighterState, punchType: PunchType, isFeint: bo
   fighter.telegraphRhythmPaused = isRhythmVulnerable(fighter, opponent);
   fighter.swayFrozen = fighter.telegraphRhythmPaused;
 
-  const slowDur = levelScale(fighter.level, 1.0, 0.25, "telegraphSlowDuration");
+  const slowDur = 1.0; // flat at every level
   fighter.telegraphSlowTimer = slowDur;
   fighter.telegraphSlowDuration = slowDur;
 
@@ -6404,7 +6407,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
         defender.feintBaits++;
         attacker.retractionPenaltyMult = 2;
         attacker.feintWhiffPenaltyCooldown = 0.5;
-        attacker.feintedTelegraphBoost = levelScale(attacker.level, 0.20, 0.05, "feintTelegraphBoost");
+        attacker.feintedTelegraphBoost = 0.20; // flat at every level
         attacker.telegraphFeintRoundPenalty += 0.025;
       }
     }
@@ -11397,7 +11400,7 @@ export function startNextRound(state: GameState): GameState {
   snapFacingToward(state.enemy, state.player.x, state.player.z);
   for (const f of [state.player, state.enemy]) {
     if (state.currentRound > 1) {
-      const roundIncrease = levelScale(f.level, 0.05, 0.01, "telegraphRoundBonus");
+      const roundIncrease = 0.05; // flat at every level
       f.telegraphRoundBonus += roundIncrease;
     }
   }

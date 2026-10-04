@@ -50,13 +50,7 @@ export const LEVEL_RAMP_DEFS: LevelRampDef[] = [
   { id: "blockRegenPenaltyDuration", label: "Block regen penalty",       group: "Defense",   min: 0.25, max: 0,    unit: "s", note: "lower is better" },
   { id: "autoGuardBase",           label: "Auto-guard base duration",    group: "Defense",   min: 10,   max: 45,   unit: "s" },
   { id: "guardRaiseMs",            label: "Guard raise time",            group: "Defense",   min: 50,   max: 20,   unit: "ms", note: "lower is better" },
-  { id: "moveSpeed",               label: "Footwork (base move speed)",  group: "Movement",  min: 1,    max: 0.72, unit: "x" },
-  { id: "telegraphChance",         label: "Telegraph odds",              group: "Telegraph", min: 1,    max: 0,    unit: "frac", note: "lower is better" },
-  { id: "telegraphSlowDuration",   label: "Telegraph slow window",       group: "Telegraph", min: 1.0,  max: 0.25, unit: "s", note: "lower is better" },
-  { id: "telegraphRoundBonus",     label: "Telegraph bonus per round",   group: "Telegraph", min: 0.05, max: 0.01, unit: "frac", note: "lower is better" },
   { id: "telegraphBlinkChance",    label: "Telegraph eye-blink chance",  group: "Telegraph", min: 0.75, max: 0.50, unit: "frac", note: "visual only" },
-  { id: "chargeTelegraphIncrease", label: "Charged-punch telegraph add", group: "Telegraph", min: 0.15, max: 0.03, unit: "s", note: "lower is better" },
-  { id: "feintTelegraphBoost",     label: "Feint telegraph penalty",     group: "Telegraph", min: 0.20, max: 0.05, unit: "x", note: "lower is better" },
   { id: "feintFailChance",         label: "Feint failure chance",        group: "Telegraph", min: 0.60, max: 0.30, unit: "frac", note: "lower is better" },
   // Share of the gas tank the level curve already gave the AI, not an absolute
   // points figure — see the careerStaminaTier block in startFight. 1.0 is the
@@ -150,7 +144,6 @@ export interface LevelGapDef {
 }
 
 export const LEVEL_GAP_DEFS: LevelGapDef[] = [
-  { id: "gapMoveSpeed",    label: "Move speed",                 ahead: 0.025,  behind: 0,      unit: "x/lv",    note: "set at the bell" },
   { id: "gapDamage",       label: "Punching power",             ahead: 0.025,  behind: 0,      unit: "x/lv",    note: "set at the bell" },
   { id: "gapPowerBypass",  label: "Power-sway guard bypass",    ahead: 0.02,   behind: 0,      unit: "frac/lv" },
   { id: "gapMiniStun",     label: "Off-balance mini-stun",      ahead: 0.005,  behind: 0,      unit: "frac/lv" },
