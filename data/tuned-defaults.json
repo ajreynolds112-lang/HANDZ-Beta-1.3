@@ -1,7 +1,7 @@
 {
   "kind": "handz-neural-parameters",
   "version": 1,
-  "exportedAt": "2026-10-04T18:22:53.215Z",
+  "exportedAt": "2026-10-04T18:44:16.257Z",
   "params": {
     "handz_punch_anim": {
       "jab": {
@@ -168,7 +168,7 @@
         ],
         "Head": [
           3,
-          24,
+          10,
           -22
         ],
         "LeftFoot": [
@@ -219,18 +219,18 @@
           -5
         ],
         "RightArm": [
-          -46,
-          -50,
-          2
+          -29,
+          -47,
+          5
         ],
         "RightForeArm": [
           19,
           -17,
-          60
+          39
         ],
         "Head": [
           -3,
-          -24,
+          -10,
           -22
         ],
         "RightFoot": [
@@ -272,11 +272,6 @@
           -2,
           0,
           0
-        ],
-        "RightHand": [
-          0,
-          0,
-          -5
         ]
       }
     },

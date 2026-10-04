@@ -191,7 +191,8 @@ export class FightScene3D {
       { f: state.enemy, colors: state.enemyColors, opp: state.player },
     ];
     if (state.nightmareMode) {
-      for (const extra of state.nightmareEnemies ?? []) list.push({ f: extra, colors: state.enemyColors, opp: state.player });
+      // Each extra wears the kit it spawned in; enemyColors belongs to the current target only.
+      for (const extra of state.nightmareEnemies ?? []) list.push({ f: extra, colors: extra.colors ?? state.enemyColors, opp: state.player });
     }
     this.frame++;
     const epoch = getCameraResetEpoch();
