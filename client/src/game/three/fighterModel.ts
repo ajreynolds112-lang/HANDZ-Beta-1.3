@@ -85,6 +85,11 @@ const BLACK = new THREE.Color("#000000");
 
 export class Fighter3D {
   readonly root = new THREE.Group();
+  /**
+   * Training minigames: rewrites the solved joint targets (body space) before
+   * they are applied, e.g. a barbell press. Stance edits are skipped while set.
+   */
+  poseHook: ((pose: PoseTargets, dims: RigDims, dt: number) => void) | null = null;
   private rig!: RigInstance;
   private epoch = -1;
   private bind = {} as Record<BoneName, BoneBind>;
@@ -219,6 +224,7 @@ export class Fighter3D {
     // guard when the punch does); it's blended in from the held Loop Start pose.
     const solveF = sliding ? { ...f, isPunching: false, currentPunch: null } : (prof?.fighter ?? f);
     solvePose(solveF, this.dims, this.mem, { opponent, dt, snapPunch: !!prof && !sliding }, this.pose);
+    if (this.poseHook) this.poseHook(this.pose, this.dims, dt);
     // Knockdown fall / canvas / get-up, layered over the standing solve.
     if (applyKnockdownPose(f, state, this.dims, this.kd, dt, epoch, this.pose, this.tilt)) {
       this.rig.body.quaternion.copy(this.tilt.q);
@@ -228,7 +234,7 @@ export class Fighter3D {
       this.rig.body.position.set(0, 0, 0);
     }
     this.applyPose();
-    if (!f.isKnockedDown) this.applyPoseOffsets(getPoseOffsets(this.mem.stanceBlend >= 0.5 ? "southpaw" : "orthodox"), true);
+    if (!f.isKnockedDown && !this.poseHook) this.applyPoseOffsets(getPoseOffsets(this.mem.stanceBlend >= 0.5 ? "southpaw" : "orthodox"), true);
     if (prof && !sliding) this.applyPoseOffsets(prof.offsets, false);
     if (sliding) this.blendFromSlide(prof!.slide);
     this.preSlide = !!prof && !sliding;

@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { isEnterOverlayActive } from "@/hooks/useEnterKey";
-import type { Fighter, GearColors } from "@shared/schema";
-import { DEFAULT_GEAR_COLORS } from "@shared/schema";
+import type { Fighter } from "@shared/schema";
+import { TrainingScene3D } from "@/game/three/trainingScene3d";
+import { trainingColors } from "@/lib/trainingColors";
 import { soundEngine } from "@/game/sound";
 import { getTrainingMods } from "@/game/itemEffects";
 import { withSavedInventory } from "@/lib/itemInventory";
@@ -91,8 +92,20 @@ export default function WeightLiftingGame({ fighter, onComplete, onQuit, calcSta
   const onLiveXpChangeRef = useRef(onLiveXpChange);
   useEffect(() => { calcXPRef.current = calcXP; onLiveXpChangeRef.current = onLiveXpChange; }, [calcXP, onLiveXpChange]);
 
-  const gc = (fighter.gearColors as GearColors) || DEFAULT_GEAR_COLORS;
-  const skinColor = fighter.skinColor || "#e8c4a0";
+  // 3D scene under the HUD canvas.
+  const glCanvasRef = useRef<HTMLCanvasElement>(null);
+  const sceneRef = useRef<TrainingScene3D | null>(null);
+  const colors = useMemo(() => trainingColors(fighter), [fighter]);
+  useEffect(() => {
+    const canvas = glCanvasRef.current;
+    if (!canvas) return;
+    try {
+      sceneRef.current = new TrainingScene3D(canvas, "weights");
+    } catch (err) {
+      console.error("[3D] weight lifting scene unavailable", err);
+    }
+    return () => { sceneRef.current?.dispose(); sceneRef.current = null; };
+  }, []);
 
   useEffect(() => {
     stateRef.current = { timeLeft, paused, finished };
@@ -336,6 +349,9 @@ export default function WeightLiftingGame({ fighter, onComplete, onQuit, calcSta
   const baseCurrentNeeded = BASE_PRESSES_PER_REP + (reps > 8 ? Math.floor((reps - 8) / 2) : 0);
   const currentNeeded = isIdleWeek ? Math.ceil(baseCurrentNeeded * 0.89) : baseCurrentNeeded;
   const pressProgress = repPressCountRef.current;
+  useEffect(() => {
+    sceneRef.current?.setInputs({ colors, bobPhase: 0, lift: pressProgress / currentNeeded });
+  }, [colors, pressProgress, currentNeeded, presses]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -346,47 +362,8 @@ export default function WeightLiftingGame({ fighter, onComplete, onQuit, calcSta
     const W = canvas.width;
     const H = canvas.height;
 
-    const gymWall = ctx.createLinearGradient(0, 0, 0, H);
-    gymWall.addColorStop(0, "#2a2a3a");
-    gymWall.addColorStop(0.6, "#222233");
-    gymWall.addColorStop(1, "#1a1a28");
-    ctx.fillStyle = gymWall;
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.strokeStyle = "#333348";
-    ctx.lineWidth = 1;
-    for (let bx = 0; bx < W; bx += 40) {
-      ctx.beginPath();
-      ctx.moveTo(bx, 0);
-      ctx.lineTo(bx, H * 0.65);
-      ctx.stroke();
-    }
-    for (let by = 0; by < H * 0.65; by += 25) {
-      ctx.beginPath();
-      ctx.moveTo(0, by);
-      ctx.lineTo(W, by);
-      ctx.stroke();
-    }
-
-    const floorY = H * 0.65;
-    const floor = ctx.createLinearGradient(0, floorY, 0, H);
-    floor.addColorStop(0, "#6B4226");
-    floor.addColorStop(0.3, "#5C3A22");
-    floor.addColorStop(1, "#4A2E1A");
-    ctx.fillStyle = floor;
-    ctx.fillRect(0, floorY, W, H - floorY);
-
-    ctx.strokeStyle = "#7a5030";
-    ctx.lineWidth = 0.5;
-    for (let px = 0; px < W; px += 60) {
-      ctx.beginPath();
-      ctx.moveTo(px, floorY);
-      ctx.lineTo(px, H);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = "#444460";
-    ctx.fillRect(0, floorY - 4, W, 4);
+    // The 3D scene underneath draws the gym, the lifter and the barbell.
+    ctx.clearRect(0, 0, W, H);
 
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 26px monospace";
@@ -458,96 +435,6 @@ export default function WeightLiftingGame({ fighter, onComplete, onQuit, calcSta
     ctx.fillStyle = grad;
     ctx.fillRect(barX, barY, fillW, barH);
 
-
-    const liftProgress = progress;
-    const figX = W / 2;
-    const figBaseY = floorY - 8;
-
-    const headR = 20;
-    const bodyTop = figBaseY - 160;
-    const bodyBot = figBaseY - 58;
-    const headY = bodyTop - headR - 3;
-
-    ctx.fillStyle = skinColor;
-    ctx.beginPath();
-    ctx.arc(figX, headY, headR, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#00000033";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    ctx.fillStyle = "#222222";
-    ctx.beginPath();
-    ctx.arc(figX, headY - 4, headR + 1, Math.PI * 1.15, Math.PI * 1.85);
-    ctx.fill();
-
-    ctx.fillStyle = "#111111";
-    const eyeY = headY - 1;
-    ctx.beginPath(); ctx.arc(figX - 7, eyeY, 2, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(figX + 7, eyeY, 2, 0, Math.PI * 2); ctx.fill();
-
-    ctx.fillStyle = gc.trunks;
-    ctx.fillRect(figX - 20, bodyBot - 14, 40, 44);
-
-    ctx.fillStyle = skinColor;
-    ctx.fillRect(figX - 17, bodyTop, 34, bodyBot - bodyTop - 14);
-
-    ctx.fillStyle = skinColor;
-    const legSpread = 15;
-    ctx.fillRect(figX - legSpread - 7, bodyBot + 30, 14, 58);
-    ctx.fillRect(figX + legSpread - 7, bodyBot + 30, 14, 58);
-
-    ctx.fillStyle = gc.shoes;
-    ctx.fillRect(figX - legSpread - 9, figBaseY - 12, 18, 12);
-    ctx.fillRect(figX + legSpread - 9, figBaseY - 12, 18, 12);
-
-    const armAngle = liftProgress * Math.PI * 0.45;
-    const shoulderY = bodyTop + 7;
-    const armLen = 50;
-
-    const barbellY = shoulderY - 10 - Math.sin(armAngle) * armLen;
-
-    for (const side of [-1, 1]) {
-      const sx = figX + side * 20;
-      const elbowAngle = Math.PI * 0.5 - armAngle * 0.8;
-      const elbowX = sx + side * Math.cos(elbowAngle) * 26;
-      const elbowY = shoulderY + Math.sin(elbowAngle) * 26 - liftProgress * 14;
-
-      ctx.strokeStyle = skinColor;
-      ctx.lineWidth = 10;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(sx, shoulderY);
-      ctx.lineTo(elbowX, elbowY);
-      ctx.stroke();
-
-      const handX = figX + side * 28;
-      const handY = barbellY;
-      ctx.beginPath();
-      ctx.moveTo(elbowX, elbowY);
-      ctx.lineTo(handX, handY);
-      ctx.stroke();
-
-      ctx.fillStyle = skinColor;
-      ctx.beginPath();
-      ctx.arc(handX, handY, 7, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    const barbellLen = 130;
-    ctx.strokeStyle = "#aaaaaa";
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(figX - barbellLen / 2, barbellY);
-    ctx.lineTo(figX + barbellLen / 2, barbellY);
-    ctx.stroke();
-
-    ctx.fillStyle = "#555555";
-    ctx.fillRect(figX - barbellLen / 2 - 16, barbellY - 16, 18, 32);
-    ctx.fillRect(figX + barbellLen / 2 - 2, barbellY - 16, 18, 32);
-    ctx.fillStyle = "#444444";
-    ctx.fillRect(figX - barbellLen / 2 - 28, barbellY - 10, 14, 20);
-    ctx.fillRect(figX + barbellLen / 2 + 14, barbellY - 10, 14, 20);
 
     bonusFloats.forEach(f => {
       const alpha = Math.min(1, f.timer / 0.5);
@@ -659,7 +546,7 @@ export default function WeightLiftingGame({ fighter, onComplete, onQuit, calcSta
       ctx.font = "15px monospace";
       ctx.fillText("Press [ENTER] or Click to continue", W / 2, statLineY + 35);
     }
-  }, [countdown, timeLeft, presses, reps, paused, finished, pressProgress, currentNeeded, pauseIndex, fighter, skinColor, gc, bonusFloats, finishEarlyConfirm, record]);
+  }, [countdown, timeLeft, presses, reps, paused, finished, pressProgress, currentNeeded, pauseIndex, fighter, bonusFloats, finishEarlyConfirm, record]);
 
   useEffect(() => {
     if (!finished) return;
@@ -684,10 +571,17 @@ export default function WeightLiftingGame({ fighter, onComplete, onQuit, calcSta
     <div className="flex items-center justify-center min-h-screen bg-background">
       <div className="relative" style={{ width: "min(100vw, 720px)", height: "min(85vh, 620px)" }}>
         <canvas
+          ref={glCanvasRef}
+          width={720}
+          height={620}
+          className="absolute inset-0 rounded-md pointer-events-none"
+          style={{ width: "100%", height: "100%" }}
+        />
+        <canvas
           ref={canvasRef}
           width={720}
           height={620}
-          className="border border-border rounded-md cursor-pointer max-w-full max-h-[90vh]"
+          className="relative border border-border rounded-md cursor-pointer max-w-full max-h-[90vh]"
           style={{ width: "100%", height: "100%" }}
           data-testid="canvas-weight-lifting"
           onClick={(e) => {

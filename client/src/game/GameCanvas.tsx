@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, type MutableRefObject } from "react";
-import { GameState, PauseAction } from "./types";
+import { GameState } from "./types";
 import { renderGame, isPauseButtonClick, getPauseMenuClickIndex, getPauseItems, getSoundSliderClick, getControlsBackClick, getTutorialContinueClick } from "./renderer";
 import { soundEngine, musicEngine, DYNAMIC_MUSIC_LEVELS } from "./sound";
 import { updateGame, handleKeyDown, handleKeyUp, clearAllKeys, advanceTutorialContinue } from "./engine";

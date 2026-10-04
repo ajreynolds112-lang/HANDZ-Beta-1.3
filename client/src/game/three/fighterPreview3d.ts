@@ -183,7 +183,7 @@ function getRenderer(): PreviewRenderer | null {
     try {
       shared = new PreviewRenderer();
     } catch (err) {
-      console.error("[3D] preview renderer unavailable, using Classic 2D", err);
+      console.error("[3D] preview renderer unavailable", err);
       unavailable = true;
       return null;
     }
