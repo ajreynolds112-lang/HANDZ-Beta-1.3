@@ -6748,6 +6748,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
       type: effectType,
       text: effectText,
       attackerColor: result.blocked ? defender.colors.trunks : attacker.colors.trunks,
+      stunOrCrit: !result.blocked && (!!result.isStun || !!result.isCrit),
     });
 
     const hasCrowd = !state.practiceMode && !state.sparringMode;

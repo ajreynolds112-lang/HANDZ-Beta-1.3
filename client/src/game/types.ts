@@ -2180,6 +2180,8 @@ export interface HitEffect {
   type: "normal" | "crit" | "block" | "perfectBlock" | "feint";
   text: string;
   attackerColor?: string;
+  /** A landed hit that stunned or crit (the 3D view only sprays sweat on these). */
+  stunOrCrit?: boolean;
 }
 
 /**

@@ -190,6 +190,10 @@ export function punchHitsHead(f: FighterState, punch: PunchType): boolean {
 const HOOK_LINGER_RETURN = 0.6;
 /** Sideways torso lean (tilt ratio) of the uppercut slip at full weight. */
 const UPPER_SLIP = 0.22;
+/** Standing hip drop into bent knees (fraction of leg length)... */
+const STANCE_SIT = 0.09;
+/** ...stood up this much more when not ducking (the duck crouch is separate). */
+const STANCE_STAND_UP = 0.15;
 
 
 /** Solve the full pose. `dims` from the rig, `mem` is the caller's per-fighter smoothing. */
@@ -349,7 +353,7 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
   const blade = THREE.MathUtils.lerp(-0.62, 0.62, sb);
   out.pelvisOffset.set(
     swayFwdPx * PX2M + fSway.torso * swayM * 0.25 - hitSnap * 0.03,
-    -bobPx * PX2M - dims.legLen * 0.2 * dp - bodyDip - upperDip - dims.legLen * 0.09,
+    -bobPx * PX2M - dims.legLen * 0.2 * dp - bodyDip - upperDip - dims.legLen * STANCE_SIT * (1 - STANCE_STAND_UP * (1 - dp)),
     0,
   );
   out.pelvisRot.copy(tiltQ(0.03 + slipX * 0.35, slipZ * 0.35)).multiply(yawQ(blade * 0.75 + punchYaw * 0.45, _q));
