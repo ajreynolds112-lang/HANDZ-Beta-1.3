@@ -1,9 +1,9 @@
 /**
  * Punch animation profiles (Neural Network → Punch Animation). A profile is a
  * keyframed set of joint rotations layered over the procedural 3D punch, plus a
- * speed track that re-times the whole punch visually (the engine's phase timing,
- * and so every hit, is untouched: the warp is normalised so the punch still
- * starts and ends on the engine's frames).
+ * speed track that really re-times the punch: the engine stretches each phase by
+ * its mean 1/speed (setPunchSpeedWarp below), so a slowed section takes longer in
+ * the fight too, and the renderer warps within phases to match.
  *
  * Profiles are authored orthodox and keyed by punch ROLE using the orthodox
  * PunchType names (jab = lead straight, leftHook = lead hook, ...). PunchType
@@ -15,7 +15,7 @@
  * Both keys are tunable config (tuning bundle registry).
  */
 import type { FighterState, PunchType } from "../types";
-import { punchPhaseFractions } from "../engine";
+import { punchPhaseFractions, setPunchSpeedWarp } from "../engine";
 import type { BoneName } from "./fighterRig";
 import { mirrorPose, type JointRot, type PoseOffsets } from "./poseOffsets";
 
@@ -184,31 +184,48 @@ export function evalSpeed(keys: Key[], t: number): number {
 }
 
 const WARP_N = 256;
-const warpCache = new WeakMap<Key[], Float32Array>();
-/** U[i] = real-time fraction at which animation time i/N is reached. */
-function warpTable(keys: Key[]): Float32Array {
+interface WarpTable { cum: Float32Array; total: number }
+const warpCache = new WeakMap<Key[], WarpTable>();
+/** cum[i] = ∫ 1/speed dτ over [0, i/N] (raw, un-normalised). */
+function warpTable(keys: Key[]): WarpTable {
   let tab = warpCache.get(keys);
   if (tab) return tab;
-  tab = new Float32Array(WARP_N + 1);
-  let acc = 0;
+  const cum = new Float32Array(WARP_N + 1);
   for (let i = 1; i <= WARP_N; i++) {
     const tm = (i - 0.5) / WARP_N;
-    acc += 1 / Math.max(SPEED_MIN, evalSpeed(keys, tm));
-    tab[i] = acc;
+    cum[i] = cum[i - 1] + 1 / (Math.max(SPEED_MIN, evalSpeed(keys, tm)) * WARP_N);
   }
-  for (let i = 1; i <= WARP_N; i++) tab[i] /= acc;
+  tab = { cum, total: cum[WARP_N] };
   warpCache.set(keys, tab);
   return tab;
+}
+function cumAt(tab: WarpTable, tau: number): number {
+  const x = Math.max(0, Math.min(1, tau)) * WARP_N;
+  const i = Math.min(WARP_N - 1, Math.floor(x));
+  return tab.cum[i] + (tab.cum[i + 1] - tab.cum[i]) * (x - i);
+}
+/** Mean slow-down (1/speed) over animation time [a,b]; a zero-width span reads the point. */
+export function speedSlowdown(keys: Key[], a: number, b: number): number {
+  if (!keys.length) return 1;
+  if (b - a < 1e-6) return 1 / Math.max(SPEED_MIN, evalSpeed(keys, a));
+  const tab = warpTable(keys);
+  return (cumAt(tab, b) - cumAt(tab, a)) / (b - a);
+}
+/** Animation time τ → real time fraction u (inverse of warpTime). */
+export function realTimeOf(keys: Key[], tau: number): number {
+  if (!keys.length) return tau;
+  const tab = warpTable(keys);
+  return tab.total > 0 ? cumAt(tab, tau) / tab.total : tau;
 }
 /** Real time fraction u → animation time τ (both 0..1). */
 export function warpTime(keys: Key[], u: number): number {
   if (!keys.length) return u;
   const tab = warpTable(keys);
-  const x = Math.max(0, Math.min(1, u));
+  const x = Math.max(0, Math.min(1, u)) * tab.total;
   let lo = 0, hi = WARP_N;
-  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (tab[m] <= x) lo = m; else hi = m; }
-  const span = tab[hi] - tab[lo];
-  return (lo + (span > 0 ? (x - tab[lo]) / span : 0)) / WARP_N;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (tab.cum[m] <= x) lo = m; else hi = m; }
+  const span = tab.cum[hi] - tab.cum[lo];
+  return (lo + (span > 0 ? (x - tab.cum[lo]) / span : 0)) / WARP_N;
 }
 
 export function evalProfileOffsets(p: PunchProfile, tau: number): PoseOffsets {
@@ -233,9 +250,13 @@ export function punchClock(f: FighterState): number | null {
   return Math.max(0, Math.min(1, f.punchProgress || 0));
 }
 
-/** A copy of the fighter whose punch phase/progress sit at animation time τ. */
-export function fighterAtPunchTime(f: FighterState, tau: number): FighterState {
-  const fr = punchPhaseFractions(f);
+/**
+ * A copy of the fighter whose punch phase/progress sit at time `tau`: animation
+ * time on the stock timeline (what the pose solve reads), or with `real` the
+ * engine's real-time fraction (what the engine itself would hold).
+ */
+export function fighterAtPunchTime(f: FighterState, tau: number, real = false): FighterState {
+  const fr = punchPhaseFractions(f, !real);
   if (!fr) return f;
   const order = ["launchDelay", "armSpeed", "contact", "linger", "retraction"] as const;
   let phase: (typeof order)[number] = "retraction";
@@ -262,6 +283,14 @@ export function profileForRole(f: FighterState, role: PunchType): PunchProfile |
   }
   return slot >= 0 ? store.slots[role][slot] : null;
 }
+
+// The engine reads the speed track through this hook (it can't import us).
+setPunchSpeedWarp(f => {
+  if (!f.currentPunch) return null;
+  const p = profileForRole(f, enginePunchForRole(f.currentPunch, f.boxingStance === "southpaw"));
+  const keys = p?.speed;
+  return keys && keys.length ? (a, b) => speedSlowdown(keys, a, b) : null;
+});
 
 export interface ActivePunchProfile {
   /** Fighter re-timed by the speed track (pass to the pose solve). */

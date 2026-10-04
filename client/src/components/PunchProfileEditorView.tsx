@@ -18,7 +18,7 @@ import type { BoneName } from "@/game/three/fighterRig";
 import {
   PROFILE_SLOTS, PUNCH_ROLES, PUNCH_ROLE_LABEL, type AxisTracks, type Key, type PunchProfile,
   copyProfileSlot, enginePunchForRole, fighterAtPunchTime, loadProfileStore, saveProfile, setDefaultSlot,
-  setPunchProfileDraft, warpTime,
+  realTimeOf, setPunchProfileDraft, speedSlowdown, warpTime,
 } from "@/game/three/punchProfiles";
 
 const AXIS_LANES = [
@@ -108,13 +108,20 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
 
   // ── punch timing for the preview fighter ──
   const sample = useMemo(() => createInitialState().player, []);
-  const { duration, bands } = useMemo(() => {
+  // Lanes are keyed on the stock (animation-time) timeline; the playback bar and
+  // its clock are real time, which the speed track stretches/squeezes per phase
+  // exactly as the engine does in a fight.
+  const { duration, bands, realBands } = useMemo(() => {
     const punch = enginePunchForRole(role, southpaw);
     const f = { ...sample, isPunching: true, currentPunch: punch, isRePunch: false, isCharging: false };
-    const fr = punchPhaseFractions(f);
-    const b: PhaseBand[] = fr ? Object.entries(fr).map(([k, [a, z]]) => ({ label: PHASE_LABEL[k] ?? k, from: a, to: z })) : [];
-    return { duration: Math.max(0.05, punchTotalDuration(f, punch)), bands: b };
-  }, [role, southpaw, sample]);
+    const fr = punchPhaseFractions(f, true);
+    const b: PhaseBand[] = fr
+      ? Object.entries(fr).filter(([, [a, z]]) => z - a > 1e-6).map(([k, [a, z]]) => ({ label: PHASE_LABEL[k] ?? k, from: a, to: z }))
+      : [];
+    const rb = b.map(x => ({ ...x, from: realTimeOf(draft.speed, x.from), to: realTimeOf(draft.speed, x.to) }));
+    const total = punchTotalDuration(f, punch, true) * speedSlowdown(draft.speed, 0, 1);
+    return { duration: Math.max(0.05, total), bands: b, realBands: rb };
+  }, [role, southpaw, sample, draft.speed]);
 
   // ── playback clock ──
   const uRef = useRef(u);
@@ -156,7 +163,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
           a.isRePunch = false;
           a.isCharging = false;
           // Engine state at the real-time fraction; the renderer applies the profile's warp.
-          Object.assign(a, fighterAtPunchTime(a, uRef.current));
+          Object.assign(a, fighterAtPunchTime(a, uRef.current, true));
         },
       };
     }, b => setSelected(viewRef.current.southpaw ? mirrorName(b) : b));
@@ -333,7 +340,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
                 onPointerDown={e => { if (e.button !== 0) return; e.currentTarget.setPointerCapture(e.pointerId); scrubAt(e.clientX); }}
                 onPointerMove={e => { if (e.currentTarget.hasPointerCapture(e.pointerId)) scrubAt(e.clientX); }}
                 data-testid="track-punchanim-playback">
-                {bands.map((b, i) => (
+                {realBands.map((b, i) => (
                   <div key={b.label} className="absolute inset-y-0 flex items-center justify-center text-[9px] text-white/45 overflow-hidden"
                     style={{ left: `${b.from * 100}%`, width: `${(b.to - b.from) * 100}%`, background: i % 2 ? "rgba(255,255,255,0.06)" : "transparent" }}>
                     {b.to - b.from > 0.08 ? b.label : ""}

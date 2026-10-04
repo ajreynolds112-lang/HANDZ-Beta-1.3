@@ -3951,6 +3951,7 @@ function startCosmeticPunch(fighter: FighterState, punchType: PunchType): void {
   fighter.punchProgress = 0;
   fighter.punchPhase = "launchDelay";
   fighter.punchPhaseTimer = 0;
+  fighter.punchHitResolved = false;
   fighter.isRePunch = false;
   fighter.retractionProgress = 0;
   fighter.isFeinting = false;
@@ -4202,7 +4203,45 @@ function getRhythmBuffs(fighter: FighterState): RhythmBuffs {
 /** How much slower a feint's arm comes out than the real punch's. */
 const FEINT_EXTEND_SLOW_MULT = 1.3;
 
-function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRePunch: boolean): Record<PunchPhaseType, number> {
+/**
+ * Punch-animation speed track hook (set by three/punchProfiles, which the engine
+ * can't import -- cycle). Returns the mean slow-down (1/speed) over an animation-
+ * time span [a,b] of the punch this fighter is throwing, or null with no track.
+ * Declared `var` without an initializer: the registration can run while this
+ * module is still mid-evaluation, and an initializer would wipe it.
+ */
+// eslint-disable-next-line no-var
+var punchSpeedWarp: ((f: FighterState) => ((a: number, b: number) => number) | null) | undefined;
+export function setPunchSpeedWarp(fn: (f: FighterState) => ((a: number, b: number) => number) | null): void {
+  punchSpeedWarp = fn;
+}
+
+const PUNCH_PHASE_ORDER: PunchPhaseType[] = ["launchDelay", "armSpeed", "contact", "linger", "retraction"];
+
+/**
+ * Real phase durations. The fighter's punch-profile speed track re-times each
+ * phase by its mean 1/speed over that phase's share of the stock timeline, so a
+ * slowed section really takes longer (hits, retraction, AI timing all follow).
+ * `base` returns the stock (un-warped) timeline the track is keyed against.
+ */
+function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRePunch: boolean, base = false): Record<PunchPhaseType, number> {
+  const d = getStockPunchPhaseDurations(fighter, config, isRePunch);
+  const warp = base ? null : punchSpeedWarp?.(fighter);
+  if (!warp) return d;
+  let total = 0;
+  for (const p of PUNCH_PHASE_ORDER) total += Math.max(0, d[p]);
+  if (total <= 0) return d;
+  let acc = 0;
+  for (const p of PUNCH_PHASE_ORDER) {
+    const v = Math.max(0, d[p]);
+    const a = acc / total;
+    acc += v;
+    d[p] = v * warp(a, acc / total);
+  }
+  return d;
+}
+
+function getStockPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRePunch: boolean): Record<PunchPhaseType, number> {
   let speedMult = config.speed * fighter.punchSpeedMult;
   if (fighter.isCharging) {
     const guardDown = fighter.handsDown;
@@ -4235,7 +4274,9 @@ function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRe
   const rawLaunchBase = 0.1 / speedMult * LAUNCH_DELAY_MULT;
   const launchBase = rawLaunchBase * (animCfg?.launchDelayMult ?? 1) * fatigueSlow;
   const armSpeedBase = 0.12 / speedMult / ARM_SPEED_MULT * (animCfg?.armSpeedMult ?? 1);
-  const contactBase = 0.03;
+  // Hits are hitbox-based (resolved the moment the extending glove reaches the
+  // target, see updatePunch), so there is no dwell-at-contact phase any more.
+  const contactBase = 0;
   const lingerBase = levelScale(fighter.level, 0.2, 0.05, "punchLinger") / speedMult * LINGER_MULT * (animCfg?.lingerMult ?? 1);
   let retractBase = rawLaunchBase * 1.1;
   if (punchType === "cross") retractBase /= rhythmBuffs.crossRetractMult;
@@ -4264,16 +4305,17 @@ function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRe
  * phase alike, so the fractions are exact without it. Null when not punching.
  */
 /** Real seconds a fighter's punch takes, launch → end of retraction. */
-export function punchTotalDuration(fighter: FighterState, punchType: PunchType): number {
-  const d = getPunchPhaseDurations(fighter, getEffectivePunchConfig(punchType), false);
+export function punchTotalDuration(fighter: FighterState, punchType: PunchType, base = false): number {
+  const d = getPunchPhaseDurations(fighter, getEffectivePunchConfig(punchType), false, base);
   let total = 0;
   for (const v of Object.values(d)) total += Math.max(0, v);
   return total;
 }
 
-export function punchPhaseFractions(fighter: FighterState): Record<PunchPhaseType, [number, number]> | null {
+/** `base`: fractions on the stock timeline (animation time τ) instead of real time. */
+export function punchPhaseFractions(fighter: FighterState, base = false): Record<PunchPhaseType, [number, number]> | null {
   if (!fighter.isPunching || !fighter.currentPunch) return null;
-  const d = getPunchPhaseDurations(fighter, getEffectivePunchConfig(fighter.currentPunch), fighter.isRePunch);
+  const d = getPunchPhaseDurations(fighter, getEffectivePunchConfig(fighter.currentPunch), fighter.isRePunch, base);
   const order: PunchPhaseType[] = ["launchDelay", "armSpeed", "contact", "linger", "retraction"];
   let total = 0;
   for (const p of order) total += Math.max(0, d[p]);
@@ -5169,6 +5211,7 @@ function attemptPunch(fighter: FighterState, punchType: PunchType, isFeint: bool
   fighter.punchProgress = 0;
   fighter.punchPhase = "launchDelay";
   fighter.punchPhaseTimer = 0;
+  fighter.punchHitResolved = false;
   fighter.punchTravelStartTime = gameElapsedTime;
   fighter.isRePunch = isRePunch;
   fighter.retractionProgress = 0;
@@ -7482,11 +7525,30 @@ function updatePunch(fighter: FighterState, opponent: FighterState, state: GameS
     fighter.retractionProgress = Math.min(1, fighter.punchPhaseTimer / currentPhaseDuration);
   }
 
+  // Hitbox contact: the glove's reach grows with the arm's extension
+  // (1-(1-t)^2 through armSpeed, matching the pose solve); the punch lands the
+  // moment that reach covers the distance. Out of reach at full extension it is
+  // resolved (as a whiff) when armSpeed ends.
+  if (fighter.punchPhase === "armSpeed" && !fighter.isFeinting && !fighter.punchHitResolved) {
+    const t = currentPhaseDuration > 0 ? Math.min(1, fighter.punchPhaseTimer / currentPhaseDuration) : 1;
+    const ext = 1 - (1 - t) * (1 - t);
+    const reach = getPunchReachPx(fighter, fighter.currentPunch!) * getRhythmBuffs(fighter).rangeMult;
+    if (getDistance(fighter, opponent) <= reach * ext) {
+      fighter.punchHitResolved = true;
+      applyHit(fighter, opponent, state);
+      // The hit can end or re-phase the punch (KD, forced retraction): stop here.
+      if (!fighter.isPunching || fighter.punchPhase !== "armSpeed") return;
+    }
+  }
+
   if (fighter.punchPhaseTimer >= currentPhaseDuration) {
     const currentIdx = phases.indexOf(fighter.punchPhase);
 
     if (fighter.punchPhase === "contact") {
-      applyHit(fighter, opponent, state);
+      if (!fighter.punchHitResolved) {
+        fighter.punchHitResolved = true;
+        applyHit(fighter, opponent, state);
+      }
       // A feint reaching full extension is one of the three things that draw a
       // flinch. A real punch draws one by landing instead, down in applyHit, so
       // only the empty one is claimed here — and only while this punch's feints

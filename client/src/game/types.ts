@@ -1247,6 +1247,8 @@ export interface FighterState {
   rhythmDirection: number;
   punchPhase: PunchPhaseType | null;
   punchPhaseTimer: number;
+  /** The punch in flight has already reached the target's hitbox and been resolved. */
+  punchHitResolved?: boolean;
   isRePunch: boolean;
   retractionProgress: number;
   earlyRepunchPenaltyTimer: number;

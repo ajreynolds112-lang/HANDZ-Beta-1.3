@@ -152,7 +152,8 @@ function toLocal(dx: number, dz: number, fa: number): { x: number; z: number } {
 /** Punch extension 0..1 from the engine's phase + progress. */
 export function punchExtension(f: FighterState): number {
   if (!f.isPunching || !f.currentPunch) return 0;
-  const fr = punchPhaseFractions(f);
+  // Stock timeline: a speed-tracked punch reaches here re-timed to animation time.
+  const fr = punchPhaseFractions(f, true);
   const p = f.punchProgress || 0;
   const phase = f.punchPhase;
   let e: number;
