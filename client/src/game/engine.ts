@@ -4236,7 +4236,9 @@ function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRe
     const v = Math.max(0, d[p]);
     const a = acc / total;
     acc += v;
-    d[p] = v * warp(a, acc / total);
+    const m = warp(a, acc / total);
+    // A broken track must never break the punch: fall back to stock timing.
+    d[p] = Number.isFinite(m) && m > 0 ? v * m : v;
   }
   return d;
 }

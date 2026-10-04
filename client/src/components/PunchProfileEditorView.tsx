@@ -18,7 +18,7 @@ import type { BoneName } from "@/game/three/fighterRig";
 import {
   PROFILE_SLOTS, PUNCH_ROLES, PUNCH_ROLE_LABEL, type AxisTracks, type Key, type PunchProfile,
   copyProfileSlot, enginePunchForRole, fighterAtPunchTime, loadProfileStore, saveProfile, setDefaultSlot,
-  realTimeOf, setPunchProfileDraft, speedSlowdown, warpTime,
+  evalSpeed, realTimeOf, setPunchProfileDraft, SPEED_MIN, speedSlowdown, warpTime,
 } from "@/game/three/punchProfiles";
 
 const AXIS_LANES = [
@@ -53,7 +53,8 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   const [southpaw, setSouthpaw] = useState(false);
   const [playing, setPlaying] = useState(true);
   const [rate, setRate] = useState(1);
-  const [u, setU] = useState(0);
+  // Playhead in animation time τ (the lanes' timeline); real time is derived.
+  const [tau, setTau] = useState(0);
   const [copyTo, setCopyTo] = useState(1);
   const [confirmSave, setConfirmSave] = useState(false);
   const [makeDefault, setMakeDefault] = useState(true);
@@ -111,7 +112,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   // Lanes are keyed on the stock (animation-time) timeline; the playback bar and
   // its clock are real time, which the speed track stretches/squeezes per phase
   // exactly as the engine does in a fight.
-  const { duration, bands, realBands } = useMemo(() => {
+  const { duration, baseDuration, bands, realBands } = useMemo(() => {
     const punch = enginePunchForRole(role, southpaw);
     const f = { ...sample, isPunching: true, currentPunch: punch, isRePunch: false, isCharging: false };
     const fr = punchPhaseFractions(f, true);
@@ -119,29 +120,45 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
       ? Object.entries(fr).filter(([, [a, z]]) => z - a > 1e-6).map(([k, [a, z]]) => ({ label: PHASE_LABEL[k] ?? k, from: a, to: z }))
       : [];
     const rb = b.map(x => ({ ...x, from: realTimeOf(draft.speed, x.from), to: realTimeOf(draft.speed, x.to) }));
-    const total = punchTotalDuration(f, punch, true) * speedSlowdown(draft.speed, 0, 1);
-    return { duration: Math.max(0.05, total), bands: b, realBands: rb };
+    const base = Math.max(0.01, punchTotalDuration(f, punch, true));
+    return { duration: Math.max(0.01, base * speedSlowdown(draft.speed, 0, 1)), baseDuration: base, bands: b, realBands: rb };
   }, [role, southpaw, sample, draft.speed]);
 
   // ── playback clock ──
-  const uRef = useRef(u);
-  const playRef = useRef({ playing, rate, duration });
-  playRef.current = { playing, rate, duration };
+  // Integrates animation time at the speed under the playhead, so the playback
+  // really slows/speeds through each section as it plays. Editing the speed
+  // track never jumps the playhead (τ is what's stored, not real time).
+  const tauRef = useRef(tau);
+  const speedRef = useRef(draft.speed);
+  speedRef.current = draft.speed;
+  const playRef = useRef({ playing, rate, baseDuration });
+  playRef.current = { playing, rate, baseDuration };
   useEffect(() => {
     let raf = 0, last = performance.now();
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
-      const dt = Math.min(0.1, (now - last) / 1000);
+      const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
       last = now;
       const p = playRef.current;
-      if (!p.playing) return;
-      uRef.current = (uRef.current + dt * p.rate / (p.duration * PLAYBACK_STRETCH)) % 1;
-      setU(uRef.current);
+      if (!p.playing || !(p.baseDuration > 0)) return;
+      const keys = speedRef.current;
+      const k = p.rate / (p.baseDuration * PLAYBACK_STRETCH);
+      // Sub-step so a short fast section isn't jumped over in one frame.
+      const steps = Math.max(1, Math.ceil(dt * 240));
+      let t = tauRef.current;
+      for (let i = 0; i < steps; i++) {
+        const sp = Math.max(SPEED_MIN, evalSpeed(keys, t));
+        t += (dt / steps) * k * sp;
+        if (!Number.isFinite(t)) t = 0;
+        if (t >= 1) t -= Math.floor(t);
+      }
+      tauRef.current = t;
+      setTau(t);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
-  const tau = warpTime(draft.speed, u);
+  const u = realTimeOf(draft.speed, tau);
 
   // ── 3D stage ──
   const hostRef = useRef<HTMLDivElement>(null);
@@ -163,7 +180,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
           a.isRePunch = false;
           a.isCharging = false;
           // Engine state at the real-time fraction; the renderer applies the profile's warp.
-          Object.assign(a, fighterAtPunchTime(a, uRef.current, true));
+          Object.assign(a, fighterAtPunchTime(a, realTimeOf(speedRef.current, tauRef.current), true));
         },
       };
     }, b => setSelected(viewRef.current.southpaw ? mirrorName(b) : b));
@@ -173,8 +190,10 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   const scrubRef = useRef<HTMLDivElement>(null);
   const scrubAt = (clientX: number) => {
     const r = scrubRef.current!.getBoundingClientRect();
-    uRef.current = Math.max(0, Math.min(0.9999, (clientX - r.left) / r.width));
-    setU(uRef.current);
+    // The bar is real time; store the animation time under it.
+    const real = Math.max(0, Math.min(0.9999, (clientX - r.left) / r.width));
+    tauRef.current = Math.min(0.9999, warpTime(speedRef.current, real));
+    setTau(tauRef.current);
   };
 
   // ── editing ──

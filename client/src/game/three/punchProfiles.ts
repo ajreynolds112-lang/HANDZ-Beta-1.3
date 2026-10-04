@@ -174,6 +174,10 @@ export function evalRotation(keys: Key[], t: number): number {
 
 /** Speed track value: linear between keys, flat past the first/last key, 1 with none. */
 export function evalSpeed(keys: Key[], t: number): number {
+  const v = evalSpeedRaw(keys, t);
+  return Number.isFinite(v) ? Math.max(SPEED_MIN, Math.min(SPEED_MAX, v)) : 1;
+}
+function evalSpeedRaw(keys: Key[], t: number): number {
   if (!keys.length) return 1;
   if (t <= keys[0].t) return keys[0].v;
   for (let i = 1; i < keys.length; i++) {
