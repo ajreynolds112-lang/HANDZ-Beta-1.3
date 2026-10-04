@@ -48,6 +48,8 @@ const PARAM_SHAPES = {
   // Punch animation editor
   handz_punch_anim: "object",
   handz_pose_offsets: "object",
+  handz_punch_profiles: "object",
+  handz_punch_profile_assign: "object",
   // AI graphs: live state, "set as default" snapshots, named presets, per-opponent overrides
   handz_neural_state: "object",
   handz_neural_defaults: "object",

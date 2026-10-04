@@ -5,7 +5,7 @@ import { getFightTips, saveFightTips } from "@/lib/localSaves";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { downloadAllSounds } from "@/lib/downloadSounds";
 import { loadXpConfig, saveXpConfig, loadXpDefaults, saveXpDefaults, hasCustomXpDefaults, DEFAULT_XP_CONFIG, type XpConfig } from "@/lib/xpConfig";
-import PunchAnimEditor from "@/components/PunchAnimEditor";
+import PunchProfileEditorView from "@/components/PunchProfileEditorView";
 import NeuralTestFight from "@/components/NeuralTestFight";
 import AiTrainingView from "@/components/AiTrainingView";
 import GithubPushCard from "@/components/GithubPushCard";
@@ -1395,6 +1395,7 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
   const [showItemsEditor, setShowItemsEditor] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [showPoseEditor, setShowPoseEditor] = useState(false);
+  const [showPunchAnim, setShowPunchAnim] = useState(false);
   const [fightTips, setFightTips] = useState<string[]>(() => getFightTips());
   const [tipDeleteConfirm, setTipDeleteConfirm] = useState<number | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -2042,6 +2043,10 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
     return <PoseEditorView onBack={() => setShowPoseEditor(false)} />;
   }
 
+  if (showPunchAnim && unlocked) {
+    return <PunchProfileEditorView key={`anim-${paramEpoch}`} onBack={() => setShowPunchAnim(false)} />;
+  }
+
   if (showItemsEditor && unlocked) {
     return <ItemsEditorView onBack={() => setShowItemsEditor(false)} />;
   }
@@ -2313,6 +2318,14 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
           >
             <PersonStanding className="w-4 h-4" /> Edit Poses
           </Button>
+          <Button
+            variant="outline"
+            className="flex-1 gap-2"
+            onClick={() => setShowPunchAnim(true)}
+            data-testid="button-punch-animation"
+          >
+            <Swords className="w-4 h-4" /> Punch Animation
+          </Button>
         </div>
       )}
       <Button
@@ -2362,7 +2375,6 @@ export default function NeuralNetworkView({ onBack, fighterId, fighterName, onRo
           </Card>
         </div>
       )}
-      <PunchAnimEditor key={`anim-${paramEpoch}`} />
       <Card className="p-3 w-full" style={{ background: "#0a0a0f" }}>
         <canvas
           ref={canvasRef}

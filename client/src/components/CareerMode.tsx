@@ -3,6 +3,7 @@ import { SPARRING_DURATIONS, getSparringRewardConfig, SPARRING_TIER_LABELS, next
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Plus, Trash2, BarChart3, ChevronUp, ChevronLeft, ChevronRight, Dumbbell, Target, Trophy, Users, Swords, Pencil, Save, Check, Settings, Lock, Unlock, Download, Upload, Music, ListMusic, Play, Pause, Hammer, RotateCcw, MessageSquare, Copy, ClipboardPaste, Zap } from "lucide-react";
+import PunchProfileAssignCard from "@/components/PunchProfileAssignCard";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SPARRING_MODE_COSTS, grandfatherSparringUnlocks, type SparringMode } from "@/game/sparringModes";
@@ -6084,6 +6085,7 @@ export function RosterEditView({
             </Button>
           )}
         </Card>
+        {editingId !== null && <PunchProfileAssignCard key={editingId} rosterId={editingId} />}
         <Button onClick={applyEdit} className="w-full gap-2" data-testid="button-apply-edit">
           <Check className="w-4 h-4" /> Apply Changes
         </Button>

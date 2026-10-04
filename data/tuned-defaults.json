@@ -1,7 +1,7 @@
 {
   "kind": "handz-neural-parameters",
   "version": 1,
-  "exportedAt": "2026-10-04T13:58:04.249Z",
+  "exportedAt": "2026-10-04T13:59:25.258Z",
   "params": {
     "handz_punch_anim": {
       "jab": {
@@ -46,7 +46,7 @@
         "leanMult": 0.25,
         "shoulderX": -26,
         "shoulderY": 0,
-        "shoulderZ": 19,
+        "shoulderZ": 17,
         "uLiftDeg": 15,
         "hitRangePx": 46,
         "damage": 5.17,
@@ -78,9 +78,9 @@
       },
       "rightHook": {
         "launchDelayMult": 1,
-        "armSpeedMult": 0.73,
+        "armSpeedMult": 0.41,
         "lingerMult": 0.1,
-        "retractionMult": 0.67,
+        "retractionMult": 0.59,
         "lockoutMs": 110,
         "angle": -13,
         "reachMult": 1,
@@ -102,10 +102,10 @@
       },
       "leftUppercut": {
         "launchDelayMult": 1,
-        "armSpeedMult": 0.4,
-        "lingerMult": 1,
+        "armSpeedMult": 0.69,
+        "lingerMult": 0.29,
         "retractionMult": 0.6,
-        "lockoutMs": 150,
+        "lockoutMs": 125,
         "angle": -13,
         "reachMult": 1,
         "arcAmplitude": 15,
@@ -126,7 +126,7 @@
       },
       "rightUppercut": {
         "launchDelayMult": 1,
-        "armSpeedMult": 0.78,
+        "armSpeedMult": 0.76,
         "lingerMult": 0.1,
         "retractionMult": 0.3,
         "lockoutMs": 150,
@@ -140,7 +140,7 @@
         "riseArcFactor": 0.85,
         "distanceMult": 1.25,
         "leanMult": 0.25,
-        "shoulderX": 15,
+        "shoulderX": 13,
         "shoulderY": -13,
         "shoulderZ": 9,
         "uLiftDeg": 15,

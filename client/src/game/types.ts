@@ -1516,6 +1516,9 @@ export interface FighterState {
   /** Limbs are touching and this fighter's rhythm is the more exposed of the
    *  two: no walking toward the opponent and no jabs. Recomputed every tick. */
   limbContactPinned?: boolean;
+  /** Roster id whose assigned punch-animation profiles this fighter wears (3D
+   *  view only). Unset → the per-punch default profile. */
+  punchProfileRosterId?: number;
   /** Pinned AND the opponent is holding a feint into the contact: jab and
    *  cross inputs fail outright. Recomputed every tick. */
   limbContactStraightsLocked?: boolean;

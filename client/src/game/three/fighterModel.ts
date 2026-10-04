@@ -17,7 +17,8 @@ import {
 } from "../renderer";
 import { BONE_NAMES, type BoneName, type Region, type RigInstance, createRig, fighterAssetEpoch } from "./fighterRig";
 import { type PoseMemory, type PoseTargets, type RigDims, eyeState, newPoseMemory, newPoseTargets, solvePose } from "./fighterPose";
-import { getPoseOffsets } from "./poseOffsets";
+import { getPoseOffsets, type PoseOffsets } from "./poseOffsets";
+import { activePunchProfile } from "./punchProfiles";
 import { MAT_HEIGHT, toSceneX, toSceneYaw, toSceneZ } from "./worldMapping";
 import { type BodyTilt, type KdMemory, applyKnockdownPose, newKdMemory } from "./knockdownPose";
 import { type RefereeMemory, buildRefereeClothes, newRefereeMemory, solveRefereePose } from "./referee3d";
@@ -195,7 +196,10 @@ export class Fighter3D {
     this.root.position.set(toSceneX(f.x), MAT_HEIGHT, toSceneZ(f.z));
     this.root.rotation.set(0, toSceneYaw(f.facingAngle), 0);
 
-    solvePose(f, this.dims, this.mem, { opponent, dt }, this.pose);
+    // A punch-animation profile re-times the pose solve (visual only) and adds
+    // its keyframed joint rotations on top of the stance edits.
+    const prof = f.isKnockedDown ? null : activePunchProfile(f);
+    solvePose(prof?.fighter ?? f, this.dims, this.mem, { opponent, dt }, this.pose);
     // Knockdown fall / canvas / get-up, layered over the standing solve.
     if (applyKnockdownPose(f, state, this.dims, this.kd, dt, epoch, this.pose, this.tilt)) {
       this.rig.body.quaternion.copy(this.tilt.q);
@@ -205,7 +209,8 @@ export class Fighter3D {
       this.rig.body.position.set(0, 0, 0);
     }
     this.applyPose();
-    if (!f.isKnockedDown) this.applyPoseOffsets();
+    if (!f.isKnockedDown) this.applyPoseOffsets(getPoseOffsets(this.mem.stanceBlend >= 0.5 ? "southpaw" : "orthodox"), true);
+    if (prof) this.applyPoseOffsets(prof.offsets, false);
     this.applyLook(f, colors, state, frame);
     if (f.isKnockedDown) for (const e of this.rig.eyes) e.scale.y = e.userData.baseScale.y * 0.15;
   }
@@ -332,11 +337,10 @@ export class Fighter3D {
   private _oe = new THREE.Euler();
   /**
    * Hand-edited joint rotations (Edit Poses), about the body axes, root → leaf
-   * so a joint carries its children. A punching arm's offsets fade out with its
-   * extension, so the glove still lands where the engine says it does.
+   * so a joint carries its children. With fadeWithPunch a punching arm's offsets
+   * fade out with its extension (stance edits); punch profiles apply in full.
    */
-  private applyPoseOffsets(): void {
-    const offs = getPoseOffsets(this.mem.stanceBlend >= 0.5 ? "southpaw" : "orthodox");
+  private applyPoseOffsets(offs: PoseOffsets, fadeWithPunch: boolean): void {
     let any = false;
     for (const k in offs) { any = true; break; }
     if (!any) return;
@@ -346,7 +350,7 @@ export class Fighter3D {
       if (!r) continue;
       const armSide = name.startsWith("Left") && /Shoulder|Arm|Hand/.test(name) ? 0
         : name.startsWith("Right") && /Shoulder|Arm|Hand/.test(name) ? 1 : -1;
-      const w = armSide >= 0 ? 1 - Math.min(1, this.mem.armExt[armSide] || 0) : 1;
+      const w = fadeWithPunch && armSide >= 0 ? 1 - Math.min(1, this.mem.armExt[armSide] || 0) : 1;
       if (w <= 0) continue;
       const bone = this.bind[name].bone;
       // B = the bone's current body-space orientation; local delta = B⁻¹·Q·B.

@@ -2960,6 +2960,7 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
   }
 
   const enemy = createFighter(enemyName, enemyArchetype, enemyLevel, ENEMY_START_X, ENEMY_START_Z, -1, false, randomEnemyColors, enemyArmLength, enemyBoxingStance);
+  enemy.punchProfileRosterId = enemyRosterId;
 
   {
     player.autoGuardDuration = levelScale(playerLevel, 10, 45, "autoGuardBase");
@@ -3844,6 +3845,7 @@ function buildDoghouseEnemy(state: GameState): { fighter: FighterState; brain: A
   fighter.damageMult = (fighter.damageMult ?? 1) * state.doghousePowerMult;
   fighter.defenseState = "none";
   fighter.guardBlend = 0;
+  fighter.punchProfileRosterId = pick?.rosterId;
   const brain = initAiBrain(state.aiDifficulty, archetype, level, false, pick?.rosterId);
   inheritPunchEnduranceFromCurrentEnemy(state, fighter);
   // Every opponent in the queue wears the same equipment the bout was set up with.
@@ -4261,6 +4263,14 @@ function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRe
  * ends as a fraction of punchProgress. The fatigue multiplier scales every
  * phase alike, so the fractions are exact without it. Null when not punching.
  */
+/** Real seconds a fighter's punch takes, launch → end of retraction. */
+export function punchTotalDuration(fighter: FighterState, punchType: PunchType): number {
+  const d = getPunchPhaseDurations(fighter, getEffectivePunchConfig(punchType), false);
+  let total = 0;
+  for (const v of Object.values(d)) total += Math.max(0, v);
+  return total;
+}
+
 export function punchPhaseFractions(fighter: FighterState): Record<PunchPhaseType, [number, number]> | null {
   if (!fighter.isPunching || !fighter.currentPunch) return null;
   const d = getPunchPhaseDurations(fighter, getEffectivePunchConfig(fighter.currentPunch), fighter.isRePunch);
