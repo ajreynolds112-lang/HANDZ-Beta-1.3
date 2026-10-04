@@ -108,8 +108,8 @@ function autoGuardSeconds(coef: number, ramp: number, pts: number, caps: Scaling
 export const POINT_COEF_DEFS: PointCoefDef[] = [
   { id: "powerDamage", label: "Damage multiplier (quadratic)", stat: "Power", value: 5, unit: "x", note: "both corners, identical",
     atPoints: (c, p, k) => 1 + c * tFull(p, k) ** 2 },
-  { id: "speedPunchAt1000", label: "Punch speed at 1000 pts (whole punch incl. telegraph)", stat: "Speed", value: 2.5, unit: "x", note: "linear from 1x at 0 pts",
-    atPoints: (c, p, k) => 1 + (Math.max(1, c) - 1) * Math.min(1, Math.max(0, p / k.maxSp)) },
+  { id: "speedPunchAtCap", label: "Punch speed at the soft cap (whole punch incl. telegraph)", stat: "Speed", value: 2, unit: "x", note: "linear from 1x at 0 pts, flat past the cap",
+    atPoints: (c, p, k) => 1 + (Math.max(1, c) - 1) * Math.min(1, Math.max(0, p / Math.max(1, k.speedSoftCap))) },
   { id: "speedMove", label: "Move speed", stat: "Speed", value: 0.15, unit: "x",
     atPoints: (c, p, k) => 1 + tSpeed(p, k) * c },
   { id: "speedDuck", label: "Duck speed", stat: "Speed", value: 0.6, unit: "x",

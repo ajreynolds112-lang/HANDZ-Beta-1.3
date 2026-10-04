@@ -276,7 +276,7 @@ const REF_EFFECT_DESC: Record<RefField, (lvl: number) => string> = {
   fastTwitch: (lvl) => {
     const telegraph = refCurve("fastTwitch", "telegraph", lvl);
     const moveSpeed = Math.min(100, Math.max(0, lvl)) * refNum("fastTwitch", "movePerLevel");
-    return `-${fmtPct(telegraph)}% telegraph, +${fmtPct(moveSpeed)}% move speed`;
+    return `+${telegraph.toFixed(2)}x telegraph speed, +${fmtPct(moveSpeed)}% move speed (both added to Speed stat)`;
   },
   heartRefinement: (lvl) => {
     const stamina = refCurve("heartRefinement", "stamina", lvl);

@@ -2987,7 +2987,7 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
     player.duckSpeedMult = 1 + sT * pointCoef("speedDuck", 0.6);
     player.blockMult = 1 + dT * pointCoef("defenseBlock", 0.6);
     player.critResistMult = 1 - dT * pointCoef("defenseCritResist", 0.27);
-    player.telegraphSpeedMult = speedTelegraphMult(sp.speed);
+    player.telegraphSpeedMult = telegraphMultFor(player);
     player.staminaRegen *= 1 + stT * pointCoef("staminaRegen", 0.6);
     player.maxStamina *= 1 + stPoolT * pointCoef("staminaPool", 0.24);
     player.maxStaminaCap *= 1 + stPoolT * pointCoef("staminaPool", 0.24);
@@ -3078,8 +3078,8 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
     }
     if (r.fightIqUnlocked) {
       if ((r.fastTwitch ?? 0) > 0) {
-        player.telegraphSpeedMult *= Math.max(0, 1 - refCurve("fastTwitch", "telegraph", r.fastTwitch!));
         player.fastTwitchRank = r.fastTwitch!;
+        player.telegraphSpeedMult = telegraphMultFor(player);
       }
       if ((r.heartRefinement ?? 0) > 0) {
         const hb = refCurve("heartRefinement", "stamina", r.heartRefinement!);
@@ -3173,8 +3173,8 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
     }
     if (er.fightIqUnlocked) {
       if ((er.fastTwitch ?? 0) > 0) {
-        enemy.telegraphSpeedMult *= Math.max(0, 1 - refCurve("fastTwitch", "telegraph", er.fastTwitch!));
         enemy.fastTwitchRank = er.fastTwitch!;
+        enemy.telegraphSpeedMult = telegraphMultFor(enemy);
       }
       if ((er.heartRefinement ?? 0) > 0) {
         const hb = refCurve("heartRefinement", "stamina", er.heartRefinement!);
@@ -3208,8 +3208,8 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
   {
     const playerFT = playerRefinement?.fastTwitch ?? 0;
     const enemyFT = enemyRefinement?.fastTwitch ?? 0;
-    if (playerFT > 0) player.moveSpeed *= 1 + playerFT * refNum("fastTwitch", "movePerLevel");
-    if (enemyFT > 0) enemy.moveSpeed *= 1 + enemyFT * refNum("fastTwitch", "movePerLevel");
+    if (playerFT > 0) applyFastTwitchMove(player, playerFT);
+    if (enemyFT > 0) applyFastTwitchMove(enemy, enemyFT);
   }
 
   if (enemySkillPoints) {
@@ -3231,7 +3231,7 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
     enemy.duckSpeedMult = 1 + esT * pointCoef("speedDuck", 0.6);
     enemy.blockMult = 1 + edT * pointCoef("defenseBlock", 0.6);
     enemy.critResistMult = 1 - edT * pointCoef("defenseCritResist", 0.27);
-    enemy.telegraphSpeedMult = speedTelegraphMult(esp.speed);
+    enemy.telegraphSpeedMult = telegraphMultFor(enemy);
     enemy.staminaRegen *= 1 + estT * pointCoef("staminaRegen", 0.6);
     enemy.maxStamina *= 1 + estPoolT * pointCoef("staminaPool", 0.24);
     enemy.maxStaminaCap *= 1 + estPoolT * pointCoef("staminaPool", 0.24);
@@ -3653,7 +3653,7 @@ export function applyRefinementToFighter(fighter: FighterState, ref: RefinementL
     if ((er.punchRolling ?? 0) > 0) { fighter.punchRollingMult = 1 - refCurve("punchRolling", "damageTaken", er.punchRolling!); fighter.punchRollingRepunchBoost = refCurve("punchRolling", "repunchBoost", er.punchRolling!); fighter.punchRollingBigShotNegate = refCurve("punchRolling", "bigShotNegate", er.punchRolling!); }
   }
   if (er.fightIqUnlocked) {
-    if ((er.fastTwitch ?? 0) > 0) { fighter.telegraphSpeedMult *= Math.max(0, 1 - refCurve("fastTwitch", "telegraph", er.fastTwitch!)); fighter.fastTwitchRank = er.fastTwitch!; fighter.moveSpeed *= 1 + er.fastTwitch! * refNum("fastTwitch", "movePerLevel"); }
+    if ((er.fastTwitch ?? 0) > 0) { fighter.fastTwitchRank = er.fastTwitch!; fighter.telegraphSpeedMult = telegraphMultFor(fighter); applyFastTwitchMove(fighter, er.fastTwitch!); }
     if ((er.heartRefinement ?? 0) > 0) { const hb = refCurve("heartRefinement", "stamina", er.heartRefinement!); fighter.maxStamina *= (1 + hb); fighter.maxStaminaCap *= (1 + hb); fighter.stamina = fighter.maxStamina; fighter.staminaRegen *= (1 + hb); fighter.repunchPenaltyMult = refCurve("heartRefinement", "repunchPenalty", er.heartRefinement!); }
     if ((er.chinHitter ?? 0) > 0) { fighter.stunMult *= (1 + refCurve("chinHitter", "stun", er.chinHitter!)); fighter.chinHitterVulnBonus = refCurve("chinHitter", "vuln", er.chinHitter!); fighter.chinHitterChargeDamageMult = chinHitterChargeMult(er.chinHitter!); }
     if ((er.technician ?? 0) > 0) { fighter.technicianRcStunChance = refCurve("technician", "rcStun", er.technician!); fighter.technicianChargeWhiffForgiveness = technicianWhiffForgiveness(er.technician!); fighter.technicianFeintCancelUnlocked = er.technician! >= refNum("technician", "feintCancelLevel"); fighter.technicianAccuracyBoost = refCurve("technician", "accuracy", er.technician!); }
@@ -3819,7 +3819,7 @@ function buildDoghouseEnemy(state: GameState): { fighter: FighterState; brain: A
     fighter.duckSpeedMult = 1 + esT * pointCoef("speedDuck", 0.6);
     fighter.blockMult = 1 + edT * pointCoef("defenseBlock", 0.6);
     fighter.critResistMult = 1 - edT * pointCoef("defenseCritResist", 0.27);
-    fighter.telegraphSpeedMult = speedTelegraphMult(dhSP.speed);
+    fighter.telegraphSpeedMult = telegraphMultFor(fighter);
     fighter.staminaRegen *= 1 + estT * pointCoef("staminaRegen", 0.6);
     fighter.maxStamina *= 1 + estPoolT * pointCoef("staminaPool", 0.24);
     fighter.maxStaminaCap *= 1 + estPoolT * pointCoef("staminaPool", 0.24);
@@ -4348,16 +4348,27 @@ function getTelegraphBaseDuration(level: number, punchType: PunchType): number {
 
 /**
  * How much faster the Speed stat makes a whole punch (arm phases and telegraph
- * alike): 1x at 0 points rising linearly to `speedPunchAt1000` (2.5x) at the
- * stat cap, so even a maxed fighter's punch animations stay readable.
+ * alike): 1x at 0 points rising linearly to `speedPunchAtCap` (2x) at the speed
+ * soft cap (220), flat beyond it, so punch animations stay readable.
  */
 function speedPunchRatio(rawSpeed: number): number {
-  const R = Math.max(1, pointCoef("speedPunchAt1000", 2.5));
-  return 1 + (R - 1) * Math.max(0, Math.min(1, rawSpeed / getScaling().caps.maxSp));
+  const R = Math.max(1, pointCoef("speedPunchAtCap", 2));
+  const cap = Math.max(1, getScaling().caps.speedSoftCap);
+  return 1 + (R - 1) * Math.max(0, Math.min(1, rawSpeed / cap));
 }
-/** Telegraph length multiplier from the Speed stat: the same ratio as the arm phases. */
-function speedTelegraphMult(rawSpeed: number): number {
-  return 1 / speedPunchRatio(rawSpeed);
+/**
+ * Telegraph length multiplier: the Speed-stat ratio plus Fast Twitch's
+ * telegraph speed, ADDED (not multiplied) — 2x stat + 1.0 Fast Twitch = 3x.
+ * Order-independent: reads rawSpeed and fastTwitchRank off the fighter.
+ */
+function telegraphMultFor(f: FighterState): number {
+  const ft = f.fastTwitchRank > 0 ? refCurve("fastTwitch", "telegraph", f.fastTwitchRank) : 0;
+  return 1 / (speedPunchRatio(f.rawSpeed ?? 0) + ft);
+}
+/** Fast Twitch move speed, added onto the Speed stat's move bonus rather than multiplied by it. */
+function applyFastTwitchMove(f: FighterState, rank: number): void {
+  const stat = (f.speedT ?? 0) * pointCoef("speedMove", 0.15);
+  f.moveSpeed *= (1 + stat + rank * refNum("fastTwitch", "movePerLevel")) / (1 + stat);
 }
 
 function shouldTelegraph(fighter: FighterState, _isRePunch: boolean, _punchType: PunchType = "jab"): boolean {

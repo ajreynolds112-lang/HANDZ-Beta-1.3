@@ -102,7 +102,7 @@ export const REFINEMENT_TUNING_SPEC: Record<RefinementKey, RefRow[]> = {
     { kind: "curve", field: "bigShotNegate", label: "Big Shot shrug-off", l1: 0.10, l100: 0.20 },
   ],
   fastTwitch: [
-    { kind: "curve", field: "telegraph", label: "Telegraph cut", l1: 0.15, l100: 1.00 },
+    { kind: "curve", field: "telegraph", label: "Telegraph speed added (on top of Speed stat)", l1: 0.15, l100: 1.00 },
     { kind: "num", field: "movePerLevel", label: "Move speed per level", value: 0.00245, step: 0.0001 },
   ],
   heartRefinement: [
