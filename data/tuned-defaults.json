@@ -1,7 +1,7 @@
 {
   "kind": "handz-neural-parameters",
   "version": 1,
-  "exportedAt": "2026-10-03T20:57:14.369Z",
+  "exportedAt": "2026-10-04T13:10:39.197Z",
   "params": {
     "handz_punch_anim": {
       "jab": {
@@ -54,7 +54,7 @@
       },
       "leftHook": {
         "launchDelayMult": 1,
-        "armSpeedMult": 0.28,
+        "armSpeedMult": 0.53,
         "lingerMult": 0.15,
         "retractionMult": 0.29,
         "lockoutMs": 100,
@@ -78,7 +78,7 @@
       },
       "rightHook": {
         "launchDelayMult": 1,
-        "armSpeedMult": 0.34,
+        "armSpeedMult": 0.73,
         "lingerMult": 0.1,
         "retractionMult": 0.67,
         "lockoutMs": 110,
@@ -126,9 +126,9 @@
       },
       "rightUppercut": {
         "launchDelayMult": 1,
-        "armSpeedMult": 0.4,
-        "lingerMult": 1,
-        "retractionMult": 0.49,
+        "armSpeedMult": 0.78,
+        "lingerMult": 0.1,
+        "retractionMult": 0.3,
         "lockoutMs": 150,
         "angle": -13,
         "reachMult": 1,
@@ -140,9 +140,9 @@
         "riseArcFactor": 0.85,
         "distanceMult": 1.25,
         "leanMult": 0.25,
-        "shoulderX": 0,
-        "shoulderY": 0,
-        "shoulderZ": 0,
+        "shoulderX": 15,
+        "shoulderY": -13,
+        "shoulderZ": 9,
         "uLiftDeg": 15,
         "hitRangePx": 32,
         "damage": 7,
@@ -157,8 +157,8 @@
           -5
         ],
         "LeftArm": [
-          16,
-          16,
+          17,
+          39,
           -6
         ],
         "LeftForeArm": [
@@ -167,19 +167,19 @@
           42
         ],
         "Head": [
-          -13,
-          10,
-          -35
+          -12,
+          5,
+          -22
         ],
         "LeftFoot": [
           -3,
-          22,
-          1
+          3,
+          22
         ],
         "LeftUpLeg": [
           4,
           -1,
-          -7
+          -13
         ],
         "RightLeg": [
           0,
@@ -187,14 +187,19 @@
           0
         ],
         "Spine": [
-          10,
-          -5,
-          -6
+          6,
+          -27,
+          2
         ],
         "Hips": [
+          -2,
+          4,
+          -2
+        ],
+        "RightUpLeg": [
           0,
-          3,
-          0
+          0,
+          11
         ]
       },
       "southpaw": {
@@ -204,8 +209,8 @@
           -5
         ],
         "RightArm": [
-          -16,
-          -16,
+          -17,
+          -39,
           -6
         ],
         "RightForeArm": [
@@ -214,19 +219,19 @@
           42
         ],
         "Head": [
-          13,
-          -10,
-          -35
+          12,
+          -5,
+          -22
         ],
         "RightFoot": [
           3,
-          -22,
-          1
+          -3,
+          22
         ],
         "RightUpLeg": [
           -4,
           1,
-          -7
+          -13
         ],
         "LeftLeg": [
           0,
@@ -234,14 +239,19 @@
           0
         ],
         "Spine": [
-          -10,
-          5,
-          -6
+          -6,
+          27,
+          2
         ],
         "Hips": [
+          2,
+          -4,
+          -2
+        ],
+        "LeftUpLeg": [
           0,
-          -3,
-          0
+          0,
+          11
         ]
       }
     },

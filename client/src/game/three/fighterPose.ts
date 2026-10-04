@@ -188,6 +188,8 @@ export function punchHitsHead(f: FighterState, punch: PunchType): boolean {
 
 /** Share of a hook's way home covered during its linger (the rest in retraction). */
 const HOOK_LINGER_RETURN = 0.6;
+/** Sideways torso lean (tilt ratio) of the uppercut slip at full weight. */
+const UPPER_SLIP = 0.22;
 
 
 /** Solve the full pose. `dims` from the rig, `mem` is the caller's per-fighter smoothing. */
@@ -310,6 +312,9 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
   let punchYaw = 0, bodyDip = 0, upperDip = 0, punchLean = 0;
   // Per leg: how far a same-side hook is pivoting that knee/foot inward.
   const hookPivot = [0, 0];
+  // Uppercut slip: the torso dips off the line to the punching side as the
+  // uppercut loads, then slides back to centre as it fires and retracts.
+  let upperSlipZ = 0;
   const animCfg = getActivePunchAnimConfig();
   for (let i = 0; i < 2; i++) {
     const p = mem.armPunch[i];
@@ -328,7 +333,16 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
     if (upper) upperDip = Math.max(upperDip, 0.05 * Math.sin(Math.PI * be));
     punchLean = Math.max(punchLean, (bShot ? 0.25 : 0.1) * be * leanK);
   }
+  for (let i = 0; i < 2; i++) {
+    const sp = mem.shPunch[i];
+    if (!sp || !sp.includes("Uppercut")) continue;
+    // Rides the shoulder-joint weight (eases in from the telegraph/launch): held
+    // through the throw, slides back as the glove homes and retracts.
+    const slipK = mem.shW[i] * (0.35 + 0.65 * mem.arcK[i]);
+    upperSlipZ += (i === 0 ? -1 : 1) * UPPER_SLIP * slipK;
+  }
 
+  slipZ += upperSlipZ;
   // ── pelvis ──
   // A real boxing stance: bladed about 35-40° off the opponent, hips sat down
   // into bent knees.
@@ -407,10 +421,15 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
     const up = _b.set(isLead ? 0.27 : 0.23, 0.2 + pbOffM, -side * 0.15);
     const guardLocal = down.lerp(up, gb);
     // Guard is held relative to the chest (follows lean and blade), yaw only partly.
-    const guard = _c.copy(guardLocal).applyQuaternion(out.chestRot).add(sh);
+    // Ducking pitches the chest well forward; a chest-locked guard would swing
+    // the gloves out ahead and the elbows forward off the ribs. Hold the guard
+    // in a yaw-only frame as the crouch deepens: gloves stay at the face,
+    // elbows stay tucked down and in.
+    const guardRot = _gq.copy(out.chestRot).slerp(yawQ(blade + punchYaw, _q), dp);
+    const guard = _c.copy(guardLocal).applyQuaternion(guardRot).add(sh);
     g.copy(guard);
     // Elbows tucked down over the ribs, not flared.
-    out.elbowPole[i].set(-0.25, -1, side * 0.12).applyQuaternion(out.chestRot).normalize();
+    out.elbowPole[i].set(-0.25, -1, side * (0.12 - 0.2 * dp)).applyQuaternion(guardRot).normalize();
     out.maxStretch[i] = 1.04;
 
     const punchDir = _d.set(oppL.x, 0, oppL.z).normalize();
@@ -510,6 +529,7 @@ const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3
 const _d = new THREE.Vector3(), _e = new THREE.Vector3(), _f = new THREE.Vector3();
 const _eul = new THREE.Euler();
 const _uc = new THREE.Vector3();
+const _gq = new THREE.Quaternion();
 const _zAxis = new THREE.Vector3(0, 0, 1);
 
 export function newPoseTargets(): PoseTargets {
