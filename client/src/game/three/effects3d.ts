@@ -2,8 +2,8 @@
  * Fight effects in the 3D view, all spawned from state the engine already keeps:
  *
  *  - hit effects: every new entry in state.hitEffects (the same list the 2D
- *    renderer draws) becomes an impact flash; a landed stun or crit also
- *    throws a sweat spray away from the attacker. Blocks and perfect blocks flash on the guard without
+ *    renderer draws) spawns effects (only a crit flashes, in red); a landed stun or crit also
+ *    throws a sweat spray away from the attacker. Perfect blocks spark on the guard without
  *    sweat; feints get a small pale puff where the feinted glove stopped;
  *  - the towel: on a towel stoppage, a white towel tumbles from the corner
  *    (towelStart) to the fighters (towelEnd) on the stoppage timer.
@@ -127,12 +127,12 @@ export class FightEffects3D {
       // On the guard, in front of the face.
       at.addScaledVector(dir, -0.12).y -= 0.08;
       const pb = e.type === "perfectBlock";
-      this.flash(at, pb ? "#7fd8ff" : "#dfe8ff", pb ? 0.75 : 0.45, pb ? 0.3 : 0.2);
       if (pb) this.spray(at, dir.clone().negate(), 14, 1.6, [0.5, 0.85, 1], 0.35);
       return;
     }
     const crit = e.type === "crit";
-    this.flash(at, crit ? "#ff5a3a" : "#fff2c8", crit ? 1.15 : 0.6, crit ? 0.3 : 0.18);
+    // No land flash on ordinary hits; only a crit keeps its red flash.
+    if (crit) this.flash(at, "#ff5a3a", 1.15, 0.3);
     // Sweat flies off the far side, away from the punch, only on a stun or crit.
     if (e.stunOrCrit) this.spray(head, dir, crit ? 70 : 32, crit ? 3.4 : 2.4, [0.75, 0.88, 1], crit ? 0.75 : 0.55);
     if (crit) this.kick = Math.max(this.kick, 1);

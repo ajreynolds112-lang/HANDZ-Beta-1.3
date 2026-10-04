@@ -500,17 +500,14 @@ export class Fighter3D {
 
     // Flashes, as emissive over the base colour.
     const crit = f.critHitTimer > 0;
-    const block = f.blockFlashTimer > 0;
     const charge = f.chargeFlashTimer > 0 ? Math.min(1, f.chargeFlashTimer / 0.2) : 0;
-    const hitPulse = f.isHit && !crit ? (Math.sin(performance.now() / 30) > 0 ? 0.25 : 0) : 0;
     for (const r of ["skin", "trunks", "stripe"] as Region[]) {
       const m = M[r];
       if (crit) m.emissive.copy(RED).multiplyScalar(r === "skin" ? 0.9 : 0.5);
       else if (charge > 0) m.emissive.copy(CHARGE).multiplyScalar(0.6 * charge);
-      else m.emissive.copy(WHITE).multiplyScalar(hitPulse);
+      else m.emissive.copy(BLACK);
     }
     if (crit) M.glove.emissive.copy(RED).multiplyScalar(0.9);
-    else if (block) M.glove.emissive.copy(WHITE).multiplyScalar(0.9);
     else M.glove.emissive.copy(BLACK);
 
     // Per-glove glow: telegraph pulse, charge, perfect block.

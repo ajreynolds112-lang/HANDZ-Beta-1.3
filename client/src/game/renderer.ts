@@ -1090,9 +1090,6 @@ function drawFighter(ctx: CanvasRenderingContext2D, fighter: FighterState, oppon
   ctx.translate(-sx, -baseY);
 
   const critFlash = fighter.critHitTimer > 0;
-  if (fighter.isHit && !critFlash) {
-    ctx.globalAlpha = 0.7 + Math.sin(Date.now() * 0.03) * 0.3;
-  }
 
   const viewAngle = fighter.facingAngle - currentCameraYaw + Math.PI;
   const sideView = Math.sin(viewAngle);
@@ -1153,12 +1150,11 @@ function drawFighter(ctx: CanvasRenderingContext2D, fighter: FighterState, oppon
     const sdLen = Math.sqrt(sdx * sdx + sdy * sdy) || 1;
     const slipNx = sdx / sdLen;
     const slipNy = sdy / sdLen;
-    leanOffsetX += slipNx * bodyHeight * 0.22 * fighter.slipLean;
-    leanOffsetY += slipNy * bodyHeight * 0.22 * fighter.slipLean;
-    // 4.2px of extra head travel, down 40% from the original 7 — the head still
-    // leads the shoulders, but the neck no longer stretches to reach it.
-    slipHeadOX = slipNx * 4.2 * FIGHTER_SCALE * fighter.slipLean;
-    slipHeadOY = slipNy * 4.2 * FIGHTER_SCALE * fighter.slipLean;
+    leanOffsetX += slipNx * bodyHeight * 0.44 * fighter.slipLean;
+    leanOffsetY += slipNy * bodyHeight * 0.44 * fighter.slipLean;
+    // Extra head travel (doubled with the slip distance) — the head leads the shoulders.
+    slipHeadOX = slipNx * 8.4 * FIGHTER_SCALE * fighter.slipLean;
+    slipHeadOY = slipNy * 8.4 * FIGHTER_SCALE * fighter.slipLean;
   }
 
   // Energy fatigue: the trunk and the arms lag behind the feet. The sway runs
@@ -1975,8 +1971,7 @@ function drawArms(
     ctx.fill();
 
     // 3D glove with radial gradient
-    const blockFlash = fighter.blockFlashTimer > 0;
-    const rawGloveColor = critFlash ? "#ff3333" : blockFlash ? "#ffffff" : fighter.colors.gloves;
+    const rawGloveColor = critFlash ? "#ff3333" : fighter.colors.gloves;
 
     // The glove and its cuff always point straight down the forearm — no
     // extra tilt blended in, so the hand never rotates away from the arm.
@@ -1998,7 +1993,7 @@ function drawArms(
       rawGloveColor,
       c.gloveTape || "#eeeeee",
       Math.abs(sideView),
-      critFlash || blockFlash,
+      critFlash,
       _drawingReferee,
       // Still canvases only: the right-hand glove's thumb is mirrored so the
       // pair reads as a matched set head-on. The live fight is untouched.

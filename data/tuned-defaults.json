@@ -1,7 +1,7 @@
 {
   "kind": "handz-neural-parameters",
   "version": 1,
-  "exportedAt": "2026-10-04T18:00:43.624Z",
+  "exportedAt": "2026-10-04T18:11:36.851Z",
   "params": {
     "handz_punch_anim": {
       "jab": {
@@ -7325,10 +7325,10 @@
       "careerMult": 1.11,
       "careerOpponentMult": 1,
       "careerOpponentPowerMult": 1,
-      "careerOpponentSpeedMult": 1,
+      "careerOpponentSpeedMult": 1.3,
       "careerPlayerMult": 1,
       "careerPlayerPowerMult": 1,
-      "careerPlayerSpeedMult": 1,
+      "careerPlayerSpeedMult": 1.3,
       "careerOppGrowthChanceJourneyman": 0.15,
       "careerOppGrowthChanceContender": 0.2,
       "careerOppGrowthChanceElite": 0.25,
@@ -7635,7 +7635,7 @@
       "knockdownTaken": 0.02
     },
     "handz_ai_range_config": {
-      "baseDesiredDistancePx": 71,
+      "baseDesiredDistancePx": 48,
       "standDistanceOffsetPx": 2
     },
     "handz_rc_config": {

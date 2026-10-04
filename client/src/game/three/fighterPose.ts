@@ -298,8 +298,8 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
   if ((f.slipLean || 0) > 0.001) {
     const sd = SLIP_WORLD_DIR[f.slipLeanDir] ?? SLIP_WORLD_DIR.left;
     const l = toLocal(sd.x, sd.z, fa);
-    slipX = l.x * 0.22 * f.slipLean;
-    slipZ = l.z * 0.22 * f.slipLean;
+    slipX = l.x * 0.44 * f.slipLean;
+    slipZ = l.z * 0.44 * f.slipLean;
   }
 
   // Hit snap: the 0.15s hitTimer window throws the head and chest back.
