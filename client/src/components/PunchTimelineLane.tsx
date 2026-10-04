@@ -1,19 +1,19 @@
-import { useRef } from "react";
-import { ROT_MAX, SPEED_MAX, SPEED_MIN, type Key, evalRotation, evalSpeed, loopTime } from "@/game/three/punchProfiles";
+import { useEffect, useRef, useState } from "react";
+import { ROT_MAX, SPEED_MAX, cleanLimit, SPEED_MIN, type Key, evalRotation, evalSpeed, loopTime } from "@/game/three/punchProfiles";
 
 export type LaneKind = "rotation" | "speed";
 
 const VB_W = 1000;
 
-/** Value → 0..1 from the top. Rotation: +ROT_MAX top, -ROT_MAX bottom. Speed: log scale, fastest at the top. */
-function valueToY(kind: LaneKind, v: number): number {
-  if (kind === "rotation") return (ROT_MAX - Math.max(-ROT_MAX, Math.min(ROT_MAX, v))) / (2 * ROT_MAX);
+/** Value → 0..1 from the top. Rotation: +max top, -max bottom. Speed: log scale, fastest at the top. */
+function valueToY(kind: LaneKind, v: number, max: number): number {
+  if (kind === "rotation") return (max - Math.max(-max, Math.min(max, v))) / (2 * max);
   const LOG_LO = Math.log2(SPEED_MIN), LOG_HI = Math.log2(SPEED_MAX);
   return (LOG_HI - Math.log2(Math.max(SPEED_MIN, v))) / (LOG_HI - LOG_LO);
 }
-function yToValue(kind: LaneKind, y: number): number {
+function yToValue(kind: LaneKind, y: number, max: number): number {
   const c = Math.max(0, Math.min(1, y));
-  if (kind === "rotation") return Math.round(ROT_MAX - c * 2 * ROT_MAX);
+  if (kind === "rotation") return Math.round(max - c * 2 * max);
   const LOG_LO = Math.log2(SPEED_MIN), LOG_HI = Math.log2(SPEED_MAX);
   return Math.round(2 ** (LOG_HI - c * (LOG_HI - LOG_LO)) * 100) / 100;
 }
@@ -32,6 +32,10 @@ interface LaneProps {
   /** Past Loop Start the pose eases back to the guard instead of reversing. */
   slideMode?: boolean;
   bands: PhaseBand[];
+  /** Rotation lanes: max angle either way (the lane's scale and key clamp). */
+  limit?: number;
+  /** Rotation lanes: typed a new max angle. */
+  onLimitChange?: (v: number) => void;
   height?: number;
   /** Called once at the start of every edit gesture (undo checkpoint). */
   onBeginEdit: () => void;
@@ -48,11 +52,23 @@ const clipboard: Partial<Record<LaneProps["kind"], number>> = {};
  * key copies its value; shift-right-click pastes it (onto a key: replaces its
  * value; on empty space: adds a key there with the copied value).
  */
-export default function PunchTimelineLane({ label, kind, color, keys, playhead, loopStart = null, slideMode = false, bands, height = 64, onBeginEdit, onChange, testId }: LaneProps) {
+export default function PunchTimelineLane({ label, kind, color, keys, playhead, loopStart = null, slideMode = false, bands, limit = ROT_MAX, onLimitChange, height = 64, onBeginEdit, onChange, testId }: LaneProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ key: Key; pointerId: number } | null>(null);
   const keysRef = useRef(keys);
   keysRef.current = keys;
+  const [limitText, setLimitText] = useState(String(limit));
+  useEffect(() => setLimitText(String(limit)), [limit]);
+  /** The copied value, pulled inside this lane's limit. */
+  const clip = () => {
+    const v = clipboard[kind];
+    return v === undefined || kind !== "rotation" ? v : Math.max(-limit, Math.min(limit, v));
+  };
+  const commitLimit = () => {
+    const v = cleanLimit(limitText);
+    setLimitText(String(v));
+    if (v !== limit) onLimitChange?.(v);
+  };
 
   const at = (e: { clientX: number; clientY: number }) => {
     const r = boxRef.current!.getBoundingClientRect();
@@ -63,9 +79,9 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
   const pts: string[] = [];
   for (let i = 0; i <= 200; i++) {
     const t = i / 200;
-    pts.push(`${(t * VB_W).toFixed(1)},${(valueToY(kind, evalAt(t)) * height).toFixed(1)}`);
+    pts.push(`${(t * VB_W).toFixed(1)},${(valueToY(kind, evalAt(t), limit) * height).toFixed(1)}`);
   }
-  const zeroY = valueToY(kind, kind === "rotation" ? 0 : 1) * 100;
+  const zeroY = valueToY(kind, kind === "rotation" ? 0 : 1, limit) * 100;
   const current = evalAt(playhead);
 
   const onLaneContext = (e: React.MouseEvent) => {
@@ -73,7 +89,7 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
     const p = at(e);
     if (e.shiftKey) return; // shift-right-click pastes on pointerdown
     onBeginEdit();
-    const k: Key = { t: Math.round(p.t * 1000) / 1000, v: yToValue(kind, p.y) };
+    const k: Key = { t: Math.round(p.t * 1000) / 1000, v: yToValue(kind, p.y, limit) };
     onChange([...keys, k].sort((a, b) => a.t - b.t));
   };
   const onKeyContext = (e: React.MouseEvent, k: Key) => {
@@ -88,7 +104,7 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
   const onLanePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 2 || !e.shiftKey) return;
     e.preventDefault();
-    const v = clipboard[kind];
+    const v = clip();
     if (v === undefined) return;
     onBeginEdit();
     onChange([...keys, { t: Math.round(at(e).t * 1000) / 1000, v }].sort((a, b) => a.t - b.t));
@@ -97,7 +113,7 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
     if (e.button === 2 && e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
-      const v = clipboard[kind];
+      const v = clip();
       if (v === undefined) return;
       onBeginEdit();
       onChange(keys.map(x => (x === k ? { t: x.t, v } : x)));
@@ -115,7 +131,7 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
     const d = dragRef.current;
     if (!d || d.pointerId !== e.pointerId) return;
     const p = at(e);
-    const nk: Key = { t: Math.round(p.t * 1000) / 1000, v: yToValue(kind, p.y) };
+    const nk: Key = { t: Math.round(p.t * 1000) / 1000, v: yToValue(kind, p.y, limit) };
     const next = keysRef.current.map(x => (x === d.key ? nk : x)).sort((a, b) => a.t - b.t);
     d.key = nk;
     onChange(next);
@@ -131,6 +147,16 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
         <span className="text-muted-foreground tabular-nums">
           {kind === "rotation" ? `${Math.round(current)}°` : `${current.toFixed(2)}×`}
         </span>
+        {kind === "rotation" && onLimitChange && (
+          <label className="flex items-center gap-0.5 text-muted-foreground" title="Max angle either way (1–180°)">
+            ±<input type="text" inputMode="numeric" value={limitText}
+              onChange={e => setLimitText(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+              onBlur={commitLimit}
+              onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setLimitText(String(limit)); (e.target as HTMLInputElement).blur(); } e.stopPropagation(); }}
+              className="w-9 h-4 px-1 rounded bg-black/50 border border-border text-foreground tabular-nums text-[11px] outline-none focus:border-primary"
+              data-testid={`${testId}-limit`} />°
+          </label>
+        )}
       </div>
       <div ref={boxRef} className="relative flex-1 rounded border border-border bg-black/40 select-none overflow-hidden"
         style={{ height }} onContextMenu={onLaneContext} onPointerDown={onLanePointerDown}>
@@ -153,13 +179,13 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
         {keys.map((k, i) => (
           <div key={i}
             className="absolute w-3 h-3 -ml-1.5 -mt-1.5 rounded-full border-2 border-white cursor-grab active:cursor-grabbing"
-            style={{ left: `${k.t * 100}%`, top: `${valueToY(kind, k.v) * 100}%`, background: color, touchAction: "none" }}
+            style={{ left: `${k.t * 100}%`, top: `${valueToY(kind, k.v, limit) * 100}%`, background: color, touchAction: "none" }}
             title={kind === "rotation" ? `${k.v}° @ ${Math.round(k.t * 100)}%` : `${k.v}× @ ${Math.round(k.t * 100)}%`}
             onPointerDown={e => onKeyDown(e, k)} onPointerMove={onKeyMove} onPointerUp={onKeyUp}
             onContextMenu={e => onKeyContext(e, k)} data-testid={`${testId}-key-${i}`} />
         ))}
-        <span className="absolute right-1 top-0.5 text-[9px] text-white/35 pointer-events-none">{kind === "rotation" ? `+${ROT_MAX}°` : `${SPEED_MAX}×`}</span>
-        <span className="absolute right-1 bottom-0.5 text-[9px] text-white/35 pointer-events-none">{kind === "rotation" ? `-${ROT_MAX}°` : `${SPEED_MIN}×`}</span>
+        <span className="absolute right-1 top-0.5 text-[9px] text-white/35 pointer-events-none">{kind === "rotation" ? `+${limit}°` : `${SPEED_MAX}×`}</span>
+        <span className="absolute right-1 bottom-0.5 text-[9px] text-white/35 pointer-events-none">{kind === "rotation" ? `-${limit}°` : `${SPEED_MIN}×`}</span>
       </div>
     </div>
   );

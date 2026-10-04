@@ -19,6 +19,7 @@ import {
   PROFILE_SLOTS, PUNCH_ROLES, PUNCH_ROLE_LABEL, type AxisTracks, type Key, type PunchProfile,
   copyProfileSlot, enginePunchForRole, fighterAtPunchTime, loadProfileStore, saveProfile, setDefaultSlot,
   evalSpeed, realTimeOf, setPunchProfileDraft, validLoopStart, SPEED_MIN, speedSlowdown, warpTime,
+  ROT_MAX, boneLimits, type AxisLimits,
 } from "@/game/three/punchProfiles";
 
 const AXIS_LANES = [
@@ -231,6 +232,26 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
       return { ...d, bones };
     });
   };
+  const limits = boneLimits(draft, selected);
+  // Typed a new max angle for one track: keys beyond it are pulled in to it.
+  const setLimit = (axis: number, v: number) => {
+    checkpoint();
+    setDraft(d => {
+      const lim = [...boneLimits(d, selected)] as AxisLimits;
+      lim[axis] = v;
+      const all = { ...(d.limits ?? {}) };
+      if (lim.every(x => x === ROT_MAX)) delete all[selected]; else all[selected] = lim;
+      const bones = { ...d.bones };
+      const cur = bones[selected];
+      if (cur) {
+        const next = [...cur] as AxisTracks;
+        next[axis] = cur[axis].map(k => ({ t: k.t, v: Math.max(-v, Math.min(v, k.v)) }));
+        bones[selected] = next;
+      }
+      const { limits: _l, ...rest } = d;
+      return Object.keys(all).length ? { ...rest, bones, limits: all } : { ...rest, bones };
+    });
+  };
   const clearJoint = () => {
     checkpoint();
     setDraft(d => { const bones = { ...d.bones }; delete bones[selected]; return { ...d, bones }; });
@@ -416,7 +437,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
             </div>
             {AXIS_LANES.map((ax, i) => (
               <PunchTimelineLane key={`${selected}-${i}`} label={ax.label} kind="rotation" color={ax.color} keys={tracks[i]}
-                playhead={tau} loopStart={loopStart} slideMode={slideMode} bands={bands} onBeginEdit={checkpoint} onChange={k => setAxis(i, k)} testId={`lane-punchanim-${"xyz"[i]}`} />
+                playhead={tau} loopStart={loopStart} slideMode={slideMode} bands={bands} limit={limits[i]} onLimitChange={v => setLimit(i, v)} onBeginEdit={checkpoint} onChange={k => setAxis(i, k)} testId={`lane-punchanim-${"xyz"[i]}`} />
             ))}
             <PunchTimelineLane label="Speed" kind="speed" color="#eab308" keys={draft.speed} playhead={tau} loopStart={loopStart} slideMode={slideMode} bands={bands} height={52}
               onBeginEdit={checkpoint} onChange={k => setDraft(d => ({ ...d, speed: k }))} testId="lane-punchanim-speed" />

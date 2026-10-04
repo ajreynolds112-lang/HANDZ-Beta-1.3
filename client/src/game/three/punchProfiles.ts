@@ -27,8 +27,21 @@ export const PUNCH_ROLE_LABEL: Record<PunchType, string> = {
   jab: "Jab", cross: "Cross", leftHook: "Lead Hook", rightHook: "Rear Hook", leftUppercut: "Lead Uppercut", rightUppercut: "Rear Uppercut",
 };
 /** Speed track range (multiplier), drawn on a log scale. */
-/** Max joint rotation offset (degrees, either direction) a profile key may hold. */
+/** Default max joint rotation offset (degrees, either direction) a profile key may hold. */
 export const ROT_MAX = 45;
+/** Range a per-track limit may be set to. */
+export const ROT_LIMIT_MIN = 1;
+export const ROT_LIMIT_MAX = 180;
+export type AxisLimits = [number, number, number];
+/** A per-track rotation limit, clamped to its legal range (default ROT_MAX). */
+export function cleanLimit(v: unknown): number {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.max(ROT_LIMIT_MIN, Math.min(ROT_LIMIT_MAX, n)) : ROT_MAX;
+}
+/** The x/y/z rotation limits of one joint in a profile. */
+export function boneLimits(p: Pick<PunchProfile, "limits">, b: BoneName): AxisLimits {
+  return p.limits?.[b] ?? [ROT_MAX, ROT_MAX, ROT_MAX];
+}
 export const SPEED_MIN = 0.1;
 export const SPEED_MAX = 3;
 
@@ -38,6 +51,8 @@ export interface PunchProfile {
   name: string;
   bones: Partial<Record<BoneName, AxisTracks>>;
   speed: Key[];
+  /** Per joint x/y/z max rotation (degrees, either direction); absent = ROT_MAX. */
+  limits?: Partial<Record<BoneName, AxisLimits>>;
   /** Loop Start (animation time): past it the animation plays back in reverse to τ=0 by the end. */
   loopStart?: number;
   /** What happens past Loop Start: play back in reverse ("loop", default) or ease back to the guard ("slide"). */
@@ -72,15 +87,25 @@ function cleanKeys(v: unknown, lo: number, hi: number): Key[] {
 export function cleanProfile(v: unknown): PunchProfile | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
+  const limits: NonNullable<PunchProfile["limits"]> = {};
+  if (o.limits && typeof o.limits === "object") {
+    for (const [b, l] of Object.entries(o.limits as Record<string, unknown>)) {
+      if (!Array.isArray(l) || l.length !== 3) continue;
+      const lim = l.map(cleanLimit) as AxisLimits;
+      if (lim.some(x => x !== ROT_MAX)) limits[b as BoneName] = lim;
+    }
+  }
   const bones: PunchProfile["bones"] = {};
   if (o.bones && typeof o.bones === "object") {
     for (const [b, tr] of Object.entries(o.bones as Record<string, unknown>)) {
       if (!Array.isArray(tr) || tr.length !== 3) continue;
-      const axes = tr.map(a => cleanKeys(a, -ROT_MAX, ROT_MAX)) as AxisTracks;
+      const lim = boneLimits({ limits }, b as BoneName);
+      const axes = tr.map((a, i) => cleanKeys(a, -lim[i], lim[i])) as AxisTracks;
       if (axes.some(a => a.length)) bones[b as BoneName] = axes;
     }
   }
   const out: PunchProfile = { name: typeof o.name === "string" ? o.name.slice(0, 40) : "", bones, speed: cleanKeys(o.speed, SPEED_MIN, SPEED_MAX) };
+  if (Object.keys(limits).length) out.limits = limits;
   const ls = validLoopStart(o.loopStart);
   if (ls != null) out.loopStart = ls;
   if (ls != null && o.loopMode === "slide") out.loopMode = "slide";
