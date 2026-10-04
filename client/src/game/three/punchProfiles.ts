@@ -27,6 +27,8 @@ export const PUNCH_ROLE_LABEL: Record<PunchType, string> = {
   jab: "Jab", cross: "Cross", leftHook: "Lead Hook", rightHook: "Rear Hook", leftUppercut: "Lead Uppercut", rightUppercut: "Rear Uppercut",
 };
 /** Speed track range (multiplier), drawn on a log scale. */
+/** Max joint rotation offset (degrees, either direction) a profile key may hold. */
+export const ROT_MAX = 45;
 export const SPEED_MIN = 0.25;
 export const SPEED_MAX = 4;
 
@@ -70,7 +72,7 @@ export function cleanProfile(v: unknown): PunchProfile | null {
   if (o.bones && typeof o.bones === "object") {
     for (const [b, tr] of Object.entries(o.bones as Record<string, unknown>)) {
       if (!Array.isArray(tr) || tr.length !== 3) continue;
-      const axes = tr.map(a => cleanKeys(a, -180, 180)) as AxisTracks;
+      const axes = tr.map(a => cleanKeys(a, -ROT_MAX, ROT_MAX)) as AxisTracks;
       if (axes.some(a => a.length)) bones[b as BoneName] = axes;
     }
   }

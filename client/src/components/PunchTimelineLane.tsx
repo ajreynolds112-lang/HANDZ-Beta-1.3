@@ -1,19 +1,19 @@
 import { useRef } from "react";
-import { SPEED_MAX, SPEED_MIN, type Key, evalRotation, evalSpeed } from "@/game/three/punchProfiles";
+import { ROT_MAX, SPEED_MAX, SPEED_MIN, type Key, evalRotation, evalSpeed } from "@/game/three/punchProfiles";
 
 export type LaneKind = "rotation" | "speed";
 
 const VB_W = 1000;
 
-/** Value → 0..1 from the top. Rotation: +180 top, -180 bottom. Speed: log scale, fastest at the top. */
+/** Value → 0..1 from the top. Rotation: +ROT_MAX top, -ROT_MAX bottom. Speed: log scale, fastest at the top. */
 function valueToY(kind: LaneKind, v: number): number {
-  if (kind === "rotation") return (180 - v) / 360;
+  if (kind === "rotation") return (ROT_MAX - Math.max(-ROT_MAX, Math.min(ROT_MAX, v))) / (2 * ROT_MAX);
   const LOG_LO = Math.log2(SPEED_MIN), LOG_HI = Math.log2(SPEED_MAX);
   return (LOG_HI - Math.log2(Math.max(SPEED_MIN, v))) / (LOG_HI - LOG_LO);
 }
 function yToValue(kind: LaneKind, y: number): number {
   const c = Math.max(0, Math.min(1, y));
-  if (kind === "rotation") return Math.round(180 - c * 360);
+  if (kind === "rotation") return Math.round(ROT_MAX - c * 2 * ROT_MAX);
   const LOG_LO = Math.log2(SPEED_MIN), LOG_HI = Math.log2(SPEED_MAX);
   return Math.round(2 ** (LOG_HI - c * (LOG_HI - LOG_LO)) * 100) / 100;
 }
@@ -147,8 +147,8 @@ export default function PunchTimelineLane({ label, kind, color, keys, playhead, 
             onPointerDown={e => onKeyDown(e, k)} onPointerMove={onKeyMove} onPointerUp={onKeyUp}
             onContextMenu={e => onKeyContext(e, k)} data-testid={`${testId}-key-${i}`} />
         ))}
-        <span className="absolute right-1 top-0.5 text-[9px] text-white/35 pointer-events-none">{kind === "rotation" ? "+180°" : `${SPEED_MAX}×`}</span>
-        <span className="absolute right-1 bottom-0.5 text-[9px] text-white/35 pointer-events-none">{kind === "rotation" ? "-180°" : `${SPEED_MIN}×`}</span>
+        <span className="absolute right-1 top-0.5 text-[9px] text-white/35 pointer-events-none">{kind === "rotation" ? `+${ROT_MAX}°` : `${SPEED_MAX}×`}</span>
+        <span className="absolute right-1 bottom-0.5 text-[9px] text-white/35 pointer-events-none">{kind === "rotation" ? `-${ROT_MAX}°` : `${SPEED_MIN}×`}</span>
       </div>
     </div>
   );
