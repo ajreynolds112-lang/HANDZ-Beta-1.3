@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { SPARRING_DURATIONS, getSparringRewardConfig, SPARRING_TIER_LABELS, nextSparringTier, loadSparringDuration, saveSparringDuration, type SparringDuration } from "@/game/sparringRewards";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Plus, Trash2, BarChart3, ChevronUp, ChevronLeft, ChevronRight, Dumbbell, Target, Trophy, Users, Swords, Pencil, Save, Check, Settings, Lock, Unlock, Download, Upload, Music, ListMusic, Play, Pause, Hammer, RotateCcw, MessageSquare, Copy, ClipboardPaste, Zap } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronLeft, ChevronRight, Dumbbell, Target, Trophy, Users, Swords, Pencil, Save, Check, Settings, Lock, Unlock, Download, Upload, Music, ListMusic, Play, Pause, Hammer, RotateCcw, MessageSquare, Copy, ClipboardPaste, Zap } from "lucide-react";
 import PunchProfileAssignCard from "@/components/PunchProfileAssignCard";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -75,7 +75,7 @@ import {
 import { getRosterDisplayName, ROSTER_DATA, KEY_FIGHTER_IDS } from "@/game/rosterData";
 import FighterStanceCanvas, { playerBoxingStance } from "@/components/FighterStanceCanvas";
 import { BoxingGloveIcon } from "@/components/BoxingGloveIcon";
-import NeuralNetworkView, { fighterHasNeural } from "@/components/NeuralNetworkView";
+import NeuralNetworkView from "@/components/NeuralNetworkView";
 import * as localSaves from "@/lib/localSaves";
 
 export type TrainingType = "weightLifting" | "heavyBag" | "sparring";
@@ -5065,7 +5065,6 @@ export function RosterEditView({
   const [hasRefClipboard, setHasRefClipboard] = useState(() => {
     try { return !!localStorage.getItem(REF_SKILLS_CLIPBOARD_KEY); } catch { return false; }
   });
-  const [editingNeuralId, setEditingNeuralId] = useState<number | null>(null);
   const [showRankingRef, setShowRankingRef] = useState(false);
   const [showCascadeConfirm, setShowCascadeConfirm] = useState(false);
   const [cascading, setCascading] = useState(false);
@@ -5522,13 +5521,6 @@ export function RosterEditView({
     saveRankEdits(editedRoster);
     onSave(applyRankEditsToRoster(editedRoster));
   };
-
-  if (editingNeuralId !== null) {
-    const nEntry = getRosterEntryById(editingNeuralId);
-    const nFighter = editedRoster.find(r => r.id === editingNeuralId);
-    const nName = nEntry && nFighter ? getRosterDisplayName(nEntry, nFighter) : `Fighter ${editingNeuralId}`;
-    return <NeuralNetworkView onBack={() => setEditingNeuralId(null)} fighterId={editingNeuralId} fighterName={nName} />;
-  }
 
   if (showNeural) {
     return (
@@ -6088,15 +6080,6 @@ export function RosterEditView({
         {editingId !== null && <PunchProfileAssignCard key={editingId} rosterId={editingId} />}
         <Button onClick={applyEdit} className="w-full gap-2" data-testid="button-apply-edit">
           <Check className="w-4 h-4" /> Apply Changes
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => setEditingNeuralId(editingId)}
-          className="w-full gap-2"
-          data-testid="button-edit-fighter-neural"
-        >
-          <BarChart3 className="w-4 h-4" /> Edit Neural Network
-          {fighterHasNeural(editingId) && <span className="text-[10px] text-primary ml-1">custom</span>}
         </Button>
         <div className="flex items-center justify-center gap-2 w-full pt-1">
           <Button
