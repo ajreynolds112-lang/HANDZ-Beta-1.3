@@ -49,7 +49,7 @@ import RingOnlyBackground from "@/components/RingOnlyBackground";
 import ClassSelect from "@/components/ClassSelect";
 import RoundEnd from "@/components/RoundEnd";
 import FightEnd from "@/components/FightEnd";
-import CareerMode, { type TrainingType, RosterEditView, SPARRING_XP_MULT, AllocateStats, RefinementView, refinementExchangeCost, refUnlockForceCost, refUnlockShardCost } from "@/components/CareerMode";
+import CareerMode, { type TrainingType, RosterEditView, AllocateStats, RefinementView, refinementExchangeCost, refUnlockForceCost, refUnlockShardCost } from "@/components/CareerMode";
 import { SPARRING_MODE_COSTS, type SparringMode } from "@/game/sparringModes";
 import { ringColorsOf } from "@/game/ringColors";
 import WeightLiftingGame from "@/components/WeightLiftingGame";
@@ -84,46 +84,8 @@ import LoadingScreen from "@/components/LoadingScreen";
 import { useChunkedLoader } from "@/lib/useChunkedLoader";
 import { pickRewardCrates, getAiPunchEnduranceLossForRank } from "@/game/rosterGenConfig";
 import { computeForceEarned } from "@/game/forceRewards";
+import { getSparringRewardConfig, SPARRING_WIN_RARITY_CAP, sparringRewardTier, sparringWinRarity, isSparringUpgrade, SPARRING_TIER_LABELS, type SparringDuration } from "@/game/sparringRewards";
 import type { CrateId } from "@/game/cratesConfig";
-
-/**
- * Standard career sparring (all four difficulties — not Nightmare, not
- * Doghouse) pays a single item for a win. The faster the finish, the better the
- * tier: a decision win still earns the base Journeyman item. Thresholds are
- * elapsed fight seconds, checked in order (fastest tier first). The result is
- * then clamped by SPARRING_WIN_RARITY_CAP, so this table sets the pace and the
- * difficulty sets the ceiling.
- */
-const SPARRING_WIN_ITEM_TIERS: { maxSeconds: number; rarity: ItemRarity }[] = [
-  { maxSeconds: 25, rarity: "Undisputed" },
-  { maxSeconds: 30, rarity: "Champion" },
-  { maxSeconds: 45, rarity: "Elite" },
-  { maxSeconds: 50, rarity: "Contender" },
-  { maxSeconds: Infinity, rarity: "Journeyman" },
-];
-
-/**
- * Ceiling on a sparring win's item by the difficulty sparred. Each tier pays at
- * most one grade above itself, so blitzing a Journeyman partner can never
- * out-earn the same finish against a Champion one.
- */
-const SPARRING_WIN_RARITY_CAP: Record<AIDifficulty, ItemRarity> = {
-  journeyman: "Contender",
-  contender: "Elite",
-  elite: "Champion",
-  champion: "Undisputed",
-};
-
-/**
- * The single calculator for a sparring win's item tier: pick by finish time,
- * then clamp to the difficulty's ceiling. Anything that advertises this reward
- * ahead of the bout must call this rather than re-deriving the tier.
- */
-function sparringWinRarity(elapsedSeconds: number, difficulty: AIDifficulty): ItemRarity {
-  const byTime = SPARRING_WIN_ITEM_TIERS.find(t => elapsedSeconds <= t.maxSeconds)?.rarity ?? "Journeyman";
-  const cap = SPARRING_WIN_RARITY_CAP[difficulty] ?? "Undisputed";
-  return ITEM_RARITIES.indexOf(byTime) > ITEM_RARITIES.indexOf(cap) ? cap : byTime;
-}
 
 /**
  * What a sparring defeat pays, as a share of the session's stat points. It is
@@ -1779,22 +1741,20 @@ export default function Game() {
 
       } else if (isSparring && activeFighter) {
         const sparringWon = newState.fightWinner === "player";
-        const sparringBase = 400 * (activeFighter.level / 100) * 0.5 * 20 * 4 * 0.7;
-        const sparringDiffMult = SPARRING_XP_MULT[sparringDifficulty];
-        const winMult = sparringWon ? 1.0 : 0.4;
-        const xpGained = Math.max(1, Math.floor(sparringBase * sparringDiffMult * winMult * 0.32));
-
-        let sparringAllocPoints = 1;
-        if (sparringWon) {
-          if (sparringDifficulty === "journeyman") sparringAllocPoints = 2;
-          else if (sparringDifficulty === "contender") sparringAllocPoints = 3;
-          else if (sparringDifficulty === "elite") sparringAllocPoints = 4;
-          else if (sparringDifficulty === "champion") sparringAllocPoints = 5;
-        }
-
         const thrown = newState.player.punchesThrown;
         const landed = newState.player.punchesLanded;
         const accuracy = thrown > 0 ? landed / thrown : 0;
+        // A win at 60%+ accuracy pays the next tier's rewards (Champion → Undisputed).
+        const sparRewardCfg = getSparringRewardConfig();
+        const sparUpgraded = isSparringUpgrade(sparringWon, accuracy, sparRewardCfg);
+        const sparRewardTier = sparringRewardTier(sparringDifficulty, sparringWon, accuracy, sparRewardCfg);
+        const sparTierRewards = sparRewardCfg.tiers[sparRewardTier];
+        const sparringBase = 400 * (activeFighter.level / 100) * 0.5 * 20 * 4 * 0.7;
+        const sparringDiffMult = sparTierRewards.xpMult;
+        const winMult = sparringWon ? 1.0 : 0.4;
+        const xpGained = Math.max(1, Math.floor(sparringBase * sparringDiffMult * winMult * 0.32));
+
+        let sparringAllocPoints = sparringWon ? sparTierRewards.winPoints : 1;
 
         let sparRefPts = 0;
         if (sparringWon) {
@@ -1834,10 +1794,7 @@ export default function Game() {
         sparringAllocPoints = Math.round(sparringAllocPoints * (sparCfg.statSparMult ?? 1.0));
         // Global training SP rebalance: all training rewards are reduced by 40%.
         sparringAllocPoints = Math.ceil(sparringAllocPoints * 0.6);
-        const sparMaxByDiffBase =
-          sparringDifficulty === "champion" ? 30 :
-          sparringDifficulty === "elite" ? 24 :
-          sparringDifficulty === "contender" ? 18 : 12;
+        const sparMaxByDiffBase = sparTierRewards.pointCap;
         // Idle penalties only kick in after a 4-week grace period with no opponent.
         const sparMaxByDiff = sparIdleWeeks === 5 ? Math.ceil(sparMaxByDiffBase / 2) : sparMaxByDiffBase;
         sparringAllocPoints = Math.min(sparringAllocPoints, sparMaxByDiff);
@@ -2032,14 +1989,25 @@ export default function Game() {
         // an exhausted tier could fall back to something above the ceiling.
         const sparElapsedSeconds = Math.max(0, newState.roundDuration - newState.roundTimer);
         const sparRewardRarity = sparringWon
-          ? sparringWinRarity(sparElapsedSeconds, sparringDifficulty)
+          ? sparringWinRarity(sparElapsedSeconds, sparRewardTier, sparUpgraded, sparRewardCfg)
           : null;
+        if (sparUpgraded) {
+          const upgradeMilestone = {
+            title: `${SPARRING_TIER_LABELS[sparRewardTier]} Rewards`,
+            description: `Won with ${Math.round(accuracy * 100)}% accuracy — this session paid ${SPARRING_TIER_LABELS[sparRewardTier]}-tier rewards.`,
+            icon: "🎯",
+            kind: "reward" as const,
+          };
+          deferredFightMilestonesRef.current = deferredFightMilestonesRef.current?.length
+            ? [...deferredFightMilestonesRef.current, upgradeMilestone]
+            : [upgradeMilestone];
+        }
         if (sparRewardRarity) {
           const sparRewardRoll = rollRarityItemForFighter(
             sparInventory ? { ...sparSaved, itemInventory: sparInventory } : sparSaved,
             sparRewardRarity,
             updatedRosterState?.playerRank ?? null,
-            SPARRING_WIN_RARITY_CAP[sparringDifficulty] ?? null,
+            SPARRING_WIN_RARITY_CAP[sparRewardTier] ?? null,
             false,
             "training",
           );
@@ -4014,7 +3982,7 @@ export default function Game() {
     setUiMode("fighting");
   };
 
-  const handleStartTraining = (fighter: Fighter, type: TrainingType, sparDiff?: AIDifficulty, importedPartnerId?: number) => {
+  const handleStartTraining = (fighter: Fighter, type: TrainingType, sparDiff?: AIDifficulty, importedPartnerId?: number, sparDuration: SparringDuration = 60) => {
     // Clear any leftover flag from a session that was started but abandoned.
     importedPartnerUsedRef.current = false;
     setActiveFighter(fighter);
@@ -4213,8 +4181,8 @@ export default function Game() {
         sparDiff,
         1,
         // An Import Ticket buys a full three-minute round; normal sparring
-        // stays at one minute.
-        importedPartner ? 180 : 60,
+        // runs the 1/2/3-minute length picked on the difficulty screen.
+        importedPartner ? 180 : sparDuration,
         "normal" as TimerSpeed,
         65,
         sparPartnerArm,

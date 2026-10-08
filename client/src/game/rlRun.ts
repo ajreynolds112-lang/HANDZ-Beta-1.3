@@ -511,18 +511,26 @@ export function saveRlCheckpoint(run: RlRun): Promise<void> {
   return writeChain;
 }
 
-/** The stored run, or null when there is none (or it can't be read). */
-export async function loadRlCheckpoint(): Promise<RlRun | null> {
+/** The stored checkpoint exactly as saved (for the parameter file). Throws on a read error. */
+export async function loadRlCheckpointRaw(): Promise<unknown> {
   await writeChain;
+  const db = await openDb();
   try {
-    const db = await openDb();
-    const raw = await new Promise<unknown>((resolve, reject) => {
+    return await new Promise<unknown>((resolve, reject) => {
       const tx = db.transaction(DB_STORE, "readonly");
       const req = tx.objectStore(DB_STORE).get(DB_KEY);
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => resolve(req.result ?? null);
       req.onerror = () => reject(req.error ?? new Error("checkpoint read failed"));
     });
+  } finally {
     db.close();
+  }
+}
+
+/** The stored run, or null when there is none (or it can't be read). */
+export async function loadRlCheckpoint(): Promise<RlRun | null> {
+  try {
+    const raw = await loadRlCheckpointRaw();
     if (!raw) return null;
     return deserializeRlRun(raw);
   } catch (err) {

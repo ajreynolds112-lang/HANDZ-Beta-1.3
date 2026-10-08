@@ -18,6 +18,11 @@
  *    the built-in defaults. No card has to know about it — they all read the
  *    same keys they always did.
  *
+ *  - The downloaded file also carries the AI Training state (the fundamentals
+ *    run in localStorage and the RL trainer's IndexedDB checkpoint). Those are
+ *    file-only: never shipped as defaults or seeded, and an upload without
+ *    them leaves the browser's training where it is.
+ *
  *  - `startTuningDefaultsWatcher` pushes the current bundle back to the dev
  *    server whenever any of those keys changes, so "tweaked" and "uploaded"
  *    both become the new default with nothing to press.
@@ -26,6 +31,7 @@ import { reloadScaling } from "./scalingConfig";
 import { invalidatePunchAnimCache } from "./punchAnimConfig";
 import { reloadRefinementTuning } from "@/game/refinementTuning";
 import { reloadChampionFundamentals } from "@/game/championStates";
+import { deserializeRlRun, loadRlCheckpointRaw, saveRlCheckpoint } from "@/game/rlRun";
 
 /**
  * Every parameter key the Neural Network screen exposes, against the shape its
@@ -41,6 +47,9 @@ import { reloadChampionFundamentals } from "@/game/championStates";
 const PARAM_SHAPES = {
   // Punch animation editor
   handz_punch_anim: "object",
+  handz_pose_offsets: "object",
+  handz_punch_profiles: "object",
+  handz_punch_profile_assign: "object",
   // AI graphs: live state, "set as default" snapshots, named presets, per-opponent overrides
   handz_neural_state: "object",
   handz_neural_defaults: "object",
@@ -67,6 +76,8 @@ const PARAM_SHAPES = {
   handz_ai_range_config: "object",
   handz_rc_config: "object",
   handz_stoppage_config: "object",
+  // Sparring rewards: accuracy upgrade threshold + per-tier XP/points/cap
+  handz_sparring_reward_config: "object",
   handz_ai_pattern_config: "object",
   handz_fatigue_config: "object",
   handz_directional_perfect_block: "boolean",
@@ -175,7 +186,7 @@ export function validateTuningBundle(data: unknown): string | null {
   if (!params || typeof params !== "object" || Array.isArray(params)) {
     return `"params" must be a JSON object.`;
   }
-  const known = TUNING_PARAM_KEYS as readonly string[];
+  const known = [...TUNING_PARAM_KEYS, ...TRAINING_SECTIONS] as readonly string[];
   const strays = Object.keys(params).filter(k => !known.includes(k));
   if (strays.length > 0) {
     return `Unknown parameter section: ${strays.slice(0, 3).join(", ")}${strays.length > 3 ? "…" : ""}`;
@@ -185,7 +196,7 @@ export function validateTuningBundle(data: unknown): string | null {
     const wrong = checkShape(key, (params as Record<string, unknown>)[key]);
     if (wrong) return wrong;
   }
-  return null;
+  return trainingSectionProblem(params as Record<string, unknown>);
 }
 
 /**
@@ -227,6 +238,59 @@ export function invalidateTuningCaches(): void {
 export function applyTuningBundle(bundle: TuningBundle): void {
   writeParams(bundle.params, true);
   invalidateTuningCaches();
+}
+
+// ===== AI Training sections (file-only) =====
+
+/** Fundamentals training run: population, sweep position, champion (AiTrainingView). */
+export const AI_TRAINING_SECTION = "handz_ai_training";
+/** RL trainer checkpoint: weights, Adam, PPO/reward/mix settings, snapshots, rollout. */
+export const RL_CHECKPOINT_SECTION = "handz_rl_checkpoint";
+const TRAINING_SECTIONS = [AI_TRAINING_SECTION, RL_CHECKPOINT_SECTION] as const;
+
+const has = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+
+function trainingSectionProblem(params: Record<string, unknown>): string | null {
+  if (has(params, AI_TRAINING_SECTION)) {
+    const t = params[AI_TRAINING_SECTION] as { population?: unknown } | null;
+    if (!t || typeof t !== "object" || Array.isArray(t) || !Array.isArray(t.population) || t.population.length === 0) {
+      return `"${AI_TRAINING_SECTION}" must be an object with a non-empty "population" list.`;
+    }
+  }
+  if (has(params, RL_CHECKPOINT_SECTION)) {
+    try {
+      deserializeRlRun(params[RL_CHECKPOINT_SECTION]);
+    } catch (err) {
+      return `"${RL_CHECKPOINT_SECTION}": ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+  return null;
+}
+
+/** The download: every tunable plus the AI Training state. */
+export async function buildParameterFile(): Promise<TuningBundle> {
+  const bundle = buildTuningBundle();
+  const training = readRaw(AI_TRAINING_SECTION);
+  if (training !== null) {
+    try { bundle.params[AI_TRAINING_SECTION] = JSON.parse(training); } catch { /* unreadable scratch state */ }
+  }
+  try {
+    const cp = await loadRlCheckpointRaw();
+    if (cp) bundle.params[RL_CHECKPOINT_SECTION] = cp;
+  } catch (err) {
+    console.warn("[tuning] RL checkpoint not included:", err);
+  }
+  return bundle;
+}
+
+/** The upload. Validate first; training sections the file lacks are left alone. */
+export async function applyParameterFile(bundle: TuningBundle): Promise<void> {
+  applyTuningBundle(bundle);
+  const p = bundle.params;
+  if (has(p, AI_TRAINING_SECTION)) {
+    try { localStorage.setItem(AI_TRAINING_SECTION, JSON.stringify(p[AI_TRAINING_SECTION])); } catch { /* storage full */ }
+  }
+  if (has(p, RL_CHECKPOINT_SECTION)) await saveRlCheckpoint(deserializeRlRun(p[RL_CHECKPOINT_SECTION]));
 }
 
 /** FNV-1a. Used for change detection and the shipped-bundle stamp, not security. */

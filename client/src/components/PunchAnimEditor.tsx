@@ -13,8 +13,8 @@ import {
   hasSavedPunchAnimConfig,
   invalidatePunchAnimCache,
 } from "@/lib/punchAnimConfig";
-import { renderFighterPunchFrame } from "@/game/renderer";
-import { DEFAULT_PLAYER_COLORS } from "@/game/types";
+import { DEFAULT_PLAYER_COLORS, type PunchPhaseType } from "@/game/types";
+import { renderFighterPreview3D } from "@/game/three/fighterPreview3d";
 
 const PUNCH_LABELS: Record<PunchType, string> = {
   jab: "Jab",
@@ -102,6 +102,11 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
   const paramsRef = useRef(params);
   const punchTypeRef = useRef(punchType);
   const cycleStartRef = useRef(0);
+  // View spin in degrees: drag the preview or use the slider for a full 360°.
+  const [spin, setSpin] = useState(0);
+  const spinRef = useRef(0);
+  spinRef.current = spin;
+  const dragRef = useRef<{ x: number; start: number } | null>(null);
 
   useEffect(() => { paramsRef.current = params; }, [params]);
 
@@ -144,21 +149,24 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
         progress = Math.max(0, Math.min(1, progress));
       }
 
-      renderFighterPunchFrame(
-        ctx, PREVIEW_W, PREVIEW_H,
-        DEFAULT_PLAYER_COLORS,
-        punchTypeRef.current,
-        progress,
-        now * 0.0025,
-        1,
-        {
-          distanceMult: paramsRef.current.distanceMult ?? 1.0,
-          arcAmplitude:  paramsRef.current.arcAmplitude,
-          dropDepth:     paramsRef.current.dropDepth,
-          riseHeight:    paramsRef.current.riseHeight,
-          dropPhase:     paramsRef.current.dropPhase,
-        }
-      );
+      // 3D plays the same timeline as engine phases, then rests in guard for a
+      // beat so the shoulder easing back to normal is visible.
+      const REST = 0.3;
+      const t3 = ((now - cycleStartRef.current) % (CYCLE_MS * (1 + REST))) / CYCLE_MS;
+      let phase3: PunchPhaseType | undefined, phaseT = 0;
+      if (t3 < lF) { phase3 = "launchDelay"; phaseT = lF > 0 ? t3 / lF : 1; }
+      else if (t3 < lF + aF) { phase3 = "armSpeed"; phaseT = aF > 0 ? (t3 - lF) / aF : 1; }
+      else if (t3 < lF + aF + liF) { phase3 = "linger"; phaseT = liF > 0 ? (t3 - lF - aF) / liF : 1; }
+      else if (t3 < 1) { phase3 = "retraction"; phaseT = rF > 0 ? (t3 - lF - aF - liF) / rF : 1; }
+
+      // The trajectory sliders (distance, arc, drop/rise) don't change this
+      // preview: the 3D arm follows the real punch reach.
+      renderFighterPreview3D(ctx, {
+        colors: DEFAULT_PLAYER_COLORS,
+        bobPhase: now * 0.0025,
+        punch: phase3 ? { type: punchTypeRef.current, extension: progress, phase: phase3, phaseT } : { type: punchTypeRef.current, extension: 0 },
+        yaw: (spinRef.current * Math.PI) / 180,
+      });
 
       rafRef.current = requestAnimationFrame(animate);
     };
@@ -168,13 +176,40 @@ function PunchPreviewCanvas({ punchType, params }: { punchType: PunchType; param
   }, []);
 
   return (
-    <div className="flex justify-center rounded overflow-hidden bg-zinc-900">
-      <canvas
-        ref={canvasRef}
-        width={PREVIEW_W}
-        height={PREVIEW_H}
-        data-testid="canvas-punch-preview"
-      />
+    <div className="flex flex-col gap-1">
+      <div className="flex justify-center rounded overflow-hidden bg-zinc-900">
+        <canvas
+          ref={canvasRef}
+          width={PREVIEW_W}
+          height={PREVIEW_H}
+          data-testid="canvas-punch-preview"
+          className="cursor-grab active:cursor-grabbing"
+          style={{ touchAction: "none" }}
+          onPointerDown={e => {
+            dragRef.current = { x: e.clientX, start: spinRef.current };
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={e => {
+            const d = dragRef.current;
+            if (!d) return;
+            const v = Math.round(d.start + (e.clientX - d.x) * 1.2);
+            setSpin(((v % 360) + 360) % 360);
+          }}
+          onPointerUp={() => { dragRef.current = null; }}
+          onPointerCancel={() => { dragRef.current = null; }}
+        />
+      </div>
+      {(
+        <div className="flex items-center gap-2 px-1">
+          <span className="text-[10px] text-muted-foreground shrink-0">Spin</span>
+          <input type="range" min={0} max={360} step={1} value={spin} onChange={e => setSpin(Number(e.target.value))}
+            className="flex-1 h-1.5 cursor-pointer accent-blue-500" data-testid="slider-punch-spin" />
+          <span className="text-[10px] font-mono w-8 text-right">{spin}°</span>
+          <button className="text-[10px] text-muted-foreground hover:text-blue-400 underline" onClick={() => setSpin(0)} data-testid="button-punch-spin-reset">
+            reset
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -459,6 +494,26 @@ export default function PunchAnimEditor({ defaultExpanded = false }: PunchAnimEd
                   </span>
                 </p>
                 <div className="space-y-3">
+                  <div className="rounded border border-border p-2 space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Shoulder joint (3D) — eases in as the punch starts, back to normal after retraction
+                    </p>
+                    {([["shoulderX", "Shoulder X", "Roll about the forward axis (°)"],
+                       ["shoulderY", "Shoulder Y", "Turn about the vertical axis (°)"],
+                       ["shoulderZ", "Shoulder Z", "Tilt about the side axis — positive lifts the arm (°)"]] as const).map(([k, label, desc]) => (
+                      <SliderRow key={k} label={label} desc={desc}
+                        value={p[k] ?? 0} min={-90} max={90} step={1} defaultVal={0}
+                        onChange={v => updateParam(activePunch, k, v)} />
+                    ))}
+                  </div>
+                  <SliderRow
+                    label="Lean Forward"
+                    desc="How far the body leans and steps forward into this punch (×default, 0 = stays upright). Visual only — hit range is unchanged"
+                    value={p.leanMult ?? 1.0}
+                    min={0} max={2} step={0.05}
+                    defaultVal={1.0}
+                    onChange={v => updateParam(activePunch, "leanMult", v)}
+                  />
                   {cat === "straight" && (
                     <>
                       <SliderRow
@@ -509,6 +564,14 @@ export default function PunchAnimEditor({ defaultExpanded = false }: PunchAnimEd
                   )}
                   {cat === "uppercut" && (
                     <>
+                      <SliderRow
+                        label="U Lift (3D)"
+                        desc="How far the shoulder tilts the arm upward approaching the peak — the rising wall of the U (°)"
+                        value={p.uLiftDeg ?? 15}
+                        min={0} max={60} step={1}
+                        defaultVal={15}
+                        onChange={v => updateParam(activePunch, "uLiftDeg", v)}
+                      />
                       <SliderRow
                         label="Load Depth"
                         desc="How far the fist sinks during the wind-up before rising"

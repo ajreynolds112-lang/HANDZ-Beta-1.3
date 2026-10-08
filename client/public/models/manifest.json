@@ -1,0 +1,181 @@
+{
+  "generator": "tripo3d",
+  "assets": [
+    {
+      "id": "corner_stool",
+      "file": "corner_stool.glb",
+      "prompt": "boxing corner stool, small round seat on four metal legs, low poly game asset",
+      "taskId": "fb479836-faf3-4e67-a53a-1e7308b3b7db",
+      "faceCount": 1163,
+      "generatedAt": "2026-10-03T15:16:35.432Z"
+    },
+    {
+      "id": "gym_bench_press",
+      "file": "gym_bench_press.glb",
+      "prompt": "flat weight bench press with red padded bench, two upright black rack posts and a loaded barbell resting on top, low poly game asset",
+      "taskId": "ca7eb4bd-a00a-46d8-b2a1-c9cb2259bb85",
+      "faceCount": 1789,
+      "generatedAt": "2026-10-03T16:53:45.408Z"
+    },
+    {
+      "id": "gym_door",
+      "file": "gym_door.glb",
+      "prompt": "single wooden door closed inside its door frame, small square window near the top, brass knob, flat against a wall, low poly game asset",
+      "taskId": "8a7b9dcc-77d5-45e6-8b92-378f3c174f2e",
+      "faceCount": 902,
+      "generatedAt": "2026-10-03T16:59:21.760Z"
+    },
+    {
+      "id": "gym_dumbbell_rack",
+      "file": "gym_dumbbell_rack.glb",
+      "prompt": "two tier metal dumbbell rack holding a row of black hex dumbbells, one solid object, low poly game asset",
+      "taskId": "70135509-041e-4a59-8174-4aaeaed2f7c9",
+      "faceCount": 1731,
+      "generatedAt": "2026-10-03T16:56:10.417Z"
+    },
+    {
+      "id": "gym_glove_rack",
+      "file": "gym_glove_rack.glb",
+      "prompt": "wall mounted wooden rack with pairs of red and black boxing gloves hanging from hooks, flat back, low poly game asset",
+      "taskId": "14579c3b-263c-4db2-83be-82e4c6651ffb",
+      "faceCount": 2189,
+      "generatedAt": "2026-10-03T17:01:50.921Z"
+    },
+    {
+      "id": "gym_hanging_bag",
+      "file": "gym_hanging_bag.glb",
+      "prompt": "long boxing heavy punching bag hanging from a short steel chain with a swivel hook at the top, worn dark red leather with black tape bands, one solid object, low poly game asset",
+      "taskId": "fd0edc1f-9a82-4a67-a55d-b4455fcb2970",
+      "faceCount": 1631,
+      "generatedAt": "2026-10-03T17:27:33.270Z"
+    },
+    {
+      "id": "gym_lockers",
+      "file": "gym_lockers.glb",
+      "prompt": "row of four tall blue steel gym lockers with vents and handles, one solid block, low poly game asset",
+      "taskId": "519c6f2b-bc30-41b8-bc92-38ce00a6cef1",
+      "faceCount": 1383,
+      "generatedAt": "2026-10-03T16:55:54.361Z"
+    },
+    {
+      "id": "gym_medal",
+      "file": "gym_medal.glb",
+      "prompt": "round silver sports medal hanging from a short red ribbon, flat, low poly game asset",
+      "taskId": "759612d6-aac6-485a-b42e-01d71396c7bf",
+      "faceCount": 256,
+      "generatedAt": "2026-10-03T16:58:03.633Z"
+    },
+    {
+      "id": "gym_office_chair",
+      "file": "gym_office_chair.glb",
+      "prompt": "black office swivel chair with armrests on a five star wheeled base, low poly game asset",
+      "taskId": "5a4770b4-6d31-453d-979b-6991e675f530",
+      "faceCount": 1740,
+      "generatedAt": "2026-10-03T16:58:56.554Z"
+    },
+    {
+      "id": "gym_office_desk",
+      "file": "gym_office_desk.glb",
+      "prompt": "wooden office desk with drawers, a computer monitor, a phone and a stack of papers on top, low poly game asset",
+      "taskId": "8fb26958-62ef-4353-ab6b-5a4229f38131",
+      "faceCount": 1720,
+      "generatedAt": "2026-10-03T16:57:00.110Z"
+    },
+    {
+      "id": "gym_plate_rack",
+      "file": "gym_plate_rack.glb",
+      "prompt": "gym weight plate tree rack loaded with black and red round barbell weight plates, one solid object, low poly game asset",
+      "taskId": "783c262a-8f8b-42e4-bac4-a6ea8b960e89",
+      "faceCount": 1566,
+      "generatedAt": "2026-10-03T16:54:34.724Z"
+    },
+    {
+      "id": "gym_speed_bag",
+      "file": "gym_speed_bag.glb",
+      "prompt": "free-standing boxing speed bag stand, tall black metal post on a flat base holding a round wooden rebound platform with a small brown leather speed bag hanging underneath, low poly game asset",
+      "taskId": "9c690677-b5a9-4ec6-b9fe-8806b2ac35b9",
+      "faceCount": 1313,
+      "generatedAt": "2026-10-03T16:53:57.470Z"
+    },
+    {
+      "id": "gym_trophy",
+      "file": "gym_trophy.glb",
+      "prompt": "small shiny gold trophy cup with two handles on a square black base, low poly game asset",
+      "taskId": "5568f923-a710-4b8c-bb83-687ce0b183d9",
+      "faceCount": 301,
+      "generatedAt": "2026-10-03T16:58:03.710Z"
+    },
+    {
+      "id": "gym_water_crate",
+      "file": "gym_water_crate.glb",
+      "prompt": "blue plastic crate holding six water bottles, one solid object, low poly game asset",
+      "taskId": "f7717c07-8068-4de1-bca0-5f34dc5305f8",
+      "faceCount": 869,
+      "generatedAt": "2026-10-03T17:01:59.050Z"
+    },
+    {
+      "id": "gym_wood_bench",
+      "file": "gym_wood_bench.glb",
+      "prompt": "simple wooden locker room bench, one thick plank seat on two wooden legs, low poly game asset",
+      "taskId": "82a9e1c6-c83b-4686-81be-3ed082eb66cb",
+      "faceCount": 1084,
+      "generatedAt": "2026-10-03T16:55:25.782Z"
+    },
+    {
+      "id": "lighting_truss",
+      "file": "lighting_truss.glb",
+      "prompt": "square aluminium lighting truss frame with stage spotlights hanging underneath, low poly game asset",
+      "taskId": "07b32553-6cd8-4aa4-b21b-9631ec0728e0",
+      "faceCount": 4161,
+      "generatedAt": "2026-10-03T15:21:26.455Z"
+    },
+    {
+      "id": "ring_bell",
+      "file": "ring_bell.glb",
+      "prompt": "brass boxing ring bell on a wooden plaque base, low poly game asset",
+      "taskId": "2077ba3b-ee42-4a47-b7a1-9aa27232b8ca",
+      "faceCount": 1028,
+      "generatedAt": "2026-10-03T15:03:43.727Z"
+    },
+    {
+      "id": "ring_steps",
+      "file": "ring_steps.glb",
+      "prompt": "boxing ring corner stairs, one solid chunky block of three wide steps with black rubber treads and a chrome handrail on each side, simple shape, low poly game asset",
+      "taskId": "f756e2e9-5854-4a32-a235-e9e45875147f",
+      "faceCount": 1688,
+      "generatedAt": "2026-10-03T15:28:09.604Z"
+    },
+    {
+      "id": "ringside_chair",
+      "file": "ringside_chair.glb",
+      "prompt": "simple black folding chair, low poly game asset",
+      "taskId": "308304b4-c2eb-4fda-bc9b-73c1f0d4e4a1",
+      "faceCount": 965,
+      "generatedAt": "2026-10-03T15:13:53.229Z"
+    },
+    {
+      "id": "ringside_table",
+      "file": "ringside_table.glb",
+      "prompt": "long ringside judges table with black tablecloth skirt, low poly game asset",
+      "taskId": "3e3810fd-cabe-4155-8fc6-b025467d3be0",
+      "faceCount": 1402,
+      "generatedAt": "2026-10-03T15:11:48.430Z"
+    },
+    {
+      "id": "seating_section",
+      "file": "seating_section.glb",
+      "prompt": "section of stadium arena tiered seating, rows of red plastic seats on concrete steps, low poly game asset",
+      "taskId": "97bbd6f3-2ebf-4f3a-a259-dfbe42c29398",
+      "faceCount": 4394,
+      "generatedAt": "2026-10-03T15:19:00.597Z"
+    },
+    {
+      "id": "turnbuckle",
+      "file": "turnbuckle.glb",
+      "prompt": "single boxing ring turnbuckle corner pad, padded leather cushion, rounded rectangular, plain solid colour, low poly game asset",
+      "taskId": "e46aa57d-32fd-442c-8977-5fd2a6f0e350",
+      "faceCount": 1387,
+      "generatedAt": "2026-10-03T15:06:24.808Z"
+    }
+  ]
+}

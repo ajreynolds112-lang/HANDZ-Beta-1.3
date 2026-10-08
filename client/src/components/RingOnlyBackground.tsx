@@ -1,8 +1,8 @@
 import { useRef, useEffect } from "react";
 import { GameState } from "@/game/types";
 import { createInitialState } from "@/game/engine";
-import { renderRingOnly } from "@/game/renderer";
 import { ringColorsOf, type RingColors } from "@/game/ringColors";
+import { useFightScene3D } from "@/game/three/useFightScene3D";
 
 const BASE_W = 800;
 const BASE_H = 600;
@@ -14,6 +14,9 @@ function makeRingState(): GameState {
   state.crowdBobTime = 0;
   state.crowdKdBounceTimer = 0;
   state.ringCanvasColor = "#BDEDF2";
+  // Fixed wide shot of the empty ring (the 3D camera has no fighters to follow).
+  state.staticCamera = true;
+  state.refereeVisible = false;
   return state;
 }
 
@@ -29,6 +32,7 @@ export default function RingOnlyBackground({ colors }: { colors?: RingColors | n
   const stateRef = useRef<GameState>(makeRingState());
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
+  const view3d = useFightScene3D({ fillAspect: true });
   // The render loop is started once and never re-created, so the live palette
   // reaches it through a ref instead of the effect's closure.
   const colorsRef = useRef(ringColorsOf({ ringColors: colors ?? undefined }));
@@ -46,11 +50,11 @@ export default function RingOnlyBackground({ colors }: { colors?: RingColors | n
         ringColors: colorsRef.current,
       };
 
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext("2d");
-        if (ctx) renderRingOnly(ctx, stateRef.current);
-      }
+      const ctx = canvasRef.current?.getContext("2d") ?? null;
+      view3d.draw(ctx, stateRef.current, {
+        hud: false,
+        scene: { hideFighters: true },
+      });
 
       animFrameRef.current = requestAnimationFrame(loop);
     };
@@ -59,6 +63,13 @@ export default function RingOnlyBackground({ colors }: { colors?: RingColors | n
   }, []);
 
   return (
+    <>
+    <canvas
+      ref={view3d.glCanvasRef}
+      aria-hidden="true"
+      className="absolute inset-0 w-full h-full pointer-events-none"
+      style={{ visibility: "hidden" }}
+    />
     <canvas
       ref={canvasRef}
       width={BASE_W}
@@ -67,5 +78,6 @@ export default function RingOnlyBackground({ colors }: { colors?: RingColors | n
       className="absolute inset-0 w-full h-full pointer-events-none"
       style={{ imageRendering: "auto", objectFit: "cover" }}
     />
+    </>
   );
 }

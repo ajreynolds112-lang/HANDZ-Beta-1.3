@@ -7,7 +7,7 @@ import {
   AdaptiveMemory, TimingSlot, ObservedPattern, RingZone, BehaviorProfile,
   WhiffSnapshot, AiDecisionStats, SlipDir, NeuralBaseline,
 } from "./types";
-import { aiRNG, isFeintEngaged, isPerfectBlockRhythmPaused, isRhythmVulnerable, getPunchReachPx, getBurstPunchExcess, accrueRingMileage, startSlip, isLeadArmPunch, tryReset, aiResetAllowed, AI_SLIP_HOLD } from "./engine";
+import { aiRNG, isFeintEngaged, isPerfectBlockRhythmPaused, isRhythmVulnerable, getPunchReachPx, getBurstPunchExcess, accrueRingMileage, startSlip, isLeadArmPunch, tryReset, aiResetAllowed, AI_SLIP_HOLD, stripMoveTowardOpponent } from "./engine";
 import { SITUATION_DB, matchSituation, getDifficultyMultiplier, type SituationMatchResult } from "./situationDB";
 import { levelScale, pointCoef, getScaling } from "@/lib/scalingConfig";
 import { getNeuralOverrides, getRcConfig, getAiRangeConfig, getAiPatternConfig } from "@/components/NeuralNetworkView";
@@ -2892,6 +2892,9 @@ function applyMovement(brain: AiBrainState, enemy: FighterState, player: Fighter
   // at the ground it just gave up, so projecting it away would leave the step
   // owing a debt it can never walk off and stall it until its timer ran out.
   const inBaseDefStep = (brain.baseDefStepPhase ?? 0) > 0;
+  if (enemy.limbContactPinned && !inBaseDefStep) {
+    [moveX, moveZ] = stripMoveTowardOpponent(enemy, player, moveX, moveZ);
+  }
   if (player.feintTouchingOpponent && !inBaseDefStep) {
     const toPlayerX = player.x - enemy.x;
     const toPlayerZ = player.z - enemy.z;
@@ -5536,7 +5539,8 @@ function startStringForOffense(
 
 /**
  * Perform an RL utility that isn't a segment. 1 = Reset (only where Reset is
- * allowed; tryReset still refuses while a Reset is running or during a stun lock). 3 = slip, with
+ * allowed and not already running — the player may re-press mid-snap, the AI
+ * doesn't; tryReset still refuses during a stun lock). 3 = slip, with
  * the string held until the slide lands so its first punch is the counter.
  */
 function performRlUtility(
@@ -5548,7 +5552,7 @@ function performRlUtility(
 ): void {
   let applied = false;
   if (utility === 1) {
-    applied = aiResetAllowed(state) && tryReset(enemy, state);
+    applied = aiResetAllowed(state) && !enemy.fatigue?.resetActive && tryReset(enemy, state);
   } else if (utility === 3) {
     if (!enemy.slipActive && enemy.slipDisabledTimer <= 0 && !enemy.isKnockedDown && !enemy.isPunching) {
       const dir: SlipDir = rng.next01() < 0.5 ? "left" : "right";

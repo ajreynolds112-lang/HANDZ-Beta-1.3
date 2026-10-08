@@ -846,9 +846,10 @@ export function tryReset(fighter: FighterState, state: GameState): boolean {
   const f = fighter.fatigue;
   const fc = getFatigueConfig();
   if (fighter.isKnockedDown || state.knockdownActive) return false;
-  // No cooldown: a Reset can be spent whenever one isn't already running. A
-  // window a punch has stripped is still running, so it has to play out first.
-  if (f.resetActive) return false;
+  // No cooldown and no in-window refusal: pressing Reset again mid-snap starts
+  // a fresh snap (and a fresh window), so the button is always live outside a
+  // knockdown or a stun lock. This is also how a window a punch has stripped
+  // gets its benefits back.
   // Stunned fighters cannot buy their way out of it — see applyResetStunLock.
   if (f.resetLockTimer > 0) return false;
 
@@ -941,8 +942,13 @@ export function tryReset(fighter: FighterState, state: GameState): boolean {
   // The window lasts exactly as long as the snap animation: it closes when the
   // rear arm is home (see updateFatigue), so it is always well under a second
   // or two, however gassed the fighter is.
-  f.resetTimer = f.snapStagger * 3;
   f.headDuckTimer = fc.resetHeadDuckTime * snapSlow / snapSpeed;
+  // The window IS the snap animation: torso → lead → rear arm plus the head
+  // dip, whichever runs longer. Sparring mileage can train the stagger all the
+  // way to 0 (RESET_SPEED_MAX equals the default stagger); without the dip in
+  // here that left a head bob with a one-tick window and no Reset.
+  f.snapDuration = Math.max(f.snapStagger * 3, f.headDuckTimer);
+  f.resetTimer = f.snapDuration;
 
   // The rhythm kicks instead of parking. A Reset throws the sway into a
   // full-speed sweep for resetRhythmBurst seconds — running whether or not the
@@ -1011,7 +1017,7 @@ export function aiResetAllowed(state: GameState): boolean {
 
 /**
  * A CPU-controlled fighter spends a Reset the moment it gets stunned or crit —
- * the same read a player is expected to make. Refused on cooldown like anyone
+ * the same read a player is expected to make. Refused while its own snap runs, like before
  * else's, and it pays the panic penalty for resetting while still rocked.
  * Called after the hit has already ended any window that was running.
  */
@@ -1019,6 +1025,9 @@ function aiMaybeReset(fighter: FighterState, state: GameState): void {
   const cpuControlled = !fighter.isPlayer || !!state.playerAiBrain;
   if (!cpuControlled) return;
   if (!aiResetAllowed(state)) return;
+  // Only the player may restart a running snap; the CPU's reflex Reset keeps
+  // the old one-at-a-time behaviour so its output is unchanged.
+  if (fighter.fatigue.resetActive) return;
   tryReset(fighter, state);
 }
 
@@ -1183,6 +1192,11 @@ function updateFlinch(fighter: FighterState, dt: number, state: GameState): void
 }
 
 /** Per-tick fatigue bookkeeping: sway lifecycle, Reset window, timers. */
+/** Length of the running snap animation = the Reset window. Old states lack snapDuration. */
+function snapLength(f: FighterState["fatigue"]): number {
+  return Math.max(f.snapStagger * 3, f.snapDuration ?? 0);
+}
+
 function updateFatigue(fighter: FighterState, dt: number, state: GameState): void {
   const f = fighter.fatigue;
   updateFlinch(fighter, dt, state);
@@ -1199,7 +1213,7 @@ function updateFatigue(fighter: FighterState, dt: number, state: GameState): voi
     f.snapTimer += dt;
     // Three stages now, not two: torso, then lead arm, then rear arm, each
     // easing home over one stagger instead of vanishing at the end of its hold.
-    if (f.snapTimer >= f.snapStagger * 3) {
+    if (f.snapTimer >= snapLength(f)) {
       f.snapActive = false;
       // The whole animation has played: that is what counts as fully reset,
       // and it is also the end of the Reset window.
@@ -1211,7 +1225,7 @@ function updateFatigue(fighter: FighterState, dt: number, state: GameState): voi
   // Deliberately no early return while it runs: a Reset damps fatigue rather
   // than switching it off, so the sway keeps running underneath the window.
   if (f.resetActive) {
-    f.resetTimer = f.snapActive ? Math.max(0, f.snapStagger * 3 - f.snapTimer) : 0;
+    f.resetTimer = f.snapActive ? Math.max(0, snapLength(f) - f.snapTimer) : 0;
     if (!f.snapActive) {
       f.resetActive = false;
       f.resetStaminaOnly = false;
@@ -1596,9 +1610,22 @@ function getHitPunchConfig(punchType: PunchType): PunchConfig {
 // gate tryHit() applies, minus the transient rhythm range buff. Exported so the AI
 // can tell whether a punch it is about to throw can physically land.
 export function getPunchReachPx(fighter: FighterState, punchType: PunchType): number {
-  const config = getHitPunchConfig(punchType);
+  // Reach follows the punch's role (southpaw mirrors orthodox), not the literal arm.
+  const config = getHitPunchConfig(punchRole(punchType, fighter.boxingStance));
   const armReachBonus = (fighter.armLength - 65) * PX_PER_INCH;
   return config.range + 20 + armReachBonus + (fighter.precisionStrikerRangeBonus ?? 0);
+}
+
+const STANCE_MIRROR_PUNCH: Record<PunchType, PunchType> = {
+  jab: "cross", cross: "jab", leftHook: "rightHook", rightHook: "leftHook", leftUppercut: "rightUppercut", rightUppercut: "leftUppercut",
+};
+/**
+ * The orthodox-named role of a literal-arm punch: a southpaw's right-hand lead
+ * straight (engine "cross") plays the "jab" role. Used where a punch's shape
+ * (timing, reach) must mirror between stances.
+ */
+export function punchRole(punchType: PunchType, stance: BoxingStance | undefined): PunchType {
+  return stance === "southpaw" ? STANCE_MIRROR_PUNCH[punchType] : punchType;
 }
 
 // Punch names are absolute: jab / leftHook / leftUppercut always come off the LEFT
@@ -2227,8 +2254,10 @@ function createFighter(
     critHitTimer: 0,
     cleanHitEyeTimer: 0,
     regenPauseTimer: 0,
-    moveSpeed: BASE_MOVE_SPEED * stats.speedMult * levelScale(level, 1, 0.72, "moveSpeed"),
-    punchSpeedMult: stats.speedMult * levelScale(level, 2, 1.8, "punchSpeedMult") * 0.1917,
+    // Flat footspeed: level never changes it. Only the Speed stat and boosts do.
+    moveSpeed: BASE_MOVE_SPEED * stats.speedMult,
+    // Level no longer makes punches faster — only the Speed stat (and Fast Twitch) do.
+    punchSpeedMult: stats.speedMult * 2 * 0.1917,
     damageMult: stats.damageMult * levelScale(level, 1, 3.5, "damageMult") * 1.1,
     // The additive power pool starts empty. `damageMult` above is the BASE — the
     // level ramp and (later) spent stat points — and everything the fighter earns
@@ -2946,6 +2975,7 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
   }
 
   const enemy = createFighter(enemyName, enemyArchetype, enemyLevel, ENEMY_START_X, ENEMY_START_Z, -1, false, randomEnemyColors, enemyArmLength, enemyBoxingStance);
+  enemy.punchProfileRosterId = enemyRosterId;
 
   {
     player.autoGuardDuration = levelScale(playerLevel, 10, 45, "autoGuardBase");
@@ -2967,12 +2997,12 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
     // Both corners run this identical line — no player-only champion boost.
     // The coefficient is the whole power term: maxed Power tops out at 6x.
     player.damageMult *= 1 + pointCoef("powerDamage", 5) * pT * pT;
-    player.punchSpeedMult *= 1 + sT * pointCoef("speedPunch", 1.427);
+    player.punchSpeedMult *= speedPunchRatio(sp.speed);
     player.moveSpeed *= 1 + sT * pointCoef("speedMove", 0.15);
     player.duckSpeedMult = 1 + sT * pointCoef("speedDuck", 0.6);
     player.blockMult = 1 + dT * pointCoef("defenseBlock", 0.6);
     player.critResistMult = 1 - dT * pointCoef("defenseCritResist", 0.27);
-    player.telegraphSpeedMult = speedTelegraphMult(sp.speed);
+    player.telegraphSpeedMult = telegraphMultFor(player);
     player.staminaRegen *= 1 + stT * pointCoef("staminaRegen", 0.6);
     player.maxStamina *= 1 + stPoolT * pointCoef("staminaPool", 0.24);
     player.maxStaminaCap *= 1 + stPoolT * pointCoef("staminaPool", 0.24);
@@ -3063,8 +3093,8 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
     }
     if (r.fightIqUnlocked) {
       if ((r.fastTwitch ?? 0) > 0) {
-        player.telegraphSpeedMult *= Math.max(0, 1 - refCurve("fastTwitch", "telegraph", r.fastTwitch!));
         player.fastTwitchRank = r.fastTwitch!;
+        player.telegraphSpeedMult = telegraphMultFor(player);
       }
       if ((r.heartRefinement ?? 0) > 0) {
         const hb = refCurve("heartRefinement", "stamina", r.heartRefinement!);
@@ -3158,8 +3188,8 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
     }
     if (er.fightIqUnlocked) {
       if ((er.fastTwitch ?? 0) > 0) {
-        enemy.telegraphSpeedMult *= Math.max(0, 1 - refCurve("fastTwitch", "telegraph", er.fastTwitch!));
         enemy.fastTwitchRank = er.fastTwitch!;
+        enemy.telegraphSpeedMult = telegraphMultFor(enemy);
       }
       if ((er.heartRefinement ?? 0) > 0) {
         const hb = refCurve("heartRefinement", "stamina", er.heartRefinement!);
@@ -3193,8 +3223,8 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
   {
     const playerFT = playerRefinement?.fastTwitch ?? 0;
     const enemyFT = enemyRefinement?.fastTwitch ?? 0;
-    if (playerFT > 0) player.moveSpeed *= 1 + playerFT * refNum("fastTwitch", "movePerLevel");
-    if (enemyFT > 0) enemy.moveSpeed *= 1 + enemyFT * refNum("fastTwitch", "movePerLevel");
+    if (playerFT > 0) applyFastTwitchMove(player, playerFT);
+    if (enemyFT > 0) applyFastTwitchMove(enemy, enemyFT);
   }
 
   if (enemySkillPoints) {
@@ -3211,12 +3241,12 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
     const estT = Math.min(STAMINA_REGEN_CAP, esp.stamina) / SC.caps.staminaRegenDivisor;
     const estPoolT = Math.min(1, esp.stamina / MAX_SP);
     enemy.damageMult *= 1 + pointCoef("powerDamage", 5) * epT * epT;
-    enemy.punchSpeedMult *= 1 + esT * pointCoef("speedPunch", 1.427);
+    enemy.punchSpeedMult *= speedPunchRatio(esp.speed);
     enemy.moveSpeed *= 1 + esT * pointCoef("speedMove", 0.15);
     enemy.duckSpeedMult = 1 + esT * pointCoef("speedDuck", 0.6);
     enemy.blockMult = 1 + edT * pointCoef("defenseBlock", 0.6);
     enemy.critResistMult = 1 - edT * pointCoef("defenseCritResist", 0.27);
-    enemy.telegraphSpeedMult = speedTelegraphMult(esp.speed);
+    enemy.telegraphSpeedMult = telegraphMultFor(enemy);
     enemy.staminaRegen *= 1 + estT * pointCoef("staminaRegen", 0.6);
     enemy.maxStamina *= 1 + estPoolT * pointCoef("staminaPool", 0.24);
     enemy.maxStaminaCap *= 1 + estPoolT * pointCoef("staminaPool", 0.24);
@@ -3238,17 +3268,14 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
   // row that needs a new fight to take effect.
   const lvlGap = playerLevel - enemyLevel;
   const gapMult = (id: string, diff: number) => clampGapMult(1 + levelGapAdj(id, diff));
+  // (No level-gap move speed: speed is a flat stat curve plus boosts.)
   player.damageMult *= gapMult("gapDamage", lvlGap);
-  player.moveSpeed *= gapMult("gapMoveSpeed", lvlGap);
   enemy.damageMult *= gapMult("gapDamage", -lvlGap);
-  enemy.moveSpeed *= gapMult("gapMoveSpeed", -lvlGap);
 
   if (aiDifficulty === "champion") {
     enemy.damageMult *= 1.185;
-    enemy.moveSpeed *= 1.05;
   } else if (aiDifficulty === "elite") {
     enemy.damageMult *= 1.133;
-    enemy.moveSpeed *= 1.02;
   } else if (aiDifficulty === "contender") {
     enemy.damageMult *= 1.082;
   } else {
@@ -3638,7 +3665,7 @@ export function applyRefinementToFighter(fighter: FighterState, ref: RefinementL
     if ((er.punchRolling ?? 0) > 0) { fighter.punchRollingMult = 1 - refCurve("punchRolling", "damageTaken", er.punchRolling!); fighter.punchRollingRepunchBoost = refCurve("punchRolling", "repunchBoost", er.punchRolling!); fighter.punchRollingBigShotNegate = refCurve("punchRolling", "bigShotNegate", er.punchRolling!); }
   }
   if (er.fightIqUnlocked) {
-    if ((er.fastTwitch ?? 0) > 0) { fighter.telegraphSpeedMult *= Math.max(0, 1 - refCurve("fastTwitch", "telegraph", er.fastTwitch!)); fighter.fastTwitchRank = er.fastTwitch!; fighter.moveSpeed *= 1 + er.fastTwitch! * refNum("fastTwitch", "movePerLevel"); }
+    if ((er.fastTwitch ?? 0) > 0) { fighter.fastTwitchRank = er.fastTwitch!; fighter.telegraphSpeedMult = telegraphMultFor(fighter); applyFastTwitchMove(fighter, er.fastTwitch!); }
     if ((er.heartRefinement ?? 0) > 0) { const hb = refCurve("heartRefinement", "stamina", er.heartRefinement!); fighter.maxStamina *= (1 + hb); fighter.maxStaminaCap *= (1 + hb); fighter.stamina = fighter.maxStamina; fighter.staminaRegen *= (1 + hb); fighter.repunchPenaltyMult = refCurve("heartRefinement", "repunchPenalty", er.heartRefinement!); }
     if ((er.chinHitter ?? 0) > 0) { fighter.stunMult *= (1 + refCurve("chinHitter", "stun", er.chinHitter!)); fighter.chinHitterVulnBonus = refCurve("chinHitter", "vuln", er.chinHitter!); fighter.chinHitterChargeDamageMult = chinHitterChargeMult(er.chinHitter!); }
     if ((er.technician ?? 0) > 0) { fighter.technicianRcStunChance = refCurve("technician", "rcStun", er.technician!); fighter.technicianChargeWhiffForgiveness = technicianWhiffForgiveness(er.technician!); fighter.technicianFeintCancelUnlocked = er.technician! >= refNum("technician", "feintCancelLevel"); fighter.technicianAccuracyBoost = refCurve("technician", "accuracy", er.technician!); }
@@ -3664,7 +3691,12 @@ export function applyEquipmentToFighter(fighter: FighterState, levels: Record<st
   if (e.powerPct > 0) fighter.powerBonusPct += e.powerPct;
   if (e.autoGuardPct > 0) fighter.autoGuardDuration *= 1 + e.autoGuardPct;
   // Shoes
-  if (e.moveSpeedPct > 0) fighter.moveSpeed *= 1 + e.moveSpeedPct;
+  // Shoes — a summand alongside the Speed stat and Fast Twitch, not a factor:
+  // move = base × (1 + stat + Fast Twitch + shoes). Equipment is applied last.
+  if (e.moveSpeedPct > 0) {
+    const sum = 1 + moveSpeedAddSum(fighter);
+    fighter.moveSpeed *= (sum + e.moveSpeedPct) / sum;
+  }
   // Trunks — a flat pool addition the fighter walks in with, capped against the
   // tank they already have so the same flat number can't be worth ten times a
   // low-level fighter's whole pool. Applied before the first tick, which is
@@ -3799,12 +3831,12 @@ function buildDoghouseEnemy(state: GameState): { fighter: FighterState; brain: A
     const estPoolT = Math.min(1, dhSP.stamina / MAX_SP);
     const efT = Math.min(1, (dhSP.focus || 0) / MAX_SP);
     fighter.damageMult *= 1 + pointCoef("powerDamage", 5) * epT * epT;
-    fighter.punchSpeedMult *= 1 + esT * pointCoef("speedPunch", 1.427);
+    fighter.punchSpeedMult *= speedPunchRatio(dhSP.speed);
     fighter.moveSpeed *= 1 + esT * pointCoef("speedMove", 0.15);
     fighter.duckSpeedMult = 1 + esT * pointCoef("speedDuck", 0.6);
     fighter.blockMult = 1 + edT * pointCoef("defenseBlock", 0.6);
     fighter.critResistMult = 1 - edT * pointCoef("defenseCritResist", 0.27);
-    fighter.telegraphSpeedMult = speedTelegraphMult(dhSP.speed);
+    fighter.telegraphSpeedMult = telegraphMultFor(fighter);
     fighter.staminaRegen *= 1 + estT * pointCoef("staminaRegen", 0.6);
     fighter.maxStamina *= 1 + estPoolT * pointCoef("staminaPool", 0.24);
     fighter.maxStaminaCap *= 1 + estPoolT * pointCoef("staminaPool", 0.24);
@@ -3830,6 +3862,7 @@ function buildDoghouseEnemy(state: GameState): { fighter: FighterState; brain: A
   fighter.damageMult = (fighter.damageMult ?? 1) * state.doghousePowerMult;
   fighter.defenseState = "none";
   fighter.guardBlend = 0;
+  fighter.punchProfileRosterId = pick?.rosterId;
   const brain = initAiBrain(state.aiDifficulty, archetype, level, false, pick?.rosterId);
   inheritPunchEnduranceFromCurrentEnemy(state, fighter);
   // Every opponent in the queue wears the same equipment the bout was set up with.
@@ -3935,6 +3968,7 @@ function startCosmeticPunch(fighter: FighterState, punchType: PunchType): void {
   fighter.punchProgress = 0;
   fighter.punchPhase = "launchDelay";
   fighter.punchPhaseTimer = 0;
+  fighter.punchHitResolved = false;
   fighter.isRePunch = false;
   fighter.retractionProgress = 0;
   fighter.isFeinting = false;
@@ -4186,7 +4220,51 @@ function getRhythmBuffs(fighter: FighterState): RhythmBuffs {
 /** How much slower a feint's arm comes out than the real punch's. */
 const FEINT_EXTEND_SLOW_MULT = 1.3;
 
-function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRePunch: boolean): Record<PunchPhaseType, number> {
+/**
+ * Punch-animation speed track hook (set by three/punchProfiles, which the engine
+ * can't import -- cycle). Returns the mean slow-down (1/speed) over an animation-
+ * time span [a,b] of the punch this fighter is throwing, or null with no track.
+ * Declared `var` without an initializer: the registration can run while this
+ * module is still mid-evaluation, and an initializer would wipe it.
+ */
+// eslint-disable-next-line no-var
+var punchSpeedWarp: ((f: FighterState) => ((a: number, b: number) => number) | null) | undefined;
+export function setPunchSpeedWarp(fn: (f: FighterState) => ((a: number, b: number) => number) | null): void {
+  punchSpeedWarp = fn;
+}
+
+const PUNCH_PHASE_ORDER: PunchPhaseType[] = ["launchDelay", "armSpeed", "contact", "linger", "retraction"];
+
+/**
+ * Real phase durations. The fighter's punch-profile speed track re-times each
+ * phase by its mean 1/speed over that phase's share of the stock timeline, so a
+ * slowed section really takes longer (hits, retraction, AI timing all follow).
+ * `base` returns the stock (un-warped) timeline the track is keyed against.
+ */
+function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRePunch: boolean, base = false): Record<PunchPhaseType, number> {
+  const d = getStockPunchPhaseDurations(fighter, config, isRePunch);
+  const warp = base ? null : punchSpeedWarp?.(fighter);
+  if (!warp) return d;
+  let total = 0;
+  for (const p of PUNCH_PHASE_ORDER) total += Math.max(0, d[p]);
+  if (total <= 0) return d;
+  let acc = 0;
+  for (const p of PUNCH_PHASE_ORDER) {
+    const v = Math.max(0, d[p]);
+    const a = acc / total;
+    acc += v;
+    const m = warp(a, acc / total);
+    // A broken track must never break the punch: fall back to stock timing.
+    d[p] = Number.isFinite(m) && m > 0 ? v * m : v;
+  }
+  return d;
+}
+
+function getStockPunchPhaseDurations(fighter: FighterState, literalConfig: PunchConfig, isRePunch: boolean): Record<PunchPhaseType, number> {
+  // Timing follows the punch's ROLE, so a southpaw's lead straight (engine
+  // "cross") is timed exactly like an orthodox jab: southpaw is orthodox's mirror.
+  const role = fighter.currentPunch ? punchRole(fighter.currentPunch, fighter.boxingStance) : null;
+  const config = role && role !== fighter.currentPunch ? getEffectivePunchConfig(role) : literalConfig;
   let speedMult = config.speed * fighter.punchSpeedMult;
   if (fighter.isCharging) {
     const guardDown = fighter.handsDown;
@@ -4204,7 +4282,7 @@ function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRe
   // with, wherever that punch is thrown -- in the combination or on its own.
   if (fighter.drilledPunch?.mastered) speedMult *= DRILLED_ACTION_CONFIG.masteryPunchSpeedMult;
 
-  const punchType = fighter.currentPunch;
+  const punchType = role;
   if (punchType === "jab") speedMult *= rhythmBuffs.jabSpeedMult;
   if (punchType === "jab" && fighter.defenseState !== "duck") speedMult *= 1.2;
   if (punchType === "cross") speedMult *= rhythmBuffs.crossSpeedMult;
@@ -4219,8 +4297,10 @@ function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRe
   const rawLaunchBase = 0.1 / speedMult * LAUNCH_DELAY_MULT;
   const launchBase = rawLaunchBase * (animCfg?.launchDelayMult ?? 1) * fatigueSlow;
   const armSpeedBase = 0.12 / speedMult / ARM_SPEED_MULT * (animCfg?.armSpeedMult ?? 1);
-  const contactBase = 0.03;
-  const lingerBase = levelScale(fighter.level, 0.2, 0.05, "punchLinger") / speedMult * LINGER_MULT * (animCfg?.lingerMult ?? 1);
+  // Hits are hitbox-based (resolved the moment the extending glove reaches the
+  // target, see updatePunch), so there is no dwell-at-contact phase any more.
+  const contactBase = 0;
+  const lingerBase = 0.2 / speedMult * LINGER_MULT * (animCfg?.lingerMult ?? 1);
   let retractBase = rawLaunchBase * 1.1;
   if (punchType === "cross") retractBase /= rhythmBuffs.crossRetractMult;
   retractBase *= fighter.retractionPenaltyMult;
@@ -4242,39 +4322,84 @@ function getPunchPhaseDurations(fighter: FighterState, config: PunchConfig, isRe
   };
 }
 
+/**
+ * Read-only visual helper: where each phase of the punch in flight starts and
+ * ends as a fraction of punchProgress. The fatigue multiplier scales every
+ * phase alike, so the fractions are exact without it. Null when not punching.
+ */
+/** Real seconds a fighter's punch takes, launch → end of retraction. */
+export function punchTotalDuration(fighter: FighterState, punchType: PunchType, base = false): number {
+  const d = getPunchPhaseDurations(fighter, getEffectivePunchConfig(punchType), false, base);
+  let total = 0;
+  for (const v of Object.values(d)) total += Math.max(0, v);
+  return total;
+}
+
+/** `base`: fractions on the stock timeline (animation time τ) instead of real time. */
+export function punchPhaseFractions(fighter: FighterState, base = false): Record<PunchPhaseType, [number, number]> | null {
+  if (!fighter.isPunching || !fighter.currentPunch) return null;
+  const d = getPunchPhaseDurations(fighter, getEffectivePunchConfig(fighter.currentPunch), fighter.isRePunch, base);
+  const order: PunchPhaseType[] = ["launchDelay", "armSpeed", "contact", "linger", "retraction"];
+  let total = 0;
+  for (const p of order) total += Math.max(0, d[p]);
+  if (total <= 0) return null;
+  const out = {} as Record<PunchPhaseType, [number, number]>;
+  let acc = 0;
+  for (const p of order) {
+    const s = acc / total;
+    acc += Math.max(0, d[p]);
+    out[p] = [s, acc / total];
+  }
+  return out;
+}
+
 function getTelegraphCooldownZ(_level: number, _punchType: PunchType): number {
   return 2.0;
 }
 
-function getTelegraphBaseDuration(level: number, punchType: PunchType): number {
+function getTelegraphBaseDuration(_level: number, punchType: PunchType): number {
   const isHook = punchType.includes("Hook");
   const isUppercut = punchType.includes("Uppercut");
-  // Base durations are long enough to be clearly visible at speed 0.
-  // speedTelegraphMult then shortens them proportional to the fighter's speed stat.
-  if (isHook) return levelScale(level, 0.90, 0.75, "telegraphHook");
-  if (isUppercut) return levelScale(level, 1.10, 0.90, "telegraphUppercut");
-  return levelScale(level, 0.60, 0.50, "telegraphJab"); // jab/cross
+  // Fixed base lengths, the same at every level: only the Speed stat and
+  // Fast Twitch shorten them (see telegraphMultFor).
+  if (isHook) return 0.90;
+  if (isUppercut) return 1.10;
+  return 0.60; // jab/cross
 }
 
-function speedTelegraphMult(rawSpeed: number): number {
-  if (rawSpeed <= 0) return 1.0;
-  const c200 = pointCoef("speedTelegraphAt200", 0.75);
-  const c1000 = pointCoef("speedTelegraphAt1000", 0.125);
-  if (rawSpeed <= 200) {
-    return 1.0 - (rawSpeed / 200) * c200;
-  }
-  const t = Math.min(1, (rawSpeed - 200) / 800);
-  return (1.0 - c200) - t * c1000;
+/**
+ * How much faster the Speed stat makes a whole punch (arm phases and telegraph
+ * alike): 1x at 0 points rising linearly to `speedPunchAtCap` (2x) at the speed
+ * soft cap (220), flat beyond it, so punch animations stay readable.
+ */
+function speedPunchRatio(rawSpeed: number): number {
+  const R = Math.max(1, pointCoef("speedPunchAtCap", 2));
+  const cap = Math.max(1, getScaling().caps.speedSoftCap);
+  return 1 + (R - 1) * Math.max(0, Math.min(1, rawSpeed / cap));
+}
+/**
+ * Telegraph length multiplier: the Speed-stat ratio plus Fast Twitch's
+ * telegraph speed, ADDED (not multiplied) — 2x stat + 1.0 Fast Twitch = 3x.
+ * Order-independent: reads rawSpeed and fastTwitchRank off the fighter.
+ */
+function telegraphMultFor(f: FighterState): number {
+  const ft = f.fastTwitchRank > 0 ? refCurve("fastTwitch", "telegraph", f.fastTwitchRank) : 0;
+  return 1 / (speedPunchRatio(f.rawSpeed ?? 0) + ft);
+}
+/** Fast Twitch move speed, added onto the Speed stat's move bonus rather than multiplied by it. */
+/** The additive move-speed bonuses already in moveSpeed: Speed stat + Fast Twitch. */
+function moveSpeedAddSum(f: FighterState): number {
+  return (f.speedT ?? 0) * pointCoef("speedMove", 0.15) + (f.fastTwitchRank ?? 0) * refNum("fastTwitch", "movePerLevel");
 }
 
-function shouldTelegraph(fighter: FighterState, _isRePunch: boolean, _punchType: PunchType = "jab"): boolean {
-  const level = Math.max(1, fighter.level);
-  // Level 1  → 100% chance every punch is telegraphed (fully predictable beginner)
-  // Level 50 → ~50% chance
-  // Level 100+ → 0% (no telegraph, fast/unpredictable)
-  const telegraphChance = levelScale(level, 1, 0, "telegraphChance");
-  if (telegraphChance <= 0) return false;
-  return Math.random() < telegraphChance;
+function applyFastTwitchMove(f: FighterState, rank: number): void {
+  const stat = (f.speedT ?? 0) * pointCoef("speedMove", 0.15);
+  f.moveSpeed *= (1 + stat + rank * refNum("fastTwitch", "movePerLevel")) / (1 + stat);
+}
+
+function shouldTelegraph(_fighter: FighterState, _isRePunch: boolean, _punchType: PunchType = "jab"): boolean {
+  // Every punch has its windup at every level: level never makes punches faster.
+  return true;
 }
 
 function computeSwayZoneMults(fighter: FighterState): void {
@@ -4446,7 +4571,71 @@ export function updatePerfectBlockRhythmLatch(defender: FighterState, attacker: 
   }
 }
 
+/**
+ * Centre-to-centre distance (px) at which the two fighters' guards meet: each
+ * guard glove sits ~0.45 m in front of its owner, so gloves/forearms touch at
+ * roughly 0.9 m apart. Lead feet are bladed to opposite sides and never get
+ * there first.
+ */
+export const LIMB_CONTACT_DIST = 46;
+
+/**
+ * How exposed a fighter's rhythm is right now, 0..1: 1 with the marker at an
+ * end of the arc (where the vulnerability window lives), 0 at the centre. Off
+ * (0) when the rhythm isn't running or the duck's immunity is in, matching
+ * isRhythmVulnerable.
+ */
+export function rhythmExposure(f: FighterState): number {
+  if (f.isKnockedDown || f.rhythmLevel <= 0) return 0;
+  if (!f.rhythmWalking) return 0;
+  if (isDuckLive(f)) return 0;
+  const p = Math.max(0, Math.min(1, f.rhythmProgress));
+  return 1 - 2 * Math.min(p, 1 - p);
+}
+
+function isHoldingFeint(f: FighterState): boolean {
+  return !!f.isFeinting && !!f.isPunching && f.punchPhase === "linger";
+}
+
+/**
+ * Limb contact: once the guards touch, the fighter whose rhythm is the more
+ * exposed is pinned (can't walk in, can't jab); if the other is holding a
+ * feint into the contact, the pinned fighter's straights fail too. Stamped
+ * once per tick before either corner moves or punches.
+ */
+export function updateLimbContact(state: GameState): void {
+  const a = state.player, b = state.enemy;
+  a.limbContactPinned = b.limbContactPinned = false;
+  a.limbContactStraightsLocked = b.limbContactStraightsLocked = false;
+  if (a.isKnockedDown || b.isKnockedDown) return;
+  if (getDistance(a, b) > LIMB_CONTACT_DIST) return;
+  const ea = rhythmExposure(a), eb = rhythmExposure(b);
+  if (ea === eb) return;
+  const [pinned, other] = ea > eb ? [a, b] : [b, a];
+  pinned.limbContactPinned = true;
+  pinned.limbContactStraightsLocked = isHoldingFeint(other);
+}
+
+/** Does limb contact refuse this punch input? Feints are never refused. */
+export function isPunchContactLocked(f: FighterState, punchType: PunchType, isFeint: boolean): boolean {
+  if (isFeint) return false;
+  if (f.limbContactPinned && punchType === "jab") return true;
+  return !!f.limbContactStraightsLocked && (punchType === "jab" || punchType === "cross");
+}
+
+/** Removes the component of a move direction that points at the opponent. */
+export function stripMoveTowardOpponent(self: FighterState, opp: FighterState, moveX: number, moveZ: number): [number, number] {
+  const tx = opp.x - self.x, tz = opp.z - self.z;
+  const len = Math.sqrt(tx * tx + tz * tz);
+  if (len <= 0.01) return [moveX, moveZ];
+  const nx = tx / len, nz = tz / len;
+  const dot = moveX * nx + moveZ * nz;
+  if (dot <= 0) return [moveX, moveZ];
+  return [moveX - dot * nx, moveZ - dot * nz];
+}
+
 function startTelegraph(fighter: FighterState, punchType: PunchType, isFeint: boolean, isCharged: boolean, telegraphMult: number, opponent: FighterState): boolean {
+  if (isPunchContactLocked(fighter, punchType, isFeint)) return false;
   if (isFeint && isPerfectBlockEngaged(fighter)) return false;
   // Snap-punch zones: scale with rawPower — 90% shorter telegraph, damage scales with power
   fighter.punchLaunchDamageMult = 1;
@@ -4486,7 +4675,7 @@ function startTelegraph(fighter: FighterState, punchType: PunchType, isFeint: bo
 
   let boostMult = 1 + fighter.feintedTelegraphBoost;
   if (isCharged) {
-    const chargeIncrease = levelScale(fighter.level, 0.15, 0.03, "chargeTelegraphIncrease");
+    const chargeIncrease = 0.15; // flat at every level
     boostMult *= (1 + chargeIncrease);
   }
   baseDur *= boostMult * telegraphMult * fighter.telegraphKdMult * Math.max(0.1, fighter.telegraphSpeedMult);
@@ -4520,7 +4709,7 @@ function startTelegraph(fighter: FighterState, punchType: PunchType, isFeint: bo
   fighter.telegraphRhythmPaused = isRhythmVulnerable(fighter, opponent);
   fighter.swayFrozen = fighter.telegraphRhythmPaused;
 
-  const slowDur = levelScale(fighter.level, 1.0, 0.25, "telegraphSlowDuration");
+  const slowDur = 1.0; // flat at every level
   fighter.telegraphSlowTimer = slowDur;
   fighter.telegraphSlowDuration = slowDur;
 
@@ -4882,6 +5071,7 @@ export function collectDrilledActions(state: GameState | null | undefined): Dril
 
 function attemptPunch(fighter: FighterState, punchType: PunchType, isFeint: boolean = false, isCharged: boolean = false, isRePunch: boolean = false, practiceMode: boolean = false, roundElapsed: number = 999, opponent?: FighterState): boolean {
   if (fighter.isKnockedDown) return false;
+  if (isPunchContactLocked(fighter, punchType, isFeint)) return false;
   if (fighter.telegraphIsLockout) return false;
 
   // Technician L20+: a real punch input while holding a feint cancels the feint
@@ -5058,6 +5248,7 @@ function attemptPunch(fighter: FighterState, punchType: PunchType, isFeint: bool
   fighter.punchProgress = 0;
   fighter.punchPhase = "launchDelay";
   fighter.punchPhaseTimer = 0;
+  fighter.punchHitResolved = false;
   fighter.punchTravelStartTime = gameElapsedTime;
   fighter.isRePunch = isRePunch;
   fighter.retractionProgress = 0;
@@ -6216,7 +6407,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
         defender.feintBaits++;
         attacker.retractionPenaltyMult = 2;
         attacker.feintWhiffPenaltyCooldown = 0.5;
-        attacker.feintedTelegraphBoost = levelScale(attacker.level, 0.20, 0.05, "feintTelegraphBoost");
+        attacker.feintedTelegraphBoost = 0.20; // flat at every level
         attacker.telegraphFeintRoundPenalty += 0.025;
       }
     }
@@ -6712,6 +6903,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
       type: effectType,
       text: effectText,
       attackerColor: result.blocked ? defender.colors.trunks : attacker.colors.trunks,
+      stunOrCrit: !result.blocked && (!!result.isStun || !!result.isCrit),
     });
 
     const hasCrowd = !state.practiceMode && !state.sparringMode;
@@ -7370,11 +7562,30 @@ function updatePunch(fighter: FighterState, opponent: FighterState, state: GameS
     fighter.retractionProgress = Math.min(1, fighter.punchPhaseTimer / currentPhaseDuration);
   }
 
+  // Hitbox contact: the glove's reach grows with the arm's extension
+  // (1-(1-t)^2 through armSpeed, matching the pose solve); the punch lands the
+  // moment that reach covers the distance. Out of reach at full extension it is
+  // resolved (as a whiff) when armSpeed ends.
+  if (fighter.punchPhase === "armSpeed" && !fighter.isFeinting && !fighter.punchHitResolved) {
+    const t = currentPhaseDuration > 0 ? Math.min(1, fighter.punchPhaseTimer / currentPhaseDuration) : 1;
+    const ext = 1 - (1 - t) * (1 - t);
+    const reach = getPunchReachPx(fighter, fighter.currentPunch!) * getRhythmBuffs(fighter).rangeMult;
+    if (getDistance(fighter, opponent) <= reach * ext) {
+      fighter.punchHitResolved = true;
+      applyHit(fighter, opponent, state);
+      // The hit can end or re-phase the punch (KD, forced retraction): stop here.
+      if (!fighter.isPunching || fighter.punchPhase !== "armSpeed") return;
+    }
+  }
+
   if (fighter.punchPhaseTimer >= currentPhaseDuration) {
     const currentIdx = phases.indexOf(fighter.punchPhase);
 
     if (fighter.punchPhase === "contact") {
-      applyHit(fighter, opponent, state);
+      if (!fighter.punchHitResolved) {
+        fighter.punchHitResolved = true;
+        applyHit(fighter, opponent, state);
+      }
       // A feint reaching full extension is one of the three things that draw a
       // flinch. A real punch draws one by landing instead, down in applyHit, so
       // only the empty one is claimed here — and only while this punch's feints
@@ -7675,7 +7886,8 @@ function updateBob(fighter: FighterState, dt: number, state?: GameState): void {
     }
   }
 
-  const levelSpeedScale = levelScale(fighter.level, 1, 2.5, "animSpeedScale");
+  // Leg drive is part of the punch, so it no longer speeds up with level.
+  const levelSpeedScale = 1;
   const isRetracting = fighter.isPunching && fighter.punchPhase === "retraction";
   const isDuckCross = fighter.defenseState === "duck" && fighter.isPunching && fighter.currentPunch === "cross";
   const isLeftHook = fighter.isPunching && fighter.currentPunch === "leftHook";
@@ -8268,6 +8480,9 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
     moveX /= mag;
     moveZ /= mag;
 
+    if (player.limbContactPinned) {
+      [moveX, moveZ] = stripMoveTowardOpponent(player, enemy, moveX, moveZ);
+    }
     if (enemy.feintTouchingOpponent) {
       const toEnemyX = enemy.x - player.x;
       const toEnemyZ = enemy.z - player.z;
@@ -8622,21 +8837,18 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
 
   // Reset (B). Spent on the way UP, like a punch: the read is graded against
   // where the bout is when the key comes back up, not when it went down, so a
-  // held key cannot bank a Reset and drop it into a window later. Refused only
-  // while a Reset window is already running (or a stun lock / knockdown).
+  // held key cannot bank a Reset and drop it into a window later. Always live:
+  // a press mid-snap restarts the snap; refused only during a stun lock or a
+  // knockdown.
   consumePress(RESET_KEY);
   if (consumeRelease(RESET_KEY)) {
     tryReset(player, state);
   }
 
-  const punchKeys: [string, PunchType][] = player.boxingStance === "southpaw" ? [
-    ["w", "cross"],
-    ["e", "jab"],
-    ["q", "rightHook"],
-    ["r", "leftHook"],
-    ["s", "rightUppercut"],
-    ["d", "leftUppercut"],
-  ] : [
+  // Same keys in both stances: the left-side keys (W/Q/S) always throw the
+  // LEFT glove and the right-side keys (E/R/D) the right glove. For a southpaw
+  // that puts the lead (right) hand on E and the rear (left) hand on W.
+  const punchKeys: [string, PunchType][] = [
     ["w", "jab"],
     ["e", "cross"],
     ["q", "leftHook"],
@@ -10274,6 +10486,7 @@ export function updateGame(state: GameState, dt: number): GameState {
     return state;
   }
 
+  updateLimbContact(state);
   if (state.cpuVsCpu) {
     updatePlayerAI(state, dt);
   } else {
@@ -10346,13 +10559,16 @@ export function updateGame(state: GameState, dt: number): GameState {
     const enemyAtWall = !isInsideDiamond(state.enemy.x, state.enemy.z, 30);
 
     if (playerAtWall && !enemyAtWall) {
-      state.enemy.x -= nx * (overlap + 1);
-      state.enemy.z -= nz * (overlap + 1);
+      state.enemy.x -= nx * overlap;
+      state.enemy.z -= nz * overlap;
     } else if (enemyAtWall && !playerAtWall) {
-      state.player.x += nx * (overlap + 1);
-      state.player.z += nz * (overlap + 1);
+      state.player.x += nx * overlap;
+      state.player.z += nz * overlap;
     } else {
-      const push = overlap / 2 + 1;
+      // Resolved exactly, no extra margin: a +1 px overshoot here pushed a
+      // fighter walking in back past where they started every other tick,
+      // which read as a jitter whenever the two walked into each other.
+      const push = overlap / 2;
       state.player.x += nx * push;
       state.player.z += nz * push;
       state.enemy.x -= nx * push;
@@ -11180,7 +11396,7 @@ export function startNextRound(state: GameState): GameState {
   snapFacingToward(state.enemy, state.player.x, state.player.z);
   for (const f of [state.player, state.enemy]) {
     if (state.currentRound > 1) {
-      const roundIncrease = levelScale(f.level, 0.05, 0.01, "telegraphRoundBonus");
+      const roundIncrease = 0.05; // flat at every level
       f.telegraphRoundBonus += roundIncrease;
     }
   }

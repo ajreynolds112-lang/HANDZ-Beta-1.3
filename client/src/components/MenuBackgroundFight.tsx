@@ -1,9 +1,10 @@
 import { useRef, useEffect } from "react";
 import { GameState, FighterColors, SKIN_COLOR_PRESETS, Archetype } from "@/game/types";
 import { createInitialState, startFight, updateGame } from "@/game/engine";
-import { renderGame, resetAutoZoom } from "@/game/renderer";
+import { resetAutoZoom } from "@/game/renderer";
 import { soundEngine } from "@/game/sound";
 import { ROSTER_DATA } from "@/game/rosterData";
+import { useFightScene3D } from "@/game/three/useFightScene3D";
 
 const BASE_W = 800;
 const BASE_H = 600;
@@ -99,6 +100,8 @@ export default function MenuBackgroundFight() {
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const restartLockRef = useRef<number>(0);
+  // 3D: the arena scene fills the screen; there is no HUD on a menu backdrop.
+  const view3d = useFightScene3D({ fillAspect: true });
 
   useEffect(() => {
     soundEngine.setSilent(true);
@@ -134,11 +137,8 @@ export default function MenuBackgroundFight() {
         stateRef.current = updateGame({ ...s }, dt);
       }
 
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext("2d");
-        if (ctx) renderGame(ctx, stateRef.current);
-      }
+      const ctx = canvasRef.current?.getContext("2d") ?? null;
+      view3d.draw(ctx, stateRef.current, { hud: false });
 
       animFrameRef.current = requestAnimationFrame(loop);
     };
@@ -147,6 +147,14 @@ export default function MenuBackgroundFight() {
   }, []);
 
   return (
+    <>
+    <canvas
+      ref={view3d.glCanvasRef}
+      data-testid="menu-background-fight-3d"
+      className="absolute inset-0 w-full h-full pointer-events-none"
+      style={{ visibility: "hidden" }}
+      aria-hidden="true"
+    />
     <canvas
       ref={canvasRef}
       width={BASE_W}
@@ -156,5 +164,6 @@ export default function MenuBackgroundFight() {
       style={{ imageRendering: "auto", objectFit: "cover" }}
       aria-hidden="true"
     />
+    </>
   );
 }

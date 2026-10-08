@@ -169,7 +169,7 @@ export default function ScalingReferenceTables() {
             {[10, 50, 200].map(gap => (
               <span key={gap} className="text-[11px] tabular-nums" style={{ color: "#dce9f7" }}>
                 <span style={{ color: MUTED }}>+{gap} lv</span>{" "}
-                {fmt(clampGapMult(1 + gapAhead("gapMoveSpeed") * gap))}x speed, {fmt(clampGapMult(1 + gapAhead("gapDamage") * gap))}x power
+                {fmt(clampGapMult(1 + gapAhead("gapDamage") * gap))}x power
               </span>
             ))}
           </div>

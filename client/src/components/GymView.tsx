@@ -15,7 +15,9 @@ import PunchEnduranceMeter from "@/components/PunchEnduranceMeter";
 import DailyRewardBadge from "@/components/DailyRewardBadge";
 import * as localSaves from "@/lib/localSaves";
 import { createInitialState, startFight, updateGame } from "@/game/engine";
-import { renderGame, renderFighterPreview, renderFightersOnly, getCameraView, setGymEnvironmentDrawer } from "@/game/renderer";
+import { FightScene3D } from "@/game/three/FightScene3D";
+import { setGymDressing } from "@/game/three/gym3d";
+import { GYM_PLAYER_PX, gymZoneAnchor, pickGymZone, projectGymPoint } from "@/game/three/gymLayout";
 import { ringColorsOf } from "@/game/ringColors";
 import type { GameState, FighterColors } from "@/game/types";
 import { type Archetype, SKIN_COLOR_PRESETS } from "@/game/types";
@@ -23,11 +25,6 @@ import { type Archetype, SKIN_COLOR_PRESETS } from "@/game/types";
 // ==================== CONSTANTS ====================
 const CW = 800;
 const CH = 600;
-// Must match engine.ts ring constants exactly
-const RING_CX = 400;
-const RING_CY = 260;
-const RING_HW = 280;
-const RING_HH = 180;
 const GYM_LS_KEY = "handz_gym_state";
 /** How often standing in the gym banks what the equipment has produced. */
 const PASSIVE_TICK_MS = 10_000;
@@ -231,601 +228,6 @@ function makeGymFight(): GameState {
   return gs;
 }
 
-// ==================== CAMERA PROJECTION ====================
-// Mirrors the renderer's world→screen mapping (CAM_ZOOM=1.35, CAM_PITCH=0.62,
-// screen center 400/288, canvas re-center 400/300 → net static offset (0,+12)).
-// The defaults collapse to the gym home screen's static camera (yaw 0, zoom 1,
-// focus on ring center); drawSparringGymEnvironment temporarily overrides the
-// cam vars so the same equipment code follows the live sparring camera.
-const PSX = 1.35;        // horizontal + height scale (CAM_ZOOM)
-const PSY = 0.62 * 1.35; // floor depth scale (CAM_PITCH * CAM_ZOOM)
-const CAM_FX0 = 400;     // CAM_SCREEN_CX
-const CAM_FY0 = 288;     // CAM_SCREEN_CY (600 * 0.48)
-let camYaw = 0, camZoom = 1, camFx = CAM_FX0, camFy = CAM_FY0;
-function projX(wx: number, wz: number = RING_CY): number {
-  const rx = wx - RING_CX, rz = wz - RING_CY;
-  const rotX = rx * Math.cos(camYaw) + rz * Math.sin(camYaw);
-  return 400 + (CAM_FX0 + rotX * PSX - camFx) * camZoom;
-}
-function projY(wz: number, wy = 0, wx: number = RING_CX): number {
-  const rx = wx - RING_CX, rz = wz - RING_CY;
-  const rotZ = -rx * Math.sin(camYaw) + rz * Math.cos(camYaw);
-  return 300 + (CAM_FY0 + rotZ * PSY - wy * PSX - camFy) * camZoom;
-}
-
-// Ring diamond as it appears on screen under the static camera
-const RING_SCR_CX = 400;
-const RING_SCR_CY = 300;
-const RING_SCR_HW = RING_HW * PSX;
-const RING_SCR_HH = RING_HH * PSY;
-
-// Equipment rows sit parallel to the nearest ring edge (Clash-of-Clans style)
-const YAW_NE = Math.atan2(-RING_HH, RING_HW); // parallel to upper-left / lower-right edges
-const YAW_SE = Math.atan2(RING_HH, RING_HW);  // parallel to upper-right / lower-left edges
-
-// World anchors for the floor-standing equipment in the 4 corners
-const EQ = {
-  trophyA:   { cx: 190, cz: 112 },
-  exitDoor:  { cx: 252, cz: 72 },
-  trophyB:   { cx: 314, cz: 32 },
-  plateRack: { cx: 506, cz: 45 },
-  bench:     { cx: 576, cz: 90 },
-  dumbbells: { cx: 646, cz: 135 },
-  lockers:   { cx: 185, cz: 412 },
-  bag3:      { cx: 280, cz: 466 },
-  bag1:      { cx: 520, cz: 466 },
-  bag2:      { cx: 590, cz: 421 },
-  equipCrate:{ cx: 650, cz: 450 },
-  desk:      { cx: 592, cz: 528 },
-  chair:     { cx: 592, cz: 554 },
-  bottles:   { cx: 540, cz: 546 },
-  woodBench: { cx: 160, cz: 480 },
-  player:    { cx: 225, cz: 480 },
-} as const;
-
-// Player sprite composited from an offscreen renderFighterPreview canvas.
-// Feet in that 160x192 canvas sit at y = 192*0.82 ≈ 157.
-const PLAYER_PC_W = 160;
-const PLAYER_PC_H = 192;
-const PLAYER_FEET_Y = Math.round(PLAYER_PC_H * 0.82);
-const PLAYER_SX = projX(EQ.player.cx);
-const PLAYER_SY = projY(EQ.player.cz);
-
-// ==================== HIT DETECTION ====================
-function pointInDiamond(px: number, py: number, cx: number, cy: number, hw: number, hh: number): boolean {
-  return Math.abs(px - cx) / hw + Math.abs(py - cy) / hh <= 1;
-}
-
-type Rect = { x: number; y: number; w: number; h: number };
-function rectUnion(a: Rect, b: Rect): Rect {
-  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
-  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
-}
-// Screen rect around a floor-anchored object: world anchor + half-width/height in screen px
-function objRect(cx: number, cz: number, halfWpx: number, hPx: number, pad = 6): Rect {
-  const sx = projX(cx), sy = projY(cz);
-  return { x: sx - halfWpx - pad, y: sy - hPx - pad, w: (halfWpx + pad) * 2, h: hPx + pad * 2 };
-}
-
-// Clickable screen areas derived from the projected equipment footprints.
-// Earlier entries win where rects overlap (player sits in front of the lockers).
-const HITRECTS: { zone: GymZone; rect: Rect }[] = [
-  { zone: "player", rect: objRect(EQ.player.cx, EQ.player.cz, 24, 105) },
-  { zone: "office", rect: [
-      objRect(EQ.desk.cx, EQ.desk.cz, 48, 60),
-      objRect(EQ.chair.cx, EQ.chair.cz, 20, 40),
-      objRect(EQ.bottles.cx, EQ.bottles.cz, 24, 36),
-    ].reduce(rectUnion) },
-  { zone: "trophyA", rect: objRect(EQ.trophyA.cx, EQ.trophyA.cz, 46, 76) },
-  { zone: "door", rect: objRect(EQ.exitDoor.cx, EQ.exitDoor.cz, 26, 100) },
-  { zone: "trophyB", rect: objRect(EQ.trophyB.cx, EQ.trophyB.cz, 46, 76) },
-  { zone: "weights", rect: [
-      objRect(EQ.plateRack.cx, EQ.plateRack.cz, 30, 44),
-      objRect(EQ.bench.cx, EQ.bench.cz, 44, 58),
-      objRect(EQ.dumbbells.cx, EQ.dumbbells.cz, 32, 42),
-    ].reduce(rectUnion) },
-  { zone: "bag3", rect: objRect(EQ.bag3.cx, EQ.bag3.cz, 22, 92) },
-  { zone: "lockers", rect: objRect(EQ.lockers.cx, EQ.lockers.cz, 62, 76) },
-  { zone: "bag1", rect: objRect(EQ.bag1.cx, EQ.bag1.cz, 22, 92) },
-  { zone: "bag2", rect: objRect(EQ.bag2.cx, EQ.bag2.cz, 22, 92) },
-  { zone: "equipCrate", rect: objRect(EQ.equipCrate.cx, EQ.equipCrate.cz, 26, 40) },
-];
-
-// ==================== PSEUDO-3D DRAW HELPERS ====================
-type Pt = [number, number];
-
-function lerpPt(a: Pt, b: Pt, t: number): Pt {
-  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-}
-
-function quad(ctx: CanvasRenderingContext2D, pts: Pt[], fill: string, outline = "rgba(0,0,0,0.35)"): void {
-  ctx.beginPath();
-  ctx.moveTo(pts[0][0], pts[0][1]);
-  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-  ctx.closePath();
-  ctx.fillStyle = fill; ctx.fill();
-  ctx.strokeStyle = outline; ctx.lineWidth = 0.8; ctx.stroke();
-}
-
-function insetQuad(q: Pt[], t: number): Pt[] {
-  const cx = (q[0][0] + q[1][0] + q[2][0] + q[3][0]) / 4;
-  const cy = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4;
-  return q.map(([x, y]) => [x + (cx - x) * t, y + (cy - y) * t] as Pt);
-}
-
-// Bilinear point on a face quad [bottomLeft, bottomRight, topRight, topLeft]
-// u: 0..1 along width, v: 0..1 from bottom edge to top edge
-function facePt(q: Pt[], u: number, v: number): Pt {
-  return lerpPt(lerpPt(q[0], q[1], u), lerpPt(q[3], q[2], u), v);
-}
-function faceSub(q: Pt[], u0: number, u1: number, v0: number, v1: number): Pt[] {
-  return [facePt(q, u0, v0), facePt(q, u1, v0), facePt(q, u1, v1), facePt(q, u0, v1)];
-}
-
-interface PrismFaces { base: Pt[]; top: Pt[]; front: Pt[]; topFace: Pt[]; }
-
-// Angled box standing on the gym floor, projected with the fixed camera.
-// Footprint corner order: front-left, front-right, back-right, back-left.
-// Draws the visible side face, the front face and the top face (CoC style).
-function drawPrism(
-  ctx: CanvasRenderingContext2D,
-  cx: number, cz: number, w: number, d: number, h: number, yaw: number,
-  front: string, side: string, topCol: string, y0 = 0,
-): PrismFaces {
-  const ca = Math.cos(yaw), sa = Math.sin(yaw);
-  const hw = w / 2, hd = d / 2;
-  const foot: Pt[] = ([[-hw, hd], [hw, hd], [hw, -hd], [-hw, -hd]] as Pt[])
-    .map(([px, pz]) => [cx + px * ca - pz * sa, cz + px * sa + pz * ca] as Pt);
-  const base: Pt[] = foot.map(([wx, wz]) => [projX(wx, wz), projY(wz, y0, wx)] as Pt);
-  const top: Pt[] = foot.map(([wx, wz]) => [projX(wx, wz), projY(wz, y0 + h, wx)] as Pt);
-  if (sa > 0.02) quad(ctx, [base[1], base[2], top[2], top[1]], side);       // right side visible
-  else if (sa < -0.02) quad(ctx, [base[3], base[0], top[0], top[3]], side); // left side visible
-  const frontQ: Pt[] = [base[0], base[1], top[1], top[0]];
-  quad(ctx, frontQ, front);
-  const topQ: Pt[] = [top[0], top[1], top[2], top[3]];
-  quad(ctx, topQ, topCol);
-  return { base, top, front: frontQ, topFace: topQ };
-}
-
-function drawFloorShadow(ctx: CanvasRenderingContext2D, cx: number, cz: number, rxW: number, rzW: number, alpha = 0.22): void {
-  ctx.fillStyle = `rgba(25,15,8,${alpha})`;
-  ctx.beginPath();
-  ctx.ellipse(projX(cx, cz), projY(cz, 0, cx), rxW * PSX * camZoom, rzW * PSY * camZoom, 0, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-// Glowing floor ellipse under an object (hover highlight), aligned with its yaw
-function drawHoverGlow(ctx: CanvasRenderingContext2D, cx: number, cz: number, halfLenW: number, halfDepW: number, yaw: number, rgb: string): void {
-  const ca = Math.cos(yaw), sa = Math.sin(yaw);
-  const rx = halfLenW * Math.hypot(ca * PSX, sa * PSY) * camZoom;
-  const rot = Math.atan2(sa * PSY, ca * PSX);
-  const ry = halfDepW * PSY * camZoom;
-  const sx = projX(cx, cz), sy = projY(cz, 0, cx);
-  ctx.fillStyle = `rgba(${rgb},0.14)`;
-  ctx.beginPath();
-  ctx.ellipse(sx, sy, rx, ry, rot, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = `rgba(${rgb},0.55)`;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-}
-
-// Vertical cylinder standing on the floor (bases, poles, heavy bags)
-function drawCylinder(
-  ctx: CanvasRenderingContext2D,
-  cx: number, cz: number, r: number, y0: number, y1: number,
-  cL: string, cM: string, cR: string, topCol: string,
-): void {
-  const sx = projX(cx, cz), rx = r * PSX * camZoom, ry = r * PSY * camZoom;
-  const yb = projY(cz, y0, cx), yt = projY(cz, y1, cx);
-  const g = ctx.createLinearGradient(sx - rx, 0, sx + rx, 0);
-  g.addColorStop(0, cL); g.addColorStop(0.35, cM); g.addColorStop(1, cR);
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.moveTo(sx - rx, yt);
-  ctx.lineTo(sx - rx, yb);
-  ctx.ellipse(sx, yb, rx, ry, 0, Math.PI, 0, true);
-  ctx.lineTo(sx + rx, yt);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = "rgba(0,0,0,0.3)"; ctx.lineWidth = 0.8; ctx.stroke();
-  ctx.fillStyle = topCol;
-  ctx.beginPath();
-  ctx.ellipse(sx, yt, rx, ry, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-}
-
-// ==================== EQUIPMENT DRAW FUNCTIONS ====================
-// All equipment stands on the gym floor as angled pseudo-3D objects
-// projected with the same fixed camera as the ring.
-
-// Wider display case with earned trophies (gold cups) and medals (silver discs)
-// arranged on three shelves, filling top-down as they are earned.
-function drawTrophyCaseObj(ctx: CanvasRenderingContext2D, cx: number, cz: number, yaw: number, trophies: number, medals: number): void {
-  drawFloorShadow(ctx, cx, cz, 38, 16);
-  const f = drawPrism(ctx, cx, cz, 64, 18, 52, yaw, "#6b4c22", "#4a3015", "#9b7242");
-  // glass front with gold trim
-  quad(ctx, insetQuad(f.front, 0.1), "rgba(180,220,255,0.15)", "rgba(212,175,55,0.65)");
-  // two shelf lines
-  ctx.strokeStyle = "rgba(100,70,30,0.55)"; ctx.lineWidth = 1;
-  for (const v of [0.37, 0.64]) {
-    const shL = facePt(f.front, 0.08, v), shR = facePt(f.front, 0.92, v);
-    ctx.beginPath(); ctx.moveTo(shL[0], shL[1]); ctx.lineTo(shR[0], shR[1]); ctx.stroke();
-  }
-  // earned items fill 3 shelves x 8 slots, trophies first, then medals
-  const shelfV = [0.78, 0.52, 0.24]; // item base heights (top shelf first)
-  const slots = 8;
-  const total = Math.min(trophies + medals, shelfV.length * slots);
-  for (let i = 0; i < total; i++) {
-    const shelf = Math.floor(i / slots);
-    const col = i % slots;
-    const u = 0.14 + (col / (slots - 1)) * 0.72;
-    const p = facePt(f.front, u, shelfV[shelf]);
-    if (i < trophies) {
-      // tiny gold cup: bowl + stem base
-      ctx.fillStyle = "#D4AF37";
-      ctx.beginPath(); ctx.arc(p[0], p[1] - 2.2, 2.2, 0, Math.PI * 2); ctx.fill();
-      ctx.fillRect(p[0] - 1.9, p[1] + 0.4, 3.8, 1.5);
-    } else {
-      // medal: ribbon tick + disc
-      ctx.strokeStyle = "#7a2030"; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.moveTo(p[0], p[1] - 4.6); ctx.lineTo(p[0], p[1] - 1.6); ctx.stroke();
-      ctx.fillStyle = "#c8ccd4";
-      ctx.beginPath(); ctx.arc(p[0], p[1] - 1.2, 1.9, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = 0.6; ctx.stroke();
-    }
-  }
-}
-
-function drawExitDoorObj(ctx: CanvasRenderingContext2D, cx: number, cz: number, yaw: number): void {
-  drawFloorShadow(ctx, cx, cz, 22, 12);
-  const f = drawPrism(ctx, cx, cz, 34, 10, 58, yaw, "#7a5535", "#57381f", "#8f6a42");
-  // recessed door panel + window
-  quad(ctx, faceSub(f.front, 0.12, 0.88, 0.04, 0.94), "#5d3f22", "rgba(0,0,0,0.4)");
-  quad(ctx, faceSub(f.front, 0.3, 0.7, 0.6, 0.85), "rgba(180,220,255,0.32)", "#3d2b1a");
-  // knob
-  const knob = facePt(f.front, 0.8, 0.46);
-  ctx.fillStyle = "#D4AF37";
-  ctx.beginPath(); ctx.arc(knob[0], knob[1], 1.8, 0, Math.PI * 2); ctx.fill();
-  // EXIT sign above the door
-  const sign = drawPrism(ctx, cx, cz, 26, 6, 10, yaw, "#bb0000", "#800000", "#d42222", 62);
-  const tc = facePt(sign.front, 0.5, 0.5);
-  ctx.fillStyle = "#fff"; ctx.font = "bold 8px sans-serif"; ctx.textAlign = "center";
-  ctx.fillText("EXIT", tc[0], tc[1] + 3);
-}
-
-function drawPlateRackObj(ctx: CanvasRenderingContext2D, cx: number, cz: number, yaw: number): void {
-  drawFloorShadow(ctx, cx, cz, 25, 11);
-  const f = drawPrism(ctx, cx, cz, 40, 12, 22, yaw, "#3c3c3c", "#262626", "#505050");
-  // weight plates standing in the rack
-  const plateCols = ["#cc2222", "#1155cc", "#e8e8e8", "#cc2222"];
-  const plateR = [7.5, 7, 6.5, 6];
-  for (let i = 0; i < 4; i++) {
-    const p = facePt(f.topFace, 0.17 + i * 0.22, 0.5);
-    ctx.fillStyle = plateCols[i];
-    ctx.beginPath(); ctx.arc(p[0], p[1] - plateR[i] + 2, plateR[i], 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,0.45)"; ctx.lineWidth = 0.8; ctx.stroke();
-    ctx.fillStyle = "#222";
-    ctx.beginPath(); ctx.arc(p[0], p[1] - plateR[i] + 2, 1.6, 0, Math.PI * 2); ctx.fill();
-  }
-}
-
-function drawBenchObj(ctx: CanvasRenderingContext2D, cx: number, cz: number, yaw: number): void {
-  drawFloorShadow(ctx, cx, cz, 33, 15);
-  const ca = Math.cos(yaw), sa = Math.sin(yaw);
-  // two upright posts at the head end (back one first)
-  const posts: [number, number][] = [[-14, -8.5], [-14, 8.5]]
-    .map(([px, pz]) => [cx + px * ca - pz * sa, cz + px * sa + pz * ca]);
-  posts.sort((a, b) => a[1] - b[1]);
-  drawPrism(ctx, posts[0][0], posts[0][1], 4.5, 4.5, 34, yaw, "#3a3a3a", "#242424", "#4e4e4e");
-  // bench pad
-  drawPrism(ctx, cx, cz, 40, 12, 13, yaw, "#6e1f1f", "#4a1414", "#963030");
-  drawPrism(ctx, posts[1][0], posts[1][1], 4.5, 4.5, 34, yaw, "#3a3a3a", "#242424", "#4e4e4e");
-  // barbell resting across the posts
-  const be: [number, number][] = [[-14, -16.5], [-14, 16.5]]
-    .map(([px, pz]) => [cx + px * ca - pz * sa, cz + px * sa + pz * ca]);
-  const p1: Pt = [projX(be[0][0], be[0][1]), projY(be[0][1], 34, be[0][0])];
-  const p2: Pt = [projX(be[1][0], be[1][1]), projY(be[1][1], 34, be[1][0])];
-  ctx.strokeStyle = "#999"; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke();
-  for (const [pp, col] of [[p1, "#cc2222"], [p2, "#1155cc"]] as [Pt, string][]) {
-    ctx.fillStyle = "#1b1b1b";
-    ctx.beginPath(); ctx.arc(pp[0], pp[1], 7.5, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
-  }
-}
-
-function drawDumbbellRackObj(ctx: CanvasRenderingContext2D, cx: number, cz: number, yaw: number): void {
-  drawFloorShadow(ctx, cx, cz, 27, 11);
-  const f = drawPrism(ctx, cx, cz, 44, 13, 22, yaw, "#35353f", "#22222a", "#4a4a56");
-  // dumbbells lying on top
-  for (const u of [0.18, 0.5, 0.82]) {
-    const a = facePt(f.topFace, u, 0.18), b = facePt(f.topFace, u, 0.82);
-    ctx.strokeStyle = "#999"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
-    ctx.fillStyle = "#2e2e2e";
-    for (const p of [a, b]) {
-      ctx.beginPath(); ctx.arc(p[0], p[1], 3, 0, Math.PI * 2); ctx.fill();
-    }
-  }
-}
-
-function drawLockersObj(ctx: CanvasRenderingContext2D, cx: number, cz: number, yaw: number): void {
-  drawFloorShadow(ctx, cx, cz, 50, 13);
-  const f = drawPrism(ctx, cx, cz, 92, 16, 52, yaw, "#44607e", "#31485f", "#5a7896");
-  for (let i = 0; i < 4; i++) {
-    const u0 = i * 0.25 + 0.02, u1 = (i + 1) * 0.25 - 0.02;
-    quad(ctx, faceSub(f.front, u0, u1, 0.05, 0.95), i % 2 ? "#3d5c7a" : "#4a6a8a", "rgba(0,0,0,0.28)");
-    // vents
-    ctx.strokeStyle = "rgba(0,0,0,0.3)"; ctx.lineWidth = 0.7;
-    for (let j = 0; j < 3; j++) {
-      const a = facePt(f.front, u0 + 0.03, 0.72 + j * 0.07);
-      const b = facePt(f.front, u1 - 0.03, 0.72 + j * 0.07);
-      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
-    }
-    // handle
-    const hd = facePt(f.front, u1 - 0.06, 0.48);
-    ctx.fillStyle = "#c9c9c9";
-    ctx.beginPath(); ctx.arc(hd[0], hd[1], 1.3, 0, Math.PI * 2); ctx.fill();
-  }
-}
-
-// Free-standing heavy bag: round base + pole + padded bag cylinder
-function drawStandBagObj(ctx: CanvasRenderingContext2D, cx: number, cz: number): void {
-  drawFloorShadow(ctx, cx, cz, 17, 10);
-  drawCylinder(ctx, cx, cz, 13, 0, 5, "#191919", "#343434", "#101010", "#2c2c2c");
-  drawCylinder(ctx, cx, cz, 2.6, 5, 16, "#3c3c3c", "#6a6a6a", "#2c2c2c", "#555555");
-  drawCylinder(ctx, cx, cz, 10.5, 16, 64, "#4a1515", "#8b3a3a", "#3a1010", "#5c1c1c");
-  const sx = projX(cx, cz), rx = 10.5 * PSX * camZoom;
-  // vertical sheen
-  ctx.fillStyle = "rgba(255,130,100,0.10)";
-  ctx.fillRect(sx - 6, projY(cz, 60, cx), 6, projY(cz, 20, cx) - projY(cz, 60, cx));
-  // tape lines
-  ctx.strokeStyle = "rgba(220,220,220,0.25)"; ctx.lineWidth = 1.5;
-  for (const wy of [30, 48]) {
-    const y = projY(cz, wy, cx);
-    ctx.beginPath(); ctx.moveTo(sx - rx + 2, y); ctx.lineTo(sx + rx - 2, y); ctx.stroke();
-  }
-}
-
-// The manager's office desk below the heavy bags — opens the Fight Planner
-let monitorScreenQuad: Pt[] | null = null;
-
-function drawOfficeObj(ctx: CanvasRenderingContext2D, night = false): void {
-  const yaw = YAW_NE;
-  const ca = Math.cos(yaw), sa = Math.sin(yaw);
-  const at = (cx: number, cz: number, px: number, pz: number): [number, number] =>
-    [cx + px * ca - pz * sa, cz + px * sa + pz * ca];
-
-  // desk
-  {
-    const { cx, cz } = EQ.desk;
-    drawFloorShadow(ctx, cx, cz, 36, 15);
-    const f = drawPrism(ctx, cx, cz, 62, 24, 26, yaw, "#5d4024", "#43301b", "#7a5a36");
-    // drawer fronts
-    quad(ctx, faceSub(f.front, 0.58, 0.94, 0.14, 0.5), "#4e351e", "rgba(0,0,0,0.35)");
-    quad(ctx, faceSub(f.front, 0.58, 0.94, 0.56, 0.92), "#4e351e", "rgba(0,0,0,0.35)");
-    for (const v of [0.32, 0.74]) {
-      const hd = facePt(f.front, 0.76, v);
-      ctx.fillStyle = "#c9a24a";
-      ctx.fillRect(hd[0] - 3, hd[1] - 0.8, 6, 1.6);
-    }
-    // monitor on the desktop
-    const [mx, mz] = at(cx, cz, -14, -3);
-    const mon = drawPrism(ctx, mx, mz, 17, 3, 12, yaw, "#0d1116", "#080b0e", "#1a222b", 30);
-    monitorScreenQuad = insetQuad(mon.front, 0.16);
-    quad(ctx, monitorScreenQuad, night ? "#f2f6ff" : "rgba(120,200,255,0.5)", "rgba(0,0,0,0.4)");
-    drawPrism(ctx, mx, mz, 5, 3, 4, yaw, "#20262e", "#161b21", "#2a323c", 26);
-    // papers + phone on the desktop
-    const [px1, pz1] = at(cx, cz, 8, 2);
-    drawPrism(ctx, px1, pz1, 12, 8, 1.4, yaw, "#d8d2c2", "#b8b2a2", "#efe9d9", 26);
-    const [px2, pz2] = at(cx, cz, 22, -3);
-    drawPrism(ctx, px2, pz2, 7, 5, 2, yaw, "#20262e", "#14181e", "#2c343e", 26);
-  }
-
-  // office chair pulled up on the near side of the desk (closer to the camera,
-  // so it must be drawn after the desk to layer on top of it)
-  {
-    const { cx, cz } = EQ.chair;
-    drawFloorShadow(ctx, cx, cz, 13, 8, 0.18);
-    // backrest behind the seat
-    const [bx, bz] = at(cx, cz, 0, 8);
-    drawPrism(ctx, bx, bz, 18, 4, 30, yaw, "#252c38", "#181d26", "#2f3846");
-    drawPrism(ctx, cx, cz, 18, 16, 14, yaw, "#2c3442", "#1e242e", "#39434f");
-  }
-
-  // crate of water bottles beside the desk
-  {
-    const { cx, cz } = EQ.bottles;
-    drawFloorShadow(ctx, cx, cz, 15, 9, 0.18);
-    drawPrism(ctx, cx, cz, 26, 14, 10, yaw, "#28486a", "#1c3450", "#356087");
-    for (const off of [-7.5, 0, 7.5]) {
-      const [bx, bz] = at(cx, cz, off, 0);
-      drawCylinder(ctx, bx, bz, 3, 10, 22, "#5a8fc0", "#9cc4e8", "#3f6f9e", "#cfe6f8");
-    }
-  }
-}
-
-// Simple wooden seating bench (decoration next to the player)
-function drawWoodBenchObj(ctx: CanvasRenderingContext2D, cx: number, cz: number, yaw: number): void {
-  drawFloorShadow(ctx, cx, cz, 28, 11);
-  const ca = Math.cos(yaw), sa = Math.sin(yaw);
-  const legs: [number, number][] = [[-19, 0], [19, 0]]
-    .map(([px, pz]) => [cx + px * ca - pz * sa, cz + px * sa + pz * ca]);
-  legs.sort((a, b) => a[1] - b[1]);
-  for (const [lx, lz] of legs) {
-    drawPrism(ctx, lx, lz, 5, 9, 12, yaw, "#4e3620", "#3a2817", "#5f452b");
-  }
-  // seat plank
-  drawPrism(ctx, cx, cz, 52, 13, 4.5, yaw, "#8a6134", "#6b4a26", "#a87c48", 12);
-}
-
-// ==================== CORNER ZONES ====================
-const GLOW_EXIT = "110,220,90";
-const GLOW_WEIGHTS = "255,215,80";
-const GLOW_BAG = "255,150,50";
-const GLOW_TROPHY = "255,215,80";
-const GLOW_MEDAL = "227,99,255";
-const GLOW_OFFICE = "120,180,255";
-const GLOW_PLAYER = "80,220,220";
-const GLOW_CRATE = "255,190,90";
-
-// Trophy case / exit door / medal case row — top-left, angled parallel to the
-// upper-left ring edge. Each object is its own clickable zone.
-function drawExitRow(ctx: CanvasRenderingContext2D, hz: GymZone | null, ts: TrophyState): void {
-  if (hz === "trophyA") drawHoverGlow(ctx, EQ.trophyA.cx, EQ.trophyA.cz, 36, 16, YAW_NE, GLOW_TROPHY);
-  if (hz === "door") drawHoverGlow(ctx, EQ.exitDoor.cx, EQ.exitDoor.cz, 21, 12, YAW_NE, GLOW_EXIT);
-  if (hz === "trophyB") drawHoverGlow(ctx, EQ.trophyB.cx, EQ.trophyB.cz, 36, 16, YAW_NE, GLOW_MEDAL);
-  drawTrophyCaseObj(ctx, EQ.trophyA.cx, EQ.trophyA.cz, YAW_NE, ts.aTrophies, ts.aMedals);
-  drawExitDoorObj(ctx, EQ.exitDoor.cx, EQ.exitDoor.cz, YAW_NE);
-  drawTrophyCaseObj(ctx, EQ.trophyB.cx, EQ.trophyB.cz, YAW_NE, ts.bTrophies, ts.bMedals);
-}
-
-// Weight row — top-right, angled parallel to the upper-right ring edge
-function drawWeightArea(ctx: CanvasRenderingContext2D, hovered: boolean): void {
-  if (hovered) {
-    drawHoverGlow(ctx, EQ.plateRack.cx, EQ.plateRack.cz, 25, 11, YAW_SE, GLOW_WEIGHTS);
-    drawHoverGlow(ctx, EQ.bench.cx, EQ.bench.cz, 32, 16, YAW_SE, GLOW_WEIGHTS);
-    drawHoverGlow(ctx, EQ.dumbbells.cx, EQ.dumbbells.cz, 27, 11, YAW_SE, GLOW_WEIGHTS);
-  }
-  drawPlateRackObj(ctx, EQ.plateRack.cx, EQ.plateRack.cz, YAW_SE);
-  drawBenchObj(ctx, EQ.bench.cx, EQ.bench.cz, YAW_SE);
-  drawDumbbellRackObj(ctx, EQ.dumbbells.cx, EQ.dumbbells.cz, YAW_SE);
-}
-
-// Lockers + free-standing bag — bottom-left, angled parallel to the lower-left ring edge
-function drawLockerArea(ctx: CanvasRenderingContext2D, bagHovered: boolean, lockersHovered = false): void {
-  if (lockersHovered) drawHoverGlow(ctx, EQ.lockers.cx, EQ.lockers.cz, 52, 12, YAW_SE, GLOW_BAG);
-  if (bagHovered) drawHoverGlow(ctx, EQ.bag3.cx, EQ.bag3.cz, 16, 12, 0, GLOW_BAG);
-  drawLockersObj(ctx, EQ.lockers.cx, EQ.lockers.cz, YAW_SE);
-  drawStandBagObj(ctx, EQ.bag3.cx, EQ.bag3.cz);
-}
-
-// Equipment Upgrades crate, beside the far-right heavy bag. Padlocked until the
-// player's first career win, lid open from then on.
-function drawEquipmentCrateObj(ctx: CanvasRenderingContext2D, cx: number, cz: number, unlocked: boolean): void {
-  const yaw = YAW_SE;
-  const ca = Math.cos(yaw), sa = Math.sin(yaw);
-  const at = (px: number, pz: number): [number, number] => [cx + px * ca - pz * sa, cz + px * sa + pz * ca];
-
-  drawFloorShadow(ctx, cx, cz, 22, 12);
-  // Crate body, then its plank frame: a corner post at each front edge and a
-  // mid rail — without them the stacked slats read as a pile of boards.
-  drawPrism(ctx, cx, cz, 34, 24, 32, yaw, "#8a5f33", "#5b3d1f", "#a2743f");
-  for (const off of [-14, 14]) {
-    const [bx, bz] = at(off, 0);
-    drawPrism(ctx, bx, bz, 6, 25, 32, yaw, "#6b4726", "#472e17", "#7d5530");
-  }
-  drawPrism(ctx, cx, cz, 35, 25, 4, yaw, "#6b4726", "#472e17", "#7d5530", 14);
-
-  if (unlocked) {
-    // Hollow interior, the lid tipped off the back, and a warm glow.
-    drawPrism(ctx, cx, cz, 26, 17, 1, yaw, "#2a1c0f", "#20150b", "#2a1c0f", 31);
-    const [lx, lz] = at(1, -17);
-    drawPrism(ctx, lx, lz, 34, 7, 4, yaw, "#8a6134", "#5f4120", "#a87c48", 30);
-    const gx = projX(cx, cz), gy = projY(cz, 32, cx);
-    const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, 30);
-    glow.addColorStop(0, "rgba(255,205,110,0.45)");
-    glow.addColorStop(1, "rgba(255,205,110,0)");
-    ctx.fillStyle = glow;
-    ctx.beginPath(); ctx.ellipse(gx, gy, 30, 15, 0, 0, Math.PI * 2); ctx.fill();
-    // A glove and a roll of wraps sitting proud of the rim.
-    const [ux, uz] = at(-6, 3);
-    drawCylinder(ctx, ux, uz, 7, 26, 42, "#8f2020", "#c94040", "#6d1616", "#a33030");
-    const [wx, wz] = at(8, 2);
-    drawPrism(ctx, wx, wz, 11, 9, 9, yaw, "#d8d2c4", "#aba492", "#efe9dc", 28);
-  } else {
-    // Nailed shut, with a padlock hanging off the front face.
-    drawPrism(ctx, cx, cz, 36, 26, 4, yaw, "#77522c", "#4f351b", "#8d6236", 32);
-    const [px, pz] = at(0, 12);
-    const sx = projX(px, pz), sy = projY(pz, 17, px);
-    ctx.strokeStyle = "#8b939e"; ctx.lineWidth = 2.4;
-    ctx.beginPath(); ctx.arc(sx, sy - 6, 4, Math.PI, 0); ctx.stroke();
-    ctx.fillStyle = "#cdd6e2";
-    ctx.fillRect(sx - 5.5, sy - 6, 11, 9);
-    ctx.strokeStyle = "rgba(0,0,0,0.45)"; ctx.lineWidth = 1;
-    ctx.strokeRect(sx - 5.5, sy - 6, 11, 9);
-    ctx.fillStyle = "#55606d";
-    ctx.fillRect(sx - 1, sy - 3, 2, 4);
-  }
-}
-
-// Two free-standing bags — bottom-right (far bag drawn first)
-function drawBagCorner(ctx: CanvasRenderingContext2D, hovered1: boolean, hovered2: boolean, crateHovered = false, crateUnlocked = false): void {
-  if (hovered2) drawHoverGlow(ctx, EQ.bag2.cx, EQ.bag2.cz, 16, 12, 0, GLOW_BAG);
-  if (hovered1) drawHoverGlow(ctx, EQ.bag1.cx, EQ.bag1.cz, 16, 12, 0, GLOW_BAG);
-  if (crateHovered) drawHoverGlow(ctx, EQ.equipCrate.cx, EQ.equipCrate.cz, 22, 13, YAW_SE, GLOW_CRATE);
-  drawStandBagObj(ctx, EQ.bag2.cx, EQ.bag2.cz);
-  drawEquipmentCrateObj(ctx, EQ.equipCrate.cx, EQ.equipCrate.cz, crateUnlocked);
-  drawStandBagObj(ctx, EQ.bag1.cx, EQ.bag1.cz);
-}
-
-function drawRingHover(ctx: CanvasRenderingContext2D): void {
-  ctx.strokeStyle="rgba(255,220,80,0.58)"; ctx.lineWidth=2;
-  ctx.beginPath();
-  ctx.moveTo(RING_SCR_CX, RING_SCR_CY - RING_SCR_HH);
-  ctx.lineTo(RING_SCR_CX + RING_SCR_HW, RING_SCR_CY);
-  ctx.lineTo(RING_SCR_CX, RING_SCR_CY + RING_SCR_HH);
-  ctx.lineTo(RING_SCR_CX - RING_SCR_HW, RING_SCR_CY);
-  ctx.closePath();
-  ctx.stroke();
-}
-
-// ==================== SPARRING GYM ENVIRONMENT ====================
-// All sparring modes (any difficulty, Nightmare, Doghouse) take place in the
-// gym: renderGame calls this hook to paint the gym equipment around the ring,
-// projected with the live fight camera (yaw / auto-zoom / focus follow).
-// The last trophy state seen on the gym home screen fills the display cases.
-let lastTrophyState: TrophyState = defaultTrophyState();
-// Same idea for the Equipment crate's lid: the sparring environment has no
-// fighter to read career wins off, so it reuses whatever the gym home screen
-// last drew.
-let lastCrateUnlocked = false;
-
-export function drawSparringGymEnvironment(ctx: CanvasRenderingContext2D, state: GameState): void {
-  const cam = getCameraView();
-  camYaw = cam.yaw; camZoom = cam.zoom; camFx = cam.focusX; camFy = cam.focusY;
-  try {
-    // Draw ALL gym equipment first, then re-draw the fighters (and referee)
-    // on top so no prop ever covers a fighter — name labels may end up under
-    // the equipment, but the fighter bodies always render above it.
-    drawExitRow(ctx, null, lastTrophyState);
-    drawWeightArea(ctx, false);
-    drawLockerArea(ctx, false);
-    drawWoodBenchObj(ctx, EQ.woodBench.cx, EQ.woodBench.cz, YAW_SE);
-    drawBagCorner(ctx, false, false, false, lastCrateUnlocked);
-    // An Import Ticket bout is fought with the gym lights out, the same night
-    // dressing fight week uses: the office monitor is the only thing still lit.
-    const lightsOff = state.importSparring === true;
-    drawOfficeObj(ctx, lightsOff);
-    if (lightsOff) {
-      // Darken the ring and everything around it, then relight the monitor.
-      // The fighters are drawn after this, so the ring stays readable.
-      ctx.fillStyle = "rgba(8, 12, 34, 0.52)";
-      ctx.fillRect(0, 0, CW, CH);
-      if (monitorScreenQuad) {
-        const q = monitorScreenQuad;
-        const cx0 = (q[0][0] + q[1][0] + q[2][0] + q[3][0]) / 4;
-        const cy0 = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4;
-        const glow = ctx.createRadialGradient(cx0, cy0, 2, cx0, cy0, 42);
-        glow.addColorStop(0, "rgba(220, 232, 255, 0.5)");
-        glow.addColorStop(1, "rgba(220, 232, 255, 0)");
-        ctx.fillStyle = glow;
-        ctx.fillRect(cx0 - 42, cy0 - 42, 84, 84);
-        quad(ctx, q, "#f2f6ff", "rgba(255,255,255,0.85)");
-      }
-    }
-    // includeZ 300 keeps the front ring ropes overlapping fighters near the
-    // bottom edge; everyone else is re-drawn above the equipment.
-    renderFightersOnly(ctx, state, Number.POSITIVE_INFINITY, 300);
-  } finally {
-    // Restore the static gym home screen camera
-    camYaw = 0; camZoom = 1; camFx = CAM_FX0; camFy = CAM_FY0;
-  }
-}
-setGymEnvironmentDrawer(drawSparringGymEnvironment);
-
 // ==================== MAIN COMPONENT ====================
 export default function GymView({
   fighter, playerColors, playerRank, weeklyBonus, trainingLocked, trainingLockReason, refinementSpent, refinementUnlocked, refinementUnseen,
@@ -842,18 +244,21 @@ export default function GymView({
   const lastFrameTimeRef = useRef<number>(0);
   const trophyRef = useRef<TrophyState>(defaultTrophyState());
   const playerColorsRef = useRef<FighterColors>(playerColors);
-  const playerPhaseRef = useRef<number>(Math.random() * Math.PI * 2);
-  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   playerColorsRef.current = playerColors;
 
+  // The gym is a WebGL scene under a transparent 2D canvas that keeps the
+  // mouse handling.
+  const glCanvasRef = useRef<HTMLCanvasElement>(null);
+  const sceneRef = useRef<FightScene3D | null>(null);
+  // The idle player's own fabricated state (never the sparring sim's).
+  const idleStateRef = useRef<GameState | null>(null);
+
   // Equipment Upgrades: the crate's lid, hover label and click all key off the
-  // player's career wins. The draw loop reads it off a ref, and the sparring
-  // environment reuses the last value the home screen drew.
+  // player's career wins.
   const equipWins = equipmentCareerWins(fighter);
   const equipUnlocked = isEquipmentCrateUnlocked(equipWins);
   const equipUnlockedRef = useRef(equipUnlocked);
   equipUnlockedRef.current = equipUnlocked;
-  lastCrateUnlocked = equipUnlocked;
   const equipPending = pendingEquipmentUnlocks(equipWins, roster?.equipmentSeenSlots ?? undefined);
 
   const [gymState, setGymState] = useState<GymState>(() => { const s=loadGymState(); gymRef.current=s; return s; });
@@ -907,8 +312,39 @@ export default function GymView({
   // Credit trophies (per 3 wins) and medals (per 20 refinement points spent)
   useEffect(() => {
     trophyRef.current = reconcileTrophyState(fighter.id, fighter.wins ?? 0, refinementSpent);
-    lastTrophyState = trophyRef.current;
   }, [fighter.id, fighter.wins, refinementSpent]);
+
+  // The 3D cases and crate (home screen and sparring) read this snapshot.
+  useEffect(() => {
+    const t = trophyRef.current;
+    setGymDressing({ aTrophies: t.aTrophies, aMedals: t.aMedals, bTrophies: t.bTrophies, bMedals: t.bMedals, crateUnlocked: equipUnlocked });
+  }, [fighter.id, fighter.wins, refinementSpent, equipUnlocked]);
+
+  useEffect(() => {
+    const gl = glCanvasRef.current;
+    if (!gl) return;
+    let scene: FightScene3D;
+    try {
+      scene = new FightScene3D(gl);
+    } catch (err) {
+      console.error("[3D] gym view unavailable", err);
+      return;
+    }
+    sceneRef.current = scene;
+    const idle = makeGymFight();
+    idle.sparringMode = false; // no headgear on the fighter idling by the bench
+    idle.player.x = GYM_PLAYER_PX.x;
+    idle.player.z = GYM_PLAYER_PX.z;
+    idle.player.facingAngle = GYM_PLAYER_PX.facing;
+    idle.player.rhythmLevel = 0;
+    idle.player.swayOffset = 0;
+    idleStateRef.current = idle;
+    return () => {
+      sceneRef.current = null;
+      idleStateRef.current = null;
+      scene.dispose();
+    };
+  }, []);
 
   // Fight week: no sparring in the ring, gym goes dark (night), monitor glows white
   const isFightWeek = trainingLockReason === "fightWeek";
@@ -1035,65 +471,31 @@ export default function GymView({
         // time. A saved palette outranks that roll, and a palette saved while
         // the gym is open takes hold on the next frame.
         gs.ringColors = ringPaletteRef.current ?? undefined;
-        renderGame(ctx, gs);
-      } else {
-        ctx.fillStyle = "#111"; ctx.fillRect(0, 0, CW, CH);
-      }
-
-      // Draw gym equipment overlays around the ring
-      const hz = hoveredRef.current;
-      drawExitRow(ctx, hz, trophyRef.current);
-      drawWeightArea(ctx, hz === "weights");
-      drawLockerArea(ctx, hz === "bag3", hz === "lockers");
-
-      // Wooden bench + the player's fighter, idling by the lockers
-      drawWoodBenchObj(ctx, EQ.woodBench.cx, EQ.woodBench.cz, YAW_SE);
-      if (hz === "player") drawHoverGlow(ctx, EQ.player.cx, EQ.player.cz, 15, 9, 0, GLOW_PLAYER);
-      drawFloorShadow(ctx, EQ.player.cx, EQ.player.cz, 14, 8, 0.28);
-      playerPhaseRef.current += dt * (2 * 0.8 + 1.0) * Math.PI * 2;
-      if (playerPhaseRef.current > Math.PI * 2) playerPhaseRef.current -= Math.PI * 2;
-      let pc = previewCanvasRef.current;
-      if (!pc) {
-        pc = document.createElement("canvas");
-        pc.width = PLAYER_PC_W; pc.height = PLAYER_PC_H;
-        previewCanvasRef.current = pc;
-      }
-      const pctx = pc.getContext("2d");
-      if (pctx) {
-        renderFighterPreview(pctx, PLAYER_PC_W, PLAYER_PC_H, playerColorsRef.current, playerPhaseRef.current, 1);
-        ctx.drawImage(pc, PLAYER_SX - PLAYER_PC_W / 2, PLAYER_SY - PLAYER_FEET_Y, PLAYER_PC_W, PLAYER_PC_H);
-      }
-
-      drawBagCorner(ctx, hz === "bag1", hz === "bag2", hz === "equipCrate", equipUnlockedRef.current);
-      if (hz === "office") {
-        drawHoverGlow(ctx, EQ.desk.cx, EQ.desk.cz, 33, 15, YAW_NE, GLOW_OFFICE);
-        drawHoverGlow(ctx, EQ.bottles.cx, EQ.bottles.cz, 15, 9, YAW_NE, GLOW_OFFICE);
-      }
-      drawOfficeObj(ctx, fightWeek);
-
-      // Re-draw the sparring fighters after ALL equipment so no prop ever
-      // covers them (name labels may sit under the props, bodies never do).
-      if (gs && !fightWeek) renderFightersOnly(ctx, gs, Number.POSITIVE_INFINITY, 300);
-
-      // Fight week: gym at night — darken everything, then relight the monitor
-      if (fightWeek) {
-        ctx.fillStyle = "rgba(8, 12, 34, 0.52)";
-        ctx.fillRect(0, 0, CW, CH);
-        if (monitorScreenQuad) {
-          const q = monitorScreenQuad;
-          const cx0 = (q[0][0] + q[1][0] + q[2][0] + q[3][0]) / 4;
-          const cy0 = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4;
-          const glow = ctx.createRadialGradient(cx0, cy0, 2, cx0, cy0, 42);
-          glow.addColorStop(0, "rgba(220, 232, 255, 0.5)");
-          glow.addColorStop(1, "rgba(220, 232, 255, 0)");
-          ctx.fillStyle = glow;
-          ctx.fillRect(cx0 - 42, cy0 - 42, 84, 84);
-          quad(ctx, q, "#f2f6ff", "rgba(255,255,255,0.85)");
+        const scene = sceneRef.current;
+        if (scene) {
+          const idle = idleStateRef.current;
+          if (idle) idle.player.bobPhase = ((idle.player.bobPhase || 0) + dt * 2.6 * Math.PI * 2) % (Math.PI * 2);
+          scene.render(gs, {
+            gymHome: {
+              hovered: hoveredRef.current,
+              night: fightWeek,
+              idle: idle ? { fighter: idle.player, state: idle, colors: playerColorsRef.current } : null,
+              hideFighters: fightWeek,
+            },
+          });
+          // The home camera drifts, so the floating tags and dots follow it
+          // every frame instead of only on React renders.
+          const host = canvasRef.current?.parentElement;
+          if (host) {
+            host.querySelectorAll<HTMLElement>("[data-gym-anchor]").forEach(el => {
+              const p = projectGymPoint(gymZoneAnchor(el.dataset.gymAnchor as GymZone), scene.homeCamera);
+              el.style.left = `${(p.x / CW) * 100}%`;
+              el.style.top = `${((p.y - Number(el.dataset.gymLift || 0)) / CH) * 100}%`;
+            });
+          }
         }
       }
-
-      if (hz === "ring") drawRingHover(ctx);
-
+      ctx.clearRect(0, 0, CW, CH);
       rafRef.current = requestAnimationFrame(loop);
     }
 
@@ -1109,12 +511,7 @@ export default function GymView({
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const [mx, my] = getCanvasXY(e);
-    let zone: GymZone | null = null;
-    for (const hb of HITRECTS) {
-      const r = hb.rect;
-      if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) { zone = hb.zone; break; }
-    }
-    if (!zone && pointInDiamond(mx, my, RING_SCR_CX, RING_SCR_CY, RING_SCR_HW, RING_SCR_HH)) zone = "ring";
+    const zone = sceneRef.current ? pickGymZone(mx, my, sceneRef.current.homeCamera) : null;
     hoveredRef.current = zone;
     setHoveredZone(zone);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1201,12 +598,17 @@ export default function GymView({
     return "";
   };
 
-  // Weekly bonus tag pinned over the matching gym object (canvas coords → %)
-  const bonusTagPos = weeklyBonus
-    ? weeklyBonus.trainingType === "heavyBag" ? { x: projX(EQ.bag1.cx), y: projY(EQ.bag1.cz, 64) - 14 }
-    : weeklyBonus.trainingType === "weightLifting" ? { x: projX(EQ.bench.cx), y: projY(EQ.bench.cz, 34) - 22 }
-    : { x: (RING_SCR_CX - RING_SCR_HW / 2 + RING_SCR_CX) / 2 - 95, y: RING_SCR_CY - RING_SCR_HH / 2 - 22 }
+  // Screen spot (canvas px) for a tag hung over a gym object. The render loop
+  // re-places anchored tags each frame (camera drift); this is the first frame.
+  const tagPos = (zone: GymZone, liftPx = 0): { x: number; y: number } => {
+    const p = projectGymPoint(gymZoneAnchor(zone));
+    return { x: p.x, y: p.y - liftPx };
+  };
+  const anchorAttrs = (zone: GymZone, liftPx = 0) => ({ "data-gym-anchor": zone, "data-gym-lift": String(liftPx) });
+  const bonusZone: GymZone | null = weeklyBonus
+    ? weeklyBonus.trainingType === "heavyBag" ? "bag1" : weeklyBonus.trainingType === "weightLifting" ? "weights" : "ring"
     : null;
+  const bonusTagPos = bonusZone ? tagPos(bonusZone, 4) : null;
 
   const PopupMenu = () => {
     if (!popup) return null;
@@ -1371,10 +773,16 @@ export default function GymView({
     <div className="fixed inset-0 z-50 bg-black overflow-hidden flex items-center justify-center" data-testid="gym-view">
       <div className="relative" style={{ height: "100vh", width: "auto", display: "flex" }}>
         <canvas
+          ref={glCanvasRef}
+          className="absolute inset-0 block pointer-events-none"
+          style={{ width: "100%", height: "100%" }}
+          data-testid="gym-canvas-3d"
+        />
+        <canvas
           ref={canvasRef}
           width={CW}
           height={CH}
-          className="block"
+          className="block relative"
           style={{ height: "100vh", width: "auto", cursor: hoveredZone ? "pointer" : "default" }}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => { hoveredRef.current = null; setHoveredZone(null); }}
@@ -1466,10 +874,11 @@ export default function GymView({
           <div
             className="absolute z-[58] pointer-events-none"
             style={{
-              left: `${(projX(EQ.lockers.cx, EQ.lockers.cz) / CW) * 100}%`,
-              top: `${(projY(EQ.lockers.cz, 62, EQ.lockers.cx) / CH) * 100}%`,
+              left: `${(tagPos("lockers").x / CW) * 100}%`,
+              top: `${(tagPos("lockers").y / CH) * 100}%`,
               transform: "translate(-50%,-100%)",
             }}
+            {...anchorAttrs("lockers")}
             data-testid="gym-locker-new-items-dot"
           >
             <span className="relative flex h-3.5 w-3.5">
@@ -1484,10 +893,11 @@ export default function GymView({
           <div
             className="absolute z-[58] pointer-events-none"
             style={{
-              left: `${(projX(EQ.trophyB.cx, EQ.trophyB.cz) / CW) * 100}%`,
-              top: `${(projY(EQ.trophyB.cz, 58, EQ.trophyB.cx) / CH) * 100}%`,
+              left: `${(tagPos("trophyB").x / CW) * 100}%`,
+              top: `${(tagPos("trophyB").y / CH) * 100}%`,
               transform: "translate(-50%,-100%)",
             }}
+            {...anchorAttrs("trophyB")}
             data-testid="gym-refinement-new-dot"
           >
             <span className="relative flex h-3.5 w-3.5">
@@ -1502,10 +912,11 @@ export default function GymView({
           <div
             className="absolute z-[58] pointer-events-none"
             style={{
-              left: `${(projX(EQ.equipCrate.cx, EQ.equipCrate.cz) / CW) * 100}%`,
-              top: `${(projY(EQ.equipCrate.cz, 30, EQ.equipCrate.cx) / CH) * 100}%`,
+              left: `${(tagPos("equipCrate").x / CW) * 100}%`,
+              top: `${(tagPos("equipCrate").y / CH) * 100}%`,
               transform: "translate(-50%,-100%)",
             }}
+            {...anchorAttrs("equipCrate")}
             data-testid="gym-equipment-new-dot"
           >
             <span className="relative flex h-3.5 w-3.5">
@@ -1520,6 +931,7 @@ export default function GymView({
           <div
             className="absolute z-[55] pointer-events-none"
             style={{ left: `${(bonusTagPos.x / CW) * 100}%`, top: `${(bonusTagPos.y / CH) * 100}%`, transform: "translate(-50%,-100%)" }}
+            {...(bonusZone ? anchorAttrs(bonusZone, 4) : {})}
             data-testid="gym-weekly-bonus-tag"
           >
             <span className="inline-block text-[11px] font-black text-black bg-yellow-400 border border-yellow-200 rounded px-1.5 py-0.5 shadow-lg animate-bounce">

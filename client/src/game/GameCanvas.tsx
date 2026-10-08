@@ -1,8 +1,9 @@
 import { useRef, useEffect, useCallback, type MutableRefObject } from "react";
-import { GameState, PauseAction } from "./types";
+import { GameState } from "./types";
 import { renderGame, isPauseButtonClick, getPauseMenuClickIndex, getPauseItems, getSoundSliderClick, getControlsBackClick, getTutorialContinueClick } from "./renderer";
 import { soundEngine, musicEngine, DYNAMIC_MUSIC_LEVELS } from "./sound";
 import { updateGame, handleKeyDown, handleKeyUp, clearAllKeys, advanceTutorialContinue } from "./engine";
+import { FightScene3D } from "./three/FightScene3D";
 
 const BASE_W = 800;
 const BASE_H = 600;
@@ -66,6 +67,11 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
   const lastPropRef = useRef<GameState | null>(null);
   const lastSigRef = useRef<string>("");
   const lastPushRef = useRef<number>(0);
+  const glCanvasRef = useRef<HTMLCanvasElement>(null);
+  const sceneRef = useRef<FightScene3D | null>(null);
+  // Read once per fight canvas: the setting lives in the main menu.
+  // Set once WebGL has refused to start, so we stop retrying every frame.
+  const webglFailedRef = useRef(false);
 
   if (state !== lastPropRef.current) {
     lastPropRef.current = state;
@@ -128,7 +134,27 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
         ctxRef.current = ctx;
       }
       if (ctx) {
-        renderGame(ctx, stateRef.current);
+        const live = stateRef.current;
+        const glCanvas = glCanvasRef.current;
+        let scene: FightScene3D | null = null;
+        if (glCanvas && !webglFailedRef.current) {
+          if (!sceneRef.current) {
+            try {
+              sceneRef.current = new FightScene3D(glCanvas);
+            } catch (err) {
+              console.error("[3D] WebGL view unavailable", err);
+              webglFailedRef.current = true;
+            }
+          }
+          scene = sceneRef.current;
+        }
+        if (glCanvas) glCanvas.style.visibility = scene ? "visible" : "hidden";
+        if (scene) {
+          scene.render(live);
+          renderGame(ctx, live, scene.project);
+        } else {
+          renderGame(ctx, live, null);
+        }
       }
     }
 
@@ -140,6 +166,11 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
     animFrameRef.current = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animFrameRef.current);
   }, [gameLoop]);
+
+  useEffect(() => () => {
+    sceneRef.current?.dispose();
+    sceneRef.current = null;
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -315,16 +346,27 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
     }
   }, [getCanvasCoords, pushState]);
 
+  // The 2D canvas keeps the height-based 4:3 sizing and sets the box; the WebGL
+  // canvas fills that same box underneath it. Clicks land on the 2D canvas, so
+  // every HUD/pause hit-test is unchanged.
   return (
-    <canvas
-      ref={canvasRef}
-      width={BASE_W}
-      height={BASE_H}
-      data-testid="game-canvas"
-      className="cursor-pointer block"
-      style={{ imageRendering: "auto", height: "100vh", width: "auto", maxWidth: "100vw" }}
-      tabIndex={0}
-      onClick={handleClick}
-    />
+    <div className="relative block" style={{ lineHeight: 0 }}>
+      <canvas
+        ref={glCanvasRef}
+        data-testid="game-canvas-3d"
+        className="absolute inset-0 block"
+        style={{ width: "100%", height: "100%", pointerEvents: "none", visibility: "hidden" }}
+      />
+      <canvas
+        ref={canvasRef}
+        width={BASE_W}
+        height={BASE_H}
+        data-testid="game-canvas"
+        className="cursor-pointer block relative"
+        style={{ imageRendering: "auto", height: "100vh", width: "auto", maxWidth: "100vw" }}
+        tabIndex={0}
+        onClick={handleClick}
+      />
+    </div>
   );
 }

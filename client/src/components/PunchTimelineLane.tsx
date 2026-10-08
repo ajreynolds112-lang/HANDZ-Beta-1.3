@@ -1,0 +1,192 @@
+import { useEffect, useRef, useState } from "react";
+import { ROT_MAX, SPEED_MAX, cleanLimit, SPEED_MIN, type Key, evalRotation, evalSpeed, loopTime } from "@/game/three/punchProfiles";
+
+export type LaneKind = "rotation" | "speed";
+
+const VB_W = 1000;
+
+/** Value → 0..1 from the top. Rotation: +max top, -max bottom. Speed: log scale, fastest at the top. */
+function valueToY(kind: LaneKind, v: number, max: number): number {
+  if (kind === "rotation") return (max - Math.max(-max, Math.min(max, v))) / (2 * max);
+  const LOG_LO = Math.log2(SPEED_MIN), LOG_HI = Math.log2(SPEED_MAX);
+  return (LOG_HI - Math.log2(Math.max(SPEED_MIN, v))) / (LOG_HI - LOG_LO);
+}
+function yToValue(kind: LaneKind, y: number, max: number): number {
+  const c = Math.max(0, Math.min(1, y));
+  if (kind === "rotation") return Math.round(max - c * 2 * max);
+  const LOG_LO = Math.log2(SPEED_MIN), LOG_HI = Math.log2(SPEED_MAX);
+  return Math.round(2 ** (LOG_HI - c * (LOG_HI - LOG_LO)) * 100) / 100;
+}
+
+export interface PhaseBand { label: string; from: number; to: number }
+
+interface LaneProps {
+  label: string;
+  kind: LaneKind;
+  color: string;
+  keys: Key[];
+  /** Animation-time playhead 0..1. */
+  playhead: number;
+  /** Loop Start (animation time) or null; past it the pose is read mirrored. */
+  loopStart?: number | null;
+  /** Past Loop Start the pose eases back to the guard instead of reversing. */
+  slideMode?: boolean;
+  bands: PhaseBand[];
+  /** Rotation lanes: max angle either way (the lane's scale and key clamp). */
+  limit?: number;
+  /** Rotation lanes: typed a new max angle. */
+  onLimitChange?: (v: number) => void;
+  height?: number;
+  /** Called once at the start of every edit gesture (undo checkpoint). */
+  onBeginEdit: () => void;
+  onChange: (keys: Key[]) => void;
+  testId: string;
+}
+
+/** Copied point value, one per lane kind (rotation degrees vs speed multiplier don't mix). Shared by every lane. */
+const clipboard: Partial<Record<LaneProps["kind"], number>> = {};
+
+/**
+ * One keyframe lane. Right-click empty space adds a key, right-click a key
+ * removes it, left-drag a key moves it in time and value. Shift-left-click a
+ * key copies its value; shift-right-click pastes it (onto a key: replaces its
+ * value; on empty space: adds a key there with the copied value).
+ */
+export default function PunchTimelineLane({ label, kind, color, keys, playhead, loopStart = null, slideMode = false, bands, limit = ROT_MAX, onLimitChange, height = 64, onBeginEdit, onChange, testId }: LaneProps) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ key: Key; pointerId: number } | null>(null);
+  const keysRef = useRef(keys);
+  keysRef.current = keys;
+  const [limitText, setLimitText] = useState(String(limit));
+  useEffect(() => setLimitText(String(limit)), [limit]);
+  /** The copied value, pulled inside this lane's limit. */
+  const clip = () => {
+    const v = clipboard[kind];
+    return v === undefined || kind !== "rotation" ? v : Math.max(-limit, Math.min(limit, v));
+  };
+  const commitLimit = () => {
+    const v = cleanLimit(limitText);
+    setLimitText(String(v));
+    if (v !== limit) onLimitChange?.(v);
+  };
+
+  const at = (e: { clientX: number; clientY: number }) => {
+    const r = boxRef.current!.getBoundingClientRect();
+    return { t: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), y: (e.clientY - r.top) / r.height };
+  };
+
+  const evalAt = (t: number) => (kind === "rotation" ? evalRotation(keys, t) : evalSpeed(keys, t));
+  const pts: string[] = [];
+  for (let i = 0; i <= 200; i++) {
+    const t = i / 200;
+    pts.push(`${(t * VB_W).toFixed(1)},${(valueToY(kind, evalAt(t), limit) * height).toFixed(1)}`);
+  }
+  const zeroY = valueToY(kind, kind === "rotation" ? 0 : 1, limit) * 100;
+  const current = evalAt(playhead);
+
+  const onLaneContext = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const p = at(e);
+    if (e.shiftKey) return; // shift-right-click pastes on pointerdown
+    onBeginEdit();
+    const k: Key = { t: Math.round(p.t * 1000) / 1000, v: yToValue(kind, p.y, limit) };
+    onChange([...keys, k].sort((a, b) => a.t - b.t));
+  };
+  const onKeyContext = (e: React.MouseEvent, k: Key) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.shiftKey) return; // shift-right-click pastes on pointerdown
+    onBeginEdit();
+    onChange(keys.filter(x => x !== k));
+  };
+  // Paste on pointerdown, not contextmenu: Firefox never sends shift-right-click
+  // to the page's contextmenu handler.
+  const onLanePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 2 || !e.shiftKey) return;
+    e.preventDefault();
+    const v = clip();
+    if (v === undefined) return;
+    onBeginEdit();
+    onChange([...keys, { t: Math.round(at(e).t * 1000) / 1000, v }].sort((a, b) => a.t - b.t));
+  };
+  const onKeyDown = (e: React.PointerEvent, k: Key) => {
+    if (e.button === 2 && e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      const v = clip();
+      if (v === undefined) return;
+      onBeginEdit();
+      onChange(keys.map(x => (x === k ? { t: x.t, v } : x)));
+      return;
+    }
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.shiftKey) { clipboard[kind] = k.v; return; }
+    onBeginEdit();
+    dragRef.current = { key: k, pointerId: e.pointerId };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onKeyMove = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    const p = at(e);
+    const nk: Key = { t: Math.round(p.t * 1000) / 1000, v: yToValue(kind, p.y, limit) };
+    const next = keysRef.current.map(x => (x === d.key ? nk : x)).sort((a, b) => a.t - b.t);
+    d.key = nk;
+    onChange(next);
+  };
+  const onKeyUp = (e: React.PointerEvent) => {
+    if (dragRef.current?.pointerId === e.pointerId) dragRef.current = null;
+  };
+
+  return (
+    <div className="flex items-stretch gap-2" data-testid={testId}>
+      <div className="w-20 shrink-0 flex flex-col justify-center text-[11px] leading-tight">
+        <span className="font-semibold" style={{ color }}>{label}</span>
+        <span className="text-muted-foreground tabular-nums">
+          {kind === "rotation" ? `${Math.round(current)}°` : `${current.toFixed(2)}×`}
+        </span>
+        {kind === "rotation" && onLimitChange && (
+          <label className="flex items-center gap-0.5 text-muted-foreground" title="Max angle either way (1–180°)">
+            ±<input type="text" inputMode="numeric" value={limitText}
+              onChange={e => setLimitText(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+              onBlur={commitLimit}
+              onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setLimitText(String(limit)); (e.target as HTMLInputElement).blur(); } e.stopPropagation(); }}
+              className="w-9 h-4 px-1 rounded bg-black/50 border border-border text-foreground tabular-nums text-[11px] outline-none focus:border-primary"
+              data-testid={`${testId}-limit`} />°
+          </label>
+        )}
+      </div>
+      <div ref={boxRef} className="relative flex-1 rounded border border-border bg-black/40 select-none overflow-hidden"
+        style={{ height }} onContextMenu={onLaneContext} onPointerDown={onLanePointerDown}>
+        {bands.map((b, i) => (
+          <div key={b.label} className="absolute inset-y-0 pointer-events-none"
+            style={{ left: `${b.from * 100}%`, width: `${(b.to - b.from) * 100}%`, background: i % 2 ? "rgba(255,255,255,0.03)" : "transparent" }} />
+        ))}
+        <div className="absolute inset-x-0 border-t border-dashed border-white/15 pointer-events-none" style={{ top: `${zeroY}%` }} />
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox={`0 0 ${VB_W} ${height}`} preserveAspectRatio="none">
+          <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" opacity={0.9} />
+        </svg>
+        {loopStart != null && (<>
+          <div className={`absolute inset-y-0 right-0 pointer-events-none ${slideMode ? "bg-violet-400/10" : "bg-cyan-400/10"}`} style={{ left: `${loopStart * 100}%` }} />
+          <div className={`absolute inset-y-0 w-px pointer-events-none ${slideMode ? "bg-violet-400" : "bg-cyan-400"}`} style={{ left: `${loopStart * 100}%` }} />
+          {!slideMode && playhead > loopStart && (
+            <div className="absolute inset-y-0 w-px bg-yellow-300/50 pointer-events-none" style={{ left: `${loopTime(loopStart, playhead) * 100}%` }} />
+          )}
+        </>)}
+        <div className="absolute inset-y-0 w-px bg-yellow-300 pointer-events-none" style={{ left: `${playhead * 100}%` }} />
+        {keys.map((k, i) => (
+          <div key={i}
+            className="absolute w-3 h-3 -ml-1.5 -mt-1.5 rounded-full border-2 border-white cursor-grab active:cursor-grabbing"
+            style={{ left: `${k.t * 100}%`, top: `${valueToY(kind, k.v, limit) * 100}%`, background: color, touchAction: "none" }}
+            title={kind === "rotation" ? `${k.v}° @ ${Math.round(k.t * 100)}%` : `${k.v}× @ ${Math.round(k.t * 100)}%`}
+            onPointerDown={e => onKeyDown(e, k)} onPointerMove={onKeyMove} onPointerUp={onKeyUp}
+            onContextMenu={e => onKeyContext(e, k)} data-testid={`${testId}-key-${i}`} />
+        ))}
+        <span className="absolute right-1 top-0.5 text-[9px] text-white/35 pointer-events-none">{kind === "rotation" ? `+${limit}°` : `${SPEED_MAX}×`}</span>
+        <span className="absolute right-1 bottom-0.5 text-[9px] text-white/35 pointer-events-none">{kind === "rotation" ? `-${limit}°` : `${SPEED_MIN}×`}</span>
+      </div>
+    </div>
+  );
+}

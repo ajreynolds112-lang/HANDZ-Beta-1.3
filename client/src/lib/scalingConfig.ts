@@ -43,9 +43,6 @@ export const LEVEL_RAMP_DEFS: LevelRampDef[] = [
   { id: "fullGuardRegenMult",      label: "Recovery while fully guarding", group: "Stamina", min: 0.75, max: 0.90, unit: "x" },
   { id: "damageMult",              label: "Punching power",              group: "Offense",   min: 1,    max: 3.5,  unit: "x" },
   { id: "critChance",              label: "Crit chance",                 group: "Offense",   min: 1,    max: 1.5,  unit: "x" },
-  { id: "punchSpeedMult",          label: "Raw punch speed",             group: "Offense",   min: 2,    max: 1.8,  unit: "x", note: "offset by anim speed" },
-  { id: "punchLinger",             label: "Punch recovery (linger)",     group: "Offense",   min: 0.2,  max: 0.05, unit: "s", note: "lower is better" },
-  { id: "animSpeedScale",          label: "Animation speed",             group: "Offense",   min: 1,    max: 2.5,  unit: "x" },
   { id: "defenseMult",             label: "Toughness (damage taken)",    group: "Defense",   min: 1,    max: 0.7,  unit: "x", note: "lower is better" },
   { id: "blockReductionHead",      label: "Head block absorption",       group: "Defense",   min: 0.40, max: 0.70, unit: "frac" },
   { id: "blockReductionBody",      label: "Body block absorption",       group: "Defense",   min: 0.30, max: 0.50, unit: "frac" },
@@ -53,16 +50,7 @@ export const LEVEL_RAMP_DEFS: LevelRampDef[] = [
   { id: "blockRegenPenaltyDuration", label: "Block regen penalty",       group: "Defense",   min: 0.25, max: 0,    unit: "s", note: "lower is better" },
   { id: "autoGuardBase",           label: "Auto-guard base duration",    group: "Defense",   min: 10,   max: 45,   unit: "s" },
   { id: "guardRaiseMs",            label: "Guard raise time",            group: "Defense",   min: 50,   max: 20,   unit: "ms", note: "lower is better" },
-  { id: "moveSpeed",               label: "Footwork (base move speed)",  group: "Movement",  min: 1,    max: 0.72, unit: "x", note: "offset by anim speed" },
-  { id: "telegraphChance",         label: "Telegraph odds",              group: "Telegraph", min: 1,    max: 0,    unit: "frac", note: "lower is better" },
-  { id: "telegraphJab",            label: "Telegraph length (jab/cross)", group: "Telegraph", min: 0.60, max: 0.50, unit: "s", note: "lower is better" },
-  { id: "telegraphHook",           label: "Telegraph length (hook)",     group: "Telegraph", min: 0.90, max: 0.75, unit: "s", note: "lower is better" },
-  { id: "telegraphUppercut",       label: "Telegraph length (uppercut)", group: "Telegraph", min: 1.10, max: 0.90, unit: "s", note: "lower is better" },
-  { id: "telegraphSlowDuration",   label: "Telegraph slow window",       group: "Telegraph", min: 1.0,  max: 0.25, unit: "s", note: "lower is better" },
-  { id: "telegraphRoundBonus",     label: "Telegraph bonus per round",   group: "Telegraph", min: 0.05, max: 0.01, unit: "frac", note: "lower is better" },
   { id: "telegraphBlinkChance",    label: "Telegraph eye-blink chance",  group: "Telegraph", min: 0.75, max: 0.50, unit: "frac", note: "visual only" },
-  { id: "chargeTelegraphIncrease", label: "Charged-punch telegraph add", group: "Telegraph", min: 0.15, max: 0.03, unit: "s", note: "lower is better" },
-  { id: "feintTelegraphBoost",     label: "Feint telegraph penalty",     group: "Telegraph", min: 0.20, max: 0.05, unit: "x", note: "lower is better" },
   { id: "feintFailChance",         label: "Feint failure chance",        group: "Telegraph", min: 0.60, max: 0.30, unit: "frac", note: "lower is better" },
   // Share of the gas tank the level curve already gave the AI, not an absolute
   // points figure — see the careerStaminaTier block in startFight. 1.0 is the
@@ -100,13 +88,6 @@ const tSpeed = (pts: number, caps: ScalingCaps) => Math.min(pts, caps.speedSoftC
 /** Stamina regen has its own, lower cap. */
 const tRegen = (pts: number, caps: ScalingCaps) => Math.min(caps.staminaRegenCap, pts) / caps.staminaRegenDivisor;
 
-/** The full speed → telegraph-length curve, shared by its two knobs. */
-function telegraphCurve(pts: number, c200: number, c1000: number): number {
-  if (pts <= 0) return 1.0;
-  if (pts <= 200) return 1.0 - (pts / 200) * c200;
-  return (1.0 - c200) - Math.min(1, (pts - 200) / 800) * c1000;
-}
-
 function autoGuardSeconds(coef: number, ramp: number, pts: number, caps: ScalingCaps): number {
   const t = tFull(pts, caps);
   return t * coef * (1 + ramp * Math.min(1, Math.max(0, (t - 0.2) / 0.8)));
@@ -115,18 +96,14 @@ function autoGuardSeconds(coef: number, ramp: number, pts: number, caps: Scaling
 export const POINT_COEF_DEFS: PointCoefDef[] = [
   { id: "powerDamage", label: "Damage multiplier (quadratic)", stat: "Power", value: 5, unit: "x", note: "both corners, identical",
     atPoints: (c, p, k) => 1 + c * tFull(p, k) ** 2 },
-  { id: "speedPunch", label: "Punch speed", stat: "Speed", value: 1.427, unit: "x",
-    atPoints: (c, p, k) => 1 + tSpeed(p, k) * c },
+  { id: "speedPunchAtCap", label: "Punch speed at the soft cap (whole punch incl. telegraph)", stat: "Speed", value: 2, unit: "x", note: "linear from 1x at 0 pts, flat past the cap",
+    atPoints: (c, p, k) => 1 + (Math.max(1, c) - 1) * Math.min(1, Math.max(0, p / Math.max(1, k.speedSoftCap))) },
   { id: "speedMove", label: "Move speed", stat: "Speed", value: 0.15, unit: "x",
     atPoints: (c, p, k) => 1 + tSpeed(p, k) * c },
   { id: "speedDuck", label: "Duck speed", stat: "Speed", value: 0.6, unit: "x",
     atPoints: (c, p, k) => 1 + tSpeed(p, k) * c },
   { id: "speedChaseOnTelegraph", label: "Chase speed while you telegraph", stat: "Speed", value: 0.65, unit: "x", note: "AI only, ignores the soft cap",
     atPoints: (c, p, k) => 1.2 + Math.min(1, p / k.maxSp) * c },
-  { id: "speedTelegraphAt200", label: "Telegraph length, 0→200 pts", stat: "Speed", value: 0.75, unit: "x", note: "lower is better",
-    atPoints: (c, p) => telegraphCurve(p, c, pointCoef("speedTelegraphAt1000", 0.125)) },
-  { id: "speedTelegraphAt1000", label: "Telegraph length, 200→1000 pts", stat: "Speed", value: 0.125, unit: "x", note: "lower is better",
-    atPoints: (c, p) => telegraphCurve(p, pointCoef("speedTelegraphAt200", 0.75), c) },
   { id: "defenseBlock", label: "Block strength", stat: "Defense", value: 0.6, unit: "x",
     atPoints: (c, p, k) => 1 + tFull(p, k) * c },
   { id: "defenseCritResist", label: "Crit resistance", stat: "Defense", value: 0.27, unit: "x", note: "lower is better",
@@ -167,7 +144,6 @@ export interface LevelGapDef {
 }
 
 export const LEVEL_GAP_DEFS: LevelGapDef[] = [
-  { id: "gapMoveSpeed",    label: "Move speed",                 ahead: 0.025,  behind: 0,      unit: "x/lv",    note: "set at the bell" },
   { id: "gapDamage",       label: "Punching power",             ahead: 0.025,  behind: 0,      unit: "x/lv",    note: "set at the bell" },
   { id: "gapPowerBypass",  label: "Power-sway guard bypass",    ahead: 0.02,   behind: 0,      unit: "frac/lv" },
   { id: "gapMiniStun",     label: "Off-balance mini-stun",      ahead: 0.005,  behind: 0,      unit: "frac/lv" },

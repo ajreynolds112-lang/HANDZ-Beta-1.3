@@ -17,6 +17,14 @@ export interface PunchAnimParams {
   dropPhase: number;
   riseArcFactor: number;
   distanceMult: number;
+  /** 3D: how far the body leans/steps forward into this punch (×default; 0 = upright). Visual only. */
+  leanMult: number;
+  /** 3D shoulder-joint rotation (degrees about the body's x/y/z) eased in when the punch starts, out after retraction. */
+  shoulderX: number;
+  shoulderY: number;
+  shoulderZ: number;
+  /** Uppercuts: how far (degrees) the shoulder tilts the arm up approaching the peak — the U's rising wall. */
+  uLiftDeg: number;
   /** Actual gameplay hit range in pixels used by hit detection. Independent of reachMult/distanceMult, which are visual-only. */
   hitRangePx: number;
   /** Base damage dealt by this punch before any fighter/archetype/refinement multipliers. */
@@ -42,6 +50,11 @@ export const DEFAULT_PARAMS: Omit<PunchAnimParams, "hitRangePx" | "damage" | "st
   dropPhase: 0.32,
   riseArcFactor: 0.85,
   distanceMult: 1.0,
+  leanMult: 1.0,
+  shoulderX: 0,
+  shoulderY: 0,
+  shoulderZ: 0,
+  uLiftDeg: 15,
 };
 
 export const DEFAULT_PUNCH_ANIM_CONFIG: PunchAnimConfig = {

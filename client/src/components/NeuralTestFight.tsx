@@ -14,8 +14,9 @@ import {
   createInitialState, startFight, updateGame, handleKeyDown, handleKeyUp,
   clearAllKeys, applyFightEquipment, MAX_ACTIVE_REFINEMENTS, REFINEMENT_LEVEL_CAP,
 } from "@/game/engine";
-import { renderGame, resetAutoZoom } from "@/game/renderer";
+import { resetAutoZoom } from "@/game/renderer";
 import { soundEngine } from "@/game/sound";
+import { useFightScene3D } from "@/game/three/useFightScene3D";
 import { REFINEMENT_KEYS, REFINEMENT_LABELS, type RefinementKey } from "@/game/refinementKeys";
 import { EQUIPMENT_SLOTS, emptyEquipmentLevels, type EquipmentLevels } from "@/game/equipmentConfig";
 import { REFINEMENT_SLOT_RANK_UNLOCKS } from "@shared/schema";
@@ -261,6 +262,7 @@ export default function NeuralTestFight({ onExit }: { onExit: () => void }) {
   const lastTimeRef = useRef<number>(0);
   const restartLockRef = useRef<number>(0);
   const pausedRef = useRef<boolean>(false);
+  const view3d = useFightScene3D();
 
   const [paused, setPaused] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -342,9 +344,8 @@ export default function NeuralTestFight({ onExit }: { onExit: () => void }) {
         }
       }
 
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext("2d");
-      if (ctx) renderGame(ctx, stateRef.current);
+      const ctx = canvasRef.current?.getContext("2d") ?? null;
+      view3d.draw(ctx, stateRef.current);
 
       animRef.current = requestAnimationFrame(loop);
     };
@@ -354,13 +355,21 @@ export default function NeuralTestFight({ onExit }: { onExit: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex items-center justify-center" data-testid="neural-test-fight">
-      <canvas
-        ref={canvasRef}
-        width={BASE_W}
-        height={BASE_H}
-        className="max-w-full max-h-full"
-        style={{ height: "100vh", width: "auto" }}
-      />
+      {/* The WebGL canvas fills the 2D canvas's box underneath it (see GameCanvas). */}
+      <div className="relative max-w-full max-h-full" style={{ lineHeight: 0 }}>
+        <canvas
+          ref={view3d.glCanvasRef}
+          className="absolute inset-0 block"
+          style={{ width: "100%", height: "100%", pointerEvents: "none", visibility: "hidden" }}
+        />
+        <canvas
+          ref={canvasRef}
+          width={BASE_W}
+          height={BASE_H}
+          className="relative block max-w-full max-h-full"
+          style={{ height: "100vh", width: "auto" }}
+        />
+      </div>
 
       {!paused && (
         <div className="absolute top-3 left-3 text-xs text-white/50 pointer-events-none">

@@ -1089,6 +1089,12 @@ export interface FatigueState {
   snapTimer: number;
   /** Gap between snap stages. Stretches as current stamina falls. */
   snapStagger: number;
+  /**
+   * Full length of the snap animation (staggered torso/arms AND the head dip),
+   * which is the Reset window. Never shorter than the head dip, so a fully
+   * trained stagger of 0 can't collapse the window to a single tick.
+   */
+  snapDuration?: number;
   snapActive: boolean;
   /**
    * Per-arm sway offsets frozen at the instant of a Reset. The torso snaps
@@ -1241,6 +1247,8 @@ export interface FighterState {
   rhythmDirection: number;
   punchPhase: PunchPhaseType | null;
   punchPhaseTimer: number;
+  /** The punch in flight has already reached the target's hitbox and been resolved. */
+  punchHitResolved?: boolean;
   isRePunch: boolean;
   retractionProgress: number;
   earlyRepunchPenaltyTimer: number;
@@ -1507,6 +1515,15 @@ export interface FighterState {
   feintHoldTimer: number;
   feintTouchingOpponent: boolean;
   feintDuckTouchingOpponent: boolean;
+  /** Limbs are touching and this fighter's rhythm is the more exposed of the
+   *  two: no walking toward the opponent and no jabs. Recomputed every tick. */
+  limbContactPinned?: boolean;
+  /** Roster id whose assigned punch-animation profiles this fighter wears (3D
+   *  view only). Unset → the per-punch default profile. */
+  punchProfileRosterId?: number;
+  /** Pinned AND the opponent is holding a feint into the contact: jab and
+   *  cross inputs fail outright. Recomputed every tick. */
+  limbContactStraightsLocked?: boolean;
   /** F was tapped: the next punch launched while feintArmTimer runs goes out as
    *  a feint. Launching it spends the arm immediately, with no cooldown. */
   feintArmed?: boolean;
@@ -2174,6 +2191,8 @@ export interface HitEffect {
   type: "normal" | "crit" | "block" | "perfectBlock" | "feint";
   text: string;
   attackerColor?: string;
+  /** A landed hit that stunned or crit (the 3D view only sprays sweat on these). */
+  stunOrCrit?: boolean;
 }
 
 /**

@@ -1,7 +1,9 @@
 import { Button } from "@/components/ui/button";
+import { SPARRING_DURATIONS, getSparringRewardConfig, SPARRING_TIER_LABELS, nextSparringTier, loadSparringDuration, saveSparringDuration, type SparringDuration } from "@/game/sparringRewards";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Plus, Trash2, BarChart3, ChevronUp, ChevronLeft, ChevronRight, Dumbbell, Target, Trophy, Users, Swords, Pencil, Save, Check, Settings, Lock, Unlock, Download, Upload, Music, ListMusic, Play, Pause, Hammer, RotateCcw, MessageSquare, Copy, ClipboardPaste, Zap } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronLeft, ChevronRight, Dumbbell, Target, Trophy, Users, Swords, Pencil, Save, Check, Settings, Lock, Unlock, Download, Upload, Music, ListMusic, Play, Pause, Hammer, RotateCcw, MessageSquare, Copy, ClipboardPaste, Zap } from "lucide-react";
+import PunchProfileAssignCard from "@/components/PunchProfileAssignCard";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SPARRING_MODE_COSTS, grandfatherSparringUnlocks, type SparringMode } from "@/game/sparringModes";
@@ -71,9 +73,9 @@ import {
   type CareerOpponentFromRoster,
 } from "@/game/careerRoster";
 import { getRosterDisplayName, ROSTER_DATA, KEY_FIGHTER_IDS } from "@/game/rosterData";
-import FighterStanceCanvas from "@/components/FighterStanceCanvas";
+import FighterStanceCanvas, { playerBoxingStance } from "@/components/FighterStanceCanvas";
 import { BoxingGloveIcon } from "@/components/BoxingGloveIcon";
-import NeuralNetworkView, { fighterHasNeural } from "@/components/NeuralNetworkView";
+import NeuralNetworkView from "@/components/NeuralNetworkView";
 import * as localSaves from "@/lib/localSaves";
 
 export type TrainingType = "weightLifting" | "heavyBag" | "sparring";
@@ -95,7 +97,7 @@ interface CareerModeProps {
   onDeleteFighter: (id: string) => void;
   onBack: () => void;
   onAllocateStats: (fighterId: string, skillPoints: SkillPoints, spent: number) => void;
-  onStartTraining: (fighter: Fighter, type: TrainingType, sparringDifficulty?: AIDifficulty, importedPartnerId?: number) => void;
+  onStartTraining: (fighter: Fighter, type: TrainingType, sparringDifficulty?: AIDifficulty, importedPartnerId?: number, sparringDuration?: SparringDuration) => void;
   onEndWeek?: () => void;
   onSimulateWeek?: (fighter: Fighter) => void;
   onSweepTraining?: (fighter: Fighter, type: "weightLifting" | "heavyBag") => void;
@@ -274,7 +276,7 @@ const REF_EFFECT_DESC: Record<RefField, (lvl: number) => string> = {
   fastTwitch: (lvl) => {
     const telegraph = refCurve("fastTwitch", "telegraph", lvl);
     const moveSpeed = Math.min(100, Math.max(0, lvl)) * refNum("fastTwitch", "movePerLevel");
-    return `-${fmtPct(telegraph)}% telegraph, +${fmtPct(moveSpeed)}% move speed`;
+    return `+${telegraph.toFixed(2)}x telegraph speed, +${fmtPct(moveSpeed)}% move speed (both added to Speed stat)`;
   },
   heartRefinement: (lvl) => {
     const stamina = refCurve("heartRefinement", "stamina", lvl);
@@ -1886,8 +1888,8 @@ export default function CareerMode({
   if (view === "sparringSelect" && selectedFighter) {
     return <SparringDifficultySelect
       fighter={selectedFighter}
-      onSelect={(diff, importedPartnerId) => {
-        onStartTraining(selectedFighter, "sparring", diff, importedPartnerId);
+      onSelect={(diff, importedPartnerId, duration) => {
+        onStartTraining(selectedFighter, "sparring", diff, importedPartnerId, duration);
       }}
       onNightmare={() => {
         onStartNightmare?.(selectedFighter);
@@ -2411,7 +2413,7 @@ export default function CareerMode({
 
           <div className="flex items-start justify-center gap-3 my-2">
             <div className="w-48 h-56">
-              <FighterStanceCanvas colors={hubColors} width={192} height={224} />
+              <FighterStanceCanvas colors={hubColors} width={192} height={224} stance={playerBoxingStance()} />
             </div>
             {hubTip && (
               <div className="flex flex-col pt-6 max-w-[110px]">
@@ -3669,7 +3671,7 @@ function OpponentSelectionView({ fighter, rosterState, onSelectOpponent, onBack 
                       })()}
                     </div>
                     <div className="w-12 h-16 shrink-0">
-                      <FighterStanceCanvas colors={fighterColors} width={120} height={144} />
+                      <FighterStanceCanvas colors={fighterColors} width={120} height={144} stance={f.boxingStance} />
                     </div>
                   </div>
                   {isBlocked && (
@@ -3776,7 +3778,7 @@ function RankingsView({ rosterState, fighter, onBack }: {
                     </p>
                   </div>
                   <div className="w-12 h-16 shrink-0">
-                    <FighterStanceCanvas colors={playerColors} width={120} height={144} />
+                    <FighterStanceCanvas colors={playerColors} width={120} height={144} stance={playerBoxingStance()} />
                   </div>
                 </div>
               )}
@@ -3809,7 +3811,7 @@ function RankingsView({ rosterState, fighter, onBack }: {
                   )}
                 </div>
                 <div className="w-12 h-16 shrink-0">
-                  <FighterStanceCanvas colors={fighterColors} width={120} height={144} />
+                  <FighterStanceCanvas colors={fighterColors} width={120} height={144} stance={f.boxingStance} />
                 </div>
               </div>
             </div>
@@ -3830,7 +3832,7 @@ function RankingsView({ rosterState, fighter, onBack }: {
               </p>
             </div>
             <div className="w-12 h-16 shrink-0">
-              <FighterStanceCanvas colors={playerColors} width={120} height={144} />
+              <FighterStanceCanvas colors={playerColors} width={120} height={144} stance={playerBoxingStance()} />
             </div>
           </div>
         )}
@@ -3997,7 +3999,7 @@ function CreateFighter({
               </div>
             </div>
             <div className="w-28 h-36 shrink-0 bg-black/40 border border-white/10 rounded-lg flex items-center justify-center overflow-hidden">
-              <FighterStanceCanvas colors={previewColors} width={160} height={200} showHeadgear />
+              <FighterStanceCanvas colors={previewColors} width={160} height={200} showHeadgear stance={boxingStance} />
             </div>
           </div>
         </div>
@@ -4192,12 +4194,6 @@ function StatRow({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-export const SPARRING_XP_MULT: Record<AIDifficulty, number> = {
-  journeyman: 0.8,
-  contender: 1.0,
-  elite: 1.35,
-  champion: 1.75,
-};
 
 
 /**
@@ -4276,7 +4272,7 @@ function SparringModeCard({ mode, title, wins, force, shards, detail, cardClass,
 
 function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, onUnlockMode, onBack }: {
   fighter: Fighter;
-  onSelect: (difficulty: AIDifficulty, importedPartnerId?: number) => void;
+  onSelect: (difficulty: AIDifficulty, importedPartnerId: number | undefined, duration: SparringDuration) => void;
   onNightmare?: () => void;
   onDoghouse?: () => void;
   onUnlockMode?: (mode: SparringMode) => void;
@@ -4320,6 +4316,10 @@ function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, 
   // moment a session is quit, and the panel would vanish until a reload.
   const hasImportTicket = hasPerk(withSavedInventory(fighter), "importSparring", rs);
   const [importedId, setImportedId] = useState<number | null>(null);
+  const [duration, setDuration] = useState<SparringDuration>(() => loadSparringDuration());
+  const rewardCfg = getSparringRewardConfig();
+  const upgradeOn = rewardCfg.upgradeAccuracyPct <= 100;
+  const upgradePct = Math.round(rewardCfg.upgradeAccuracyPct);
   // Roster entries hold no name of their own; the catalogue does.
   const importRoster = hasImportTicket
     ? [...(rs?.roster ?? [])]
@@ -4366,8 +4366,22 @@ function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, 
       <p className="text-xs w-full text-[#141412] bg-[#c7c095] font-bold">
         {importedId != null
           ? `Import session: 1 round, 3 minutes \u2022 4\u00d7 rewards on a win \u2022 partner spars on double stamina. Allocate earned points to ${sparStatText}.`
-          : `Practice fight: 1 round, 1 minute. Allocate earned points to ${sparStatText}.`}
+          : `Practice fight: 1 round, ${duration / 60} minute${duration > 60 ? "s" : ""}. ${upgradeOn ? `Win with ${upgradePct}%+ accuracy to earn the next tier's rewards. ` : ""}Allocate earned points to ${sparStatText}.`}
       </p>
+      {importedId == null && (
+        <div className="flex w-full gap-2" data-testid="sparring-duration">
+          {SPARRING_DURATIONS.map(sec => (
+            <button
+              key={sec}
+              onClick={() => { setDuration(sec); saveSparringDuration(sec); }}
+              className={`flex-1 rounded py-1.5 text-xs font-bold border ${duration === sec ? "bg-[#c7c095] text-[#141412] border-[#c7c095]" : "bg-black/40 text-white/80 border-white/20 hover:bg-black/60"}`}
+              data-testid={`button-sparring-duration-${sec}`}
+            >
+              {sec / 60} min
+            </button>
+          ))}
+        </div>
+      )}
       <div className="space-y-2 w-full">
         {difficulties.map(diff => {
           const fights = fighter.careerBoutIndex || 0;
@@ -4375,13 +4389,14 @@ function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, 
           const minFights = diff === "champion" ? 7 : diff === "elite" ? 4 : diff === "contender" ? 1 : 0;
           const champPrepLocked = diff === "champion" && !nearFight;
           const locked = !allSparringUnlocked && (fights < minFights || champPrepLocked);
-          const winPts = diff === "journeyman" ? 2 : diff === "contender" ? 3 : diff === "elite" ? 4 : 5;
+          const winPts = rewardCfg.tiers[diff].winPoints;
+          const upTier = nextSparringTier(diff);
           const lockReason = fights < minFights ? `Unlocks at ${minFights} fights` : champPrepLocked ? "Available in last 2 prep weeks" : "";
           return (
             <Card
               key={diff}
               className={`shadcn-card rounded-xl border border-card-border text-card-foreground shadow-sm p-3 w-full transition-all bg-[#c7c095] ${locked ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
-              onClick={() => { if (!locked) onSelect(diff, importedId ?? undefined); }}
+              onClick={() => { if (!locked) onSelect(diff, importedId ?? undefined, duration); }}
               data-testid={`card-sparring-${diff}`}
             >
               <div className="flex items-center justify-between gap-2">
@@ -4392,7 +4407,7 @@ function SparringDifficultySelect({ fighter, onSelect, onNightmare, onDoghouse, 
                         session. Stated as the rule rather than a figure: the
                         loss total is built from a different base than the win
                         figure beside it, so no single number is honest here. */}
-                    {locked ? lockReason : `Win: ${importedId != null ? winPts * 4 : winPts} pts \u2022 Lose: half pts`}
+                    {locked ? lockReason : `Win: ${importedId != null ? winPts * 4 : winPts} pts \u2022 Lose: half pts${upgradeOn ? ` \u2022 ${upgradePct}%+ acc win: ${SPARRING_TIER_LABELS[upTier]} rewards` : ""}`}
                   </p>
                 </div>
                 <span className="font-semibold text-[#ffffff] text-[20px]">{locked ? "LOCKED" : "SPAR"}</span>
@@ -4837,7 +4852,7 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart }: {
 
       <div className="flex-1 flex items-center justify-center overflow-hidden p-4">
         <div className="bg-[#1a1a1a] border border-white/15 rounded-xl p-4 flex items-center justify-center">
-          <FighterStanceCanvas colors={previewColors} width={320} height={560} scale={4} showHeadgear />
+          <FighterStanceCanvas colors={previewColors} width={320} height={560} showHeadgear stance={playerBoxingStance()} />
         </div>
       </div>
     </div>
@@ -5050,7 +5065,6 @@ export function RosterEditView({
   const [hasRefClipboard, setHasRefClipboard] = useState(() => {
     try { return !!localStorage.getItem(REF_SKILLS_CLIPBOARD_KEY); } catch { return false; }
   });
-  const [editingNeuralId, setEditingNeuralId] = useState<number | null>(null);
   const [showRankingRef, setShowRankingRef] = useState(false);
   const [showCascadeConfirm, setShowCascadeConfirm] = useState(false);
   const [cascading, setCascading] = useState(false);
@@ -5508,13 +5522,6 @@ export function RosterEditView({
     onSave(applyRankEditsToRoster(editedRoster));
   };
 
-  if (editingNeuralId !== null) {
-    const nEntry = getRosterEntryById(editingNeuralId);
-    const nFighter = editedRoster.find(r => r.id === editingNeuralId);
-    const nName = nEntry && nFighter ? getRosterDisplayName(nEntry, nFighter) : `Fighter ${editingNeuralId}`;
-    return <NeuralNetworkView onBack={() => setEditingNeuralId(null)} fighterId={editingNeuralId} fighterName={nName} />;
-  }
-
   if (showNeural) {
     return (
       <NeuralNetworkView
@@ -5799,7 +5806,7 @@ export function RosterEditView({
             {rosterColorField("Waist Stripe", editWaistStripe ?? defaultWaistStripeColor(editTrunks), setEditWaistStripe, "color-edit-waist-stripe", "waistStripe")}
           </div>
           <div className="shrink-0 bg-black/30 border border-border rounded-lg p-2 flex items-center justify-center" data-testid="preview-edit-fighter">
-            <FighterStanceCanvas colors={previewColors} width={180} height={280} scale={2} />
+            <FighterStanceCanvas colors={previewColors} width={180} height={280} stance={editedRoster.find(ef => ef.id === editingId)?.boxingStance} />
           </div>
           </div>
           <p className="text-[10px] text-muted-foreground border-t border-border pt-3">
@@ -6070,17 +6077,9 @@ export function RosterEditView({
             </Button>
           )}
         </Card>
+        {editingId !== null && <PunchProfileAssignCard key={editingId} rosterId={editingId} />}
         <Button onClick={applyEdit} className="w-full gap-2" data-testid="button-apply-edit">
           <Check className="w-4 h-4" /> Apply Changes
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => setEditingNeuralId(editingId)}
-          className="w-full gap-2"
-          data-testid="button-edit-fighter-neural"
-        >
-          <BarChart3 className="w-4 h-4" /> Edit Neural Network
-          {fighterHasNeural(editingId) && <span className="text-[10px] text-primary ml-1">custom</span>}
         </Button>
         <div className="flex items-center justify-center gap-2 w-full pt-1">
           <Button
@@ -6190,7 +6189,7 @@ export function RosterEditView({
                   <span className="text-[10px] text-primary">edited</span>
                 )}
                 <div className="w-12 h-16 shrink-0">
-                  <FighterStanceCanvas colors={fighterColors} width={120} height={144} />
+                  <FighterStanceCanvas colors={fighterColors} width={120} height={144} stance={f.boxingStance} />
                 </div>
                 <Pencil className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
               </div>
