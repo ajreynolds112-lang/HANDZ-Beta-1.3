@@ -8,6 +8,7 @@ import { REFINEMENT_KEYS, sanitizeRefinementKeys } from "./refinementKeys";
 import { activeRefinementsOnly, MAX_ACTIVE_REFINEMENTS } from "./engine";
 import { grownEquipmentLevel, normalizeEquipmentLevels, postChampEquipmentFloor } from "./equipmentConfig";
 import { clampPunchEndurance, punchEnduranceOf, PUNCH_ENDURANCE_MIN, punchEnduranceLossOf, PUNCH_ENDURANCE_LOSS_MAX, PUNCH_ENDURANCE_LOSS_MIN, PUNCH_ENDURANCE_GRACE_WEEKS, PUNCH_ENDURANCE_STEP_WEEKS, needsPunchEnduranceLossRebase } from "./punchEndurance";
+import { clampPurePower, purePowerOf, PURE_POWER_DECAY_PER_WEEK } from "./purePower";
 import { applySpacialGear, spacialSelectionOf } from "./spacialColor";
 import { advanceDrilledWeek } from "./drilledActions";
 import { advanceResetTrainingWeek, resetTrainingOf, RESET_SPEED_GRACE_WEEKS, RESET_SPEED_STEP_WEEKS, RESET_SPEED_MAX_STEPS } from "./resetTraining";
@@ -2830,6 +2831,27 @@ export function* simulateWeekSteps(incomingState: CareerRosterState, weekSeed: n
     peLossRiseWeek += peLossRises * PUNCH_ENDURANCE_STEP_WEEKS;
   }
 
+  // Pure Power answers to the weights: three full weeks without a Weight
+  // Lifting session, then it sheds 20% a week. Same anchor/bye rules as the
+  // heavy-bag clock above.
+  const ppFirstDrop = (state.lastWLWeek ?? 0) + PUNCH_ENDURANCE_GRACE_WEEKS;
+  let purePower = purePowerOf(state);
+  let ppDropWeek = Math.max(ppFirstDrop, state.purePowerDecayWeek ?? ppFirstDrop);
+  if (peFightWeekBye) {
+    const ppOverdue = peNextWeek > ppDropWeek
+      ? Math.ceil((peNextWeek - ppDropWeek) / PUNCH_ENDURANCE_STEP_WEEKS)
+      : 0;
+    if (ppOverdue > 0) {
+      purePower = clampPurePower(purePower - ppOverdue * PURE_POWER_DECAY_PER_WEEK);
+      ppDropWeek += ppOverdue * PUNCH_ENDURANCE_STEP_WEEKS;
+    }
+    ppDropWeek += 1;
+  } else if (peNextWeek >= ppDropWeek) {
+    const ppDrops = Math.floor((peNextWeek - ppDropWeek) / PUNCH_ENDURANCE_STEP_WEEKS) + 1;
+    purePower = clampPurePower(purePower - ppDrops * PURE_POWER_DECAY_PER_WEEK);
+    ppDropWeek += ppDrops * PUNCH_ENDURANCE_STEP_WEEKS;
+  }
+
   // Reset speed rusts back on the same way, off the same sparring stamp: three
   // full weeks without a session of any kind, then one session's worth of the
   // snap comes back every week until the player spars again. Banked as steps
@@ -2888,6 +2910,8 @@ export function* simulateWeekSteps(incomingState: CareerRosterState, weekSeed: n
     punchEnduranceDecayWeek: peDecayWeek,
     punchEnduranceLoss,
     punchEnduranceLossRiseWeek: peLossRiseWeek,
+    purePower,
+    purePowerDecayWeek: ppDropWeek,
     resetSpeedDecaySteps,
     resetSpeedRiseWeek: rsRiseWeek,
     endgameRefFloorApplied,

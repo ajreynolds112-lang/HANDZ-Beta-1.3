@@ -16,6 +16,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
+import { type BoxerTemplate, buildBoxerRig, loadBoxerTemplate } from "./boxerBody";
 
 export const RIG_HEIGHT = 2.0;
 const MODEL_DIR = "/models/fighter/";
@@ -47,13 +48,19 @@ export interface RigInstance {
   headgear: THREE.Object3D;
   /** Body-space corrections for a bind pose that isn't upright (Tripo: a head pitched down). Applied before the pose. */
   bindFix?: Partial<Record<BoneName, THREE.Quaternion>>;
-  kind: "tripo" | "code";
+  kind: "boxer" | "tripo" | "code";
+  /** Textured body: applies the skin colour (picks the skin texture and tints it). */
+  skinTone?(css: string): void;
+  /** Textured body: eyelid morphs instead of eye meshes. */
+  setEyes?(state: "open" | "closed" | "squint"): void;
+  /** Textured body: drive as the referee (no gloves). */
+  setRefereeMode?(): void;
   dispose(): void;
 }
 
 // ───────────────────────── shared helpers ─────────────────────────
 
-function newMaterials(): Record<Region, THREE.MeshStandardMaterial> {
+export function newMaterials(): Record<Region, THREE.MeshStandardMaterial> {
   const m = (rough: number) => new THREE.MeshStandardMaterial({ roughness: rough, metalness: 0 });
   return {
     skin: m(0.62), trunks: m(0.5), stripe: m(0.5), socks: m(0.85),
@@ -66,12 +73,12 @@ const tmpM = new THREE.Matrix4();
 function relMatrix(obj: THREE.Object3D, root: THREE.Object3D, out = new THREE.Matrix4()): THREE.Matrix4 {
   return out.copy(root.matrixWorld).invert().multiply(obj.matrixWorld);
 }
-function relPos(obj: THREE.Object3D, root: THREE.Object3D): THREE.Vector3 {
+export function relPos(obj: THREE.Object3D, root: THREE.Object3D): THREE.Vector3 {
   return new THREE.Vector3().setFromMatrixPosition(relMatrix(obj, root, tmpM));
 }
 
 /** Parent `child` to `bone` so it sits at `placeInBody` (body-space matrix) in the bind pose. */
-function attachAtBind(child: THREE.Object3D, bone: THREE.Object3D, body: THREE.Object3D, placeInBody: THREE.Matrix4): void {
+export function attachAtBind(child: THREE.Object3D, bone: THREE.Object3D, body: THREE.Object3D, placeInBody: THREE.Matrix4): void {
   const boneRel = relMatrix(bone, body);
   const local = boneRel.invert().multiply(placeInBody);
   local.decompose(child.position, child.quaternion, child.scale);
@@ -257,7 +264,8 @@ let gearSet: GearSet = {
   headgear: { geo: codeHeadgearGeo() },
 };
 let tripoBody: TripoBodyTemplate | null = null;
-let loadStarted = false;
+let boxerBody: BoxerTemplate | null = null;
+let loadPromise: Promise<void> | null = null;
 let assetEpoch = 0;
 
 /** Bumped every time a loaded asset replaces a stand-in, so fighters rebuild. */
@@ -272,15 +280,31 @@ function canonicalBone(name: string): BoneName | null {
 }
 
 /** Kick off the one-time GLB loads. Safe to call every frame. */
-export function ensureFighterAssets(isDisposed: () => boolean): void {
-  if (loadStarted) return;
-  loadStarted = true;
+export function ensureFighterAssets(_isDisposed?: () => boolean): void {
+  void preloadFighterAssets();
+}
+
+/**
+ * Start (or join) the one-time fighter GLB loads; resolves once they have all
+ * landed or failed. Loading screens await this so fighters built afterwards use
+ * the real body from their first frame.
+ */
+export function preloadFighterAssets(): Promise<void> {
+  if (loadPromise) return loadPromise;
   const loader = new GLTFLoader();
   const load = (file: string) => loader.loadAsync(MODEL_DIR + file);
-  void fetch(MODEL_DIR + "fighter-manifest.json")
+  loadPromise = fetch(MODEL_DIR + "fighter-manifest.json")
     .then(r => (r.ok ? r.json() : null))
-    .then(async (manifest: { parts?: Record<string, { file: string }> } | null) => {
+    .then(async (manifest: { parts?: Record<string, { file: string; eyes?: string }> } | null) => {
       const parts = manifest?.parts ?? {};
+      // The textured boxer replaces the Tripo body; that one stays as the fallback.
+      if (parts.boxer) {
+        try {
+          boxerBody = await loadBoxerTemplate({ body: parts.boxer.file, eyes: parts.boxer.eyes });
+        } catch (err) {
+          console.warn("[3D] textured boxer unavailable, using the Tripo body", err);
+        }
+      }
       const tasks: Promise<void>[] = [];
       const gear = (key: "glove" | "shoe" | "headgear", prep: (g: THREE.BufferGeometry) => THREE.BufferGeometry) => {
         if (!parts[key]) return;
@@ -292,7 +316,7 @@ export function ensureFighterAssets(isDisposed: () => boolean): void {
       gear("glove", prepareGlove);
       gear("shoe", prepareShoe);
       gear("headgear", prepareHeadgear);
-      if (parts.body) {
+      if (parts.body && !boxerBody) {
         tasks.push(load(parts.body.file).then(gltf => {
           const boneMap = new Map<string, BoneName>();
           gltf.scene.traverse(o => {
@@ -306,9 +330,11 @@ export function ensureFighterAssets(isDisposed: () => boolean): void {
         }).catch(err => console.warn("[3D] boxer body unavailable, using code rig", err)));
       }
       await Promise.all(tasks);
-      if (!isDisposed()) assetEpoch++;
+      // Fighters built before this point rebuild on the bump.
+      assetEpoch++;
     })
     .catch(err => console.warn("[3D] fighter manifest unavailable, using code rig", err));
+  return loadPromise;
 }
 
 /** Boxer arm proportions relative to the source model: shorter upper arm, longer forearm. */
@@ -380,6 +406,14 @@ function rescaleArmSegments(scene: THREE.Object3D, boneMap: Map<string, BoneName
 // ───────────────────────── instance builders ─────────────────────────
 
 export function createRig(): RigInstance {
+  if (boxerBody) {
+    try {
+      return buildBoxerRig(boxerBody);
+    } catch (err) {
+      console.warn("[3D] textured boxer failed to build, using code rig", err);
+      boxerBody = null;
+    }
+  }
   if (tripoBody) {
     try {
       return buildTripoRig(tripoBody);

@@ -26,7 +26,7 @@ globalThis.fetch = (async (url: any, init?: any) => {
 
 const { createInitialState, getPunchReachPx } = await import("../client/src/game/engine");
 const { Fighter3D } = await import("../client/src/game/three/fighterModel");
-const { punchHitsHead } = await import("../client/src/game/three/fighterPose");
+const { punchHitsHead, solvePose, newPoseMemory, newPoseTargets } = await import("../client/src/game/three/fighterPose");
 const { ensureFighterAssets, fighterAssetEpoch } = await import("../client/src/game/three/fighterRig");
 const { PX_PER_UNIT, MAT_HEIGHT } = await import("../client/src/game/three/worldMapping");
 type FS = import("../client/src/game/types").FighterState;
@@ -243,7 +243,10 @@ console.log("4. smooth punches (tripo rig)");
   set(true, "launchDelay"); for (let n = 0; n < 3; n++) frame();
   set(true, "contact"); for (let n = 0; n < 20; n++) frame();
   set(false); for (let n = 0; n < 30; n++) frame();
-  ok(maxG < 0.3, `glove never jumps more than 0.3m in a frame (max ${maxG.toFixed(3)}m)`);
+  // Straights are phase-locked and rate-capped at full extension in 50 ms (a
+  // soft-cap jab extends in ~66 ms), so ~0.6m per 60 fps frame is real speed;
+  // a teleport would be the whole ~1.8m line in one frame.
+  ok(maxG < 0.65, `glove never jumps more than 0.65m in a frame (max ${maxG.toFixed(3)}m)`);
   ok(maxH < 0.06, `hips never jump more than 0.06m in a frame (max ${maxH.toFixed(3)}m)`);
   // Tripo body wears no added gear: its own hands/feet carry the glove/shoe colours.
   let skinned: any; fig.rig.body.traverse((o: any) => { if (o.isSkinnedMesh) skinned = o; });
@@ -252,9 +255,46 @@ console.log("4. smooth punches (tripo rig)");
   ok(groupCount(fig.rig.materials.glove) === 1, "Tripo hands are tinted with the glove colour");
   ok(groupCount(fig.rig.materials.shoe) === 1, "Tripo feet are tinted with the shoe colour");
   let extraMeshes = 0;
-  fig.rig.body.traverse((o: any) => { if (o.isMesh && !o.isSkinnedMesh && !fig.glow.includes(o) && o !== fig.rig.headgear && !fig.rig.eyes.includes(o)) extraMeshes++; });
+  fig.rig.body.traverse((o: any) => { if (o.isMesh && !o.isSkinnedMesh && o !== fig.rig.headgear && !fig.rig.eyes.includes(o)) extraMeshes++; });
   ok(extraMeshes === 0, `no extra gear meshes on the Tripo body (${extraMeshes})`);
   performance.now = realPerfNow;
+  fig.dispose();
+}
+
+// ── 5. step-and-drag: the foot nearest the direction steps first; a planted foot never skates ──
+console.log("5. step order + planted feet (tripo rig)");
+{
+  const fig = new Fighter3D() as any;
+  const st = createInitialState();
+  for (const [stance, dirs] of [["orthodox", { forward: "left", back: "right", left: "left", right: "right" }], ["southpaw", { forward: "right", back: "left", left: "left", right: "right" }]] as const) {
+    for (const [name, want] of Object.entries(dirs)) {
+      const f: any = { ...st.player, x: 400, z: 300, facingAngle: 0, boxingStance: stance, isPunching: false };
+      const [dx, dz] = ({ forward: [1, 0], back: [-1, 0], left: [0, -1], right: [0, 1] } as const)[name as "forward"];
+      const mem = newPoseMemory(), out = newPoseTargets(), dt = 1 / 60;
+      mem.stanceBlend = stance === "southpaw" ? 1 : 0;
+      let first = "", skate = 0;
+      let prev: { x: number; z: number; y: number }[] | null = null;
+      // Engine-side step cycle: advanced by distance walked over the stride (big step).
+      f.walkStride = 0.8; f.walkCycle = 0;
+      let travel = 0;
+      for (let n = 0; n < 150; n++) {
+        f.x += dx * 60 * dt; f.z += dz * 60 * dt;
+        f.walkCycle += 60 * dt / PX_PER_UNIT / f.walkStride;
+        solvePose(f, fig.dims, mem, { opponent: null, dt } as any, out);
+        // World-space feet (facing 0: body x = world x, body z = world z).
+        const w = [0, 1].map(i => ({ x: f.x / PX_PER_UNIT + out.ankle[i].x, z: f.z / PX_PER_UNIT + out.ankle[i].z, y: out.ankle[i].y }));
+        if (!first && n > 0) first = w[0].y > fig.dims.ankleY + 0.003 ? "left" : w[1].y > fig.dims.ankleY + 0.003 ? "right" : "";
+        if (prev && n > 10) for (const i of [0, 1]) if (w[i].y <= fig.dims.ankleY + 1e-4 && prev[i].y <= fig.dims.ankleY + 1e-4)
+          skate = Math.max(skate, Math.hypot(w[i].x - prev[i].x, w[i].z - prev[i].z));
+        if (n === 0) travel = w[0].x * dx + w[0].z * dz;
+        prev = w;
+      }
+      const stepped = Math.abs(prev![0].x * dx + prev![0].z * dz - travel);
+      ok(first === want, `${stance} ${name}: ${want} foot steps first (got ${first || "none"})`);
+      ok(stepped > 1.5, `${stance} ${name}: feet cover the 0.8m strides (${stepped.toFixed(2)}m in ~2 steps)`);
+      ok(skate < 0.004, `${stance} ${name}: a planted foot stays put on the canvas (max slide ${skate.toFixed(4)}m/frame)`);
+    }
+  }
   fig.dispose();
 }
 

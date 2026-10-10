@@ -184,3 +184,28 @@ export function loadSparringDuration(): SparringDuration {
 export function saveSparringDuration(seconds: SparringDuration): void {
   try { localStorage.setItem(DURATION_KEY, String(seconds)); } catch { /* no storage */ }
 }
+
+// ===== Champion defence diamonds =====
+
+/**
+ * Champion sparring only: hold the partner's accuracy down and get paid in
+ * diamonds. At or below 45% → 1, 40% → 2, 35% → 3, 30% → 4, 25% → 5; a
+ * 2-minute session adds 1, a 3-minute session adds 2. A partner who threw
+ * nothing pays nothing.
+ */
+const CHAMPION_DEFENCE_TIERS: { maxAccuracy: number; diamonds: number }[] = [
+  { maxAccuracy: 0.25, diamonds: 5 },
+  { maxAccuracy: 0.30, diamonds: 4 },
+  { maxAccuracy: 0.35, diamonds: 3 },
+  { maxAccuracy: 0.40, diamonds: 2 },
+  { maxAccuracy: 0.45, diamonds: 1 },
+];
+
+export function championDefenceDiamonds(difficulty: AIDifficulty, sessionSeconds: number, oppThrown: number, oppLanded: number): number {
+  if (difficulty !== "champion" || oppThrown <= 0) return 0;
+  const acc = oppLanded / oppThrown;
+  const tier = CHAMPION_DEFENCE_TIERS.find(t => acc <= t.maxAccuracy + 1e-9);
+  if (!tier) return 0;
+  const durationBonus = sessionSeconds >= 180 ? 2 : sessionSeconds >= 120 ? 1 : 0;
+  return tier.diamonds + durationBonus;
+}

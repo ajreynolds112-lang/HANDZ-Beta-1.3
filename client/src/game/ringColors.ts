@@ -23,7 +23,7 @@ export const RING_SPACIAL_PRICE_FORCE = 50_000_000_000;
  * ring skirt always reads as the same material as the mat.
  */
 export const RING_COLOR_KEYS = [
-  "canvas", "border", "ropeLower", "ropeMiddle", "ropeUpper", "posts",
+  "canvas", "border", "ropeLower", "ropeMiddle", "ropeUpper", "posts", "text",
 ] as const;
 
 export type RingColorKey = typeof RING_COLOR_KEYS[number];
@@ -37,6 +37,7 @@ export const DEFAULT_RING_COLORS: Record<RingColorKey, string> = {
   ropeMiddle: "#ffffff",
   ropeUpper: "#cc3333",
   posts: "#ffffff",
+  text: "#deb345",
 };
 
 export const RING_COLOR_LABELS: Record<RingColorKey, string> = {
@@ -46,6 +47,7 @@ export const RING_COLOR_LABELS: Record<RingColorKey, string> = {
   ropeMiddle: "Middle Rope",
   ropeUpper: "Upper Rope",
   posts: "Corner Posts",
+  text: "Ring Text",
 };
 
 type RingColorSource = { ringColors?: unknown; ringSpacialUnlocked?: boolean | null } | null | undefined;

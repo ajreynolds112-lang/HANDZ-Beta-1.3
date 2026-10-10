@@ -20,9 +20,9 @@ export interface ChunkPhase {
   /**
    * The work itself. Return a generator to split the phase further: each
    * `yield` hands control back to the browser, and a yielded string relabels
-   * the phase.
+   * the phase. Return a promise to wait on async work (asset loads).
    */
-  run: () => void | Generator<string | void, void, void>;
+  run: () => void | Promise<void> | Generator<string | void, void, void>;
 }
 
 export interface ChunkedProgress {
@@ -87,7 +87,9 @@ export async function runChunked(phases: ChunkPhase[], opts: RunChunkedOptions =
     await yieldToBrowser();
 
     const result = phase.run();
-    if (result && typeof (result as Generator).next === "function") {
+    if (result && typeof (result as Promise<void>).then === "function") {
+      await result;
+    } else if (result && typeof (result as Generator).next === "function") {
       const gen = result as Generator<string | void, void, void>;
       let label = phase.label;
       // A phase that yields reports sub-progress; the number of steps isn't

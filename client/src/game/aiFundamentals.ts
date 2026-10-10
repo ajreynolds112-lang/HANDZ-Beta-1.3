@@ -67,6 +67,9 @@ export interface Fundamental {
   /** What counts as pulling it off. */
   success: string;
   params: FundamentalParam[];
+  /** "basics" marks the beginner-technique layer (stance, the punches, slipping,
+   *  rolling, blocking). Absent means the advanced set. */
+  layer?: "basics";
 }
 
 const p = (key: string, label: string, def: number, min = 0, max = 1): FundamentalParam =>
@@ -886,7 +889,224 @@ export const FUNDAMENTALS: Fundamental[] = [
       p("minDisplacement", "Displacement that counts", 0.35),
     ],
   },
+
+  // ---- Basics (74-84): beginner technique from Coach Anthony's playlist
+  // (`.agents/skills/neural-networks/references/boxing-basics.md`). These come
+  // underneath everything above: a boxer who leans in, leaves the hand out or
+  // stands on the centre line loses the exchange before strategy matters. The
+  // defensive ones replace the fixed-odds reflex pick with an answer per kind of
+  // punch, so which defence the AI uses against what is learned in training.
+  {
+    id: 74, layer: "basics", key: "basics_balanced_range", label: "Punch From Balance",
+    meaning: "Throw from your stance at a distance the punch can reach, instead of leaning over the front knee to chase it.",
+    opportunity: "Threw a punch.",
+    success: "The opponent was inside that punch's reach, short of full stretch, when it was thrown.",
+    params: [
+      p("rangeDiscipline", "Wait until in range", 0.55),
+      p("weightBack", "Weight kept on the back foot", 0.50),
+    ],
+  },
+  {
+    id: 75, layer: "basics", key: "basics_hands_home", label: "Hands Back Home",
+    meaning: "Bring the hand straight back to the chin after every punch, chin tucked behind the shoulder.",
+    opportunity: "Threw a punch.",
+    success: "Not hit while the punch was coming back.",
+    params: [
+      p("guardReturn", "Speed of the guard coming back", CHAMP.guardParanoia),
+    ],
+  },
+  {
+    id: 76, layer: "basics", key: "basics_one_two", label: "The 1-2",
+    meaning: "As the jab lands, the cross is already on its way.",
+    opportunity: "Threw a jab.",
+    success: "A cross followed straight behind it.",
+    params: [
+      p("followChance", "Cross behind the jab", CHAMP.comboCommitChance * 0.8),
+    ],
+  },
+  {
+    id: 77, layer: "basics", key: "basics_hook_off_straight", label: "Hook Off the Right Hand",
+    meaning: "The cross loads the lead hook: weight shifts to the front foot and the hook comes back the other way.",
+    opportunity: "Threw a cross.",
+    success: "A lead hook followed and landed.",
+    params: [
+      p("hookChance", "Hook after the cross", CHAMP.comboCommitChance * 0.6),
+    ],
+  },
+  {
+    id: 78, layer: "basics", key: "basics_head_off_line", label: "Head Off the Centre Line",
+    meaning: "Hit and don't get hit: when the punches stop, the head moves off the centre line instead of staying where it was.",
+    opportunity: "Finished throwing with the opponent in range.",
+    success: "Slipped or rolled right away and was not hit.",
+    params: [
+      p("moveAfter", "Move the head after punching", 0.45),
+    ],
+  },
+  {
+    id: 79, layer: "basics", key: "basics_slip_straight", label: "Slip the Straight",
+    meaning: "A jab or cross to the head is answered by a small slip to the side, staying close enough to counter.",
+    opportunity: "A straight punch to the head was coming.",
+    success: "Slipped or ducked it and it missed.",
+    params: [
+      p("slipChoice", "Slip rather than block", 0.40),
+    ],
+  },
+  {
+    id: 80, layer: "basics", key: "basics_roll_hook", label: "Roll Under the Hook",
+    meaning: "A hook to the head is beaten by bobbing under it (the U-shaped roll), which also gets the head to the safe side.",
+    opportunity: "A hook to the head was coming.",
+    success: "Rolled under it and it missed.",
+    params: [
+      p("rollChoice", "Roll rather than block", 0.40),
+    ],
+  },
+  {
+    id: 81, layer: "basics", key: "basics_guard_uppercut", label: "Don't Duck the Uppercut",
+    meaning: "An uppercut comes up the middle, so dropping into it is the worst answer; keep the guard tight or step back.",
+    opportunity: "An uppercut was coming.",
+    success: "It missed or was blocked, without ducking into it.",
+    params: [
+      p("guardChoice", "Guard or step back rather than duck", 0.60),
+    ],
+  },
+  {
+    id: 82, layer: "basics", key: "basics_elbows_body", label: "Elbows In for the Body",
+    meaning: "Body shots are caught on the elbows and forearms; slipping the head does nothing for the body.",
+    opportunity: "A body shot was coming.",
+    success: "It was blocked or missed.",
+    params: [
+      p("elbowChoice", "Elbow block rather than evade", 0.55),
+    ],
+  },
+  {
+    id: 83, layer: "basics", key: "basics_tight_counter", label: "Tight Defence, Quick Counter",
+    meaning: "Keep slips and rolls small so the hands are free to answer straight away.",
+    opportunity: "Made a punch miss by slipping or ducking.",
+    success: "Landed a counter right after.",
+    params: [
+      p("counterChance", "Counter after a slip or roll", CHAMP.perfectReactChance * 0.6),
+    ],
+  },
+  {
+    id: 84, layer: "basics", key: "basics_cutoff_body_hook", label: "Body Hook Cut-Off",
+    meaning: "The rear hook to the body, thrown from the middle without leaning, cuts off an opponent circling away.",
+    opportunity: "The opponent moved sideways or away at close range.",
+    success: "A rear hook to the body landed.",
+    params: [
+      p("cutoffChance", "Body hook on the escape", CHAMP.ringCutoff * 0.6),
+    ],
+  },
+  // ---- Basics, second batch: fight scenarios (hit-and-not-get-hit, boxing a
+  // pressure fighter, rolling off the hook, the jab, the three ranges, the
+  // double jab, setting up the knockout).
+  {
+    id: 85, layer: "basics", key: "basics_catch_return_jab", label: "Catch and Return the Jab",
+    meaning: "Rear hand home at the chin catches their jab; the jab goes straight back before they reset.",
+    opportunity: "Blocked an incoming straight with the guard.",
+    success: "Threw a jab back within 0.5 s.",
+    params: [
+      p("returnJab", "Jab back after catching a straight", 0.35),
+    ],
+  },
+  {
+    id: 86, layer: "basics", key: "basics_catch_hook_fire_back", label: "Catch the Hook, Fire Back",
+    meaning: "Catch their hook and answer between their shots with a real power punch, so pressure has a price.",
+    opportunity: "Blocked an incoming hook, uppercut or body shot with the guard.",
+    success: "Threw a cross, hook or uppercut back within 0.6 s.",
+    params: [
+      p("fireBack", "Power punch back after catching a hook", 0.3),
+    ],
+  },
+  {
+    id: 87, layer: "basics", key: "basics_slip_and_rip", label: "Slip and Rip",
+    meaning: "Slip the right hand that comes back after your hook, and rip a body shot from down there.",
+    opportunity: "Slipped or ducked a straight to the head without being hit.",
+    success: "A body punch landed within 0.8 s.",
+    params: [
+      p("ripChance", "Body shot off the slip", 0.3),
+    ],
+  },
+  {
+    id: 88, layer: "basics", key: "basics_double_hook", label: "Double Up the Hook",
+    meaning: "Hook blocked and nothing came back? Roll with it and throw the hook again.",
+    opportunity: "Own hook was blocked.",
+    success: "Threw another hook within 0.7 s without getting hit in between.",
+    params: [
+      p("doubleChance", "Second hook after a blocked one", 0.3),
+    ],
+  },
+  {
+    id: 89, layer: "basics", key: "basics_jab_and_exit", label: "Jab and Get Out",
+    meaning: "Step in, land the jab, step back out of range. Don't stay in the house when you don't want to fight there.",
+    opportunity: "Landed a jab.",
+    success: "Out of the opponent's reach within 0.6 s and not hit.",
+    params: [
+      p("exitChance", "Step out after the jab", CHAMP.ropeEscapeAwareness),
+    ],
+  },
+  {
+    id: 90, layer: "basics", key: "basics_inside_work", label: "Inside Work",
+    meaning: "At close range it's hooks to the body and uppercuts up the middle, not long straights.",
+    opportunity: "Threw a punch at close range.",
+    success: "It was a body punch or an uppercut.",
+    params: [
+      p("insideChance", "Body or uppercut when inside", 0.4),
+    ],
+  },
+  {
+    id: 91, layer: "basics", key: "basics_off_the_ropes", label: "Off the Ropes",
+    meaning: "Backed to the ropes: circle out straight away instead of covering up there.",
+    opportunity: "Near the ropes with the opponent close.",
+    success: "Back off the ropes within 1.5 s, taking fewer than two punches.",
+    params: [
+      p("escapeChance", "Circle off the ropes", CHAMP.ropeEscapeAwareness),
+    ],
+  },
+  {
+    id: 92, layer: "basics", key: "basics_circle_off", label: "Circle, Don't Back Up Straight",
+    meaning: "Against a fighter walking you down, move left or right, not straight back in front of them.",
+    opportunity: "The opponent advanced at mid range.",
+    success: "Moved more sideways than straight back over the next 0.6 s.",
+    params: [
+      p("circleChance", "Circle against pressure", CHAMP.lateralStrength),
+    ],
+  },
+  {
+    id: 93, layer: "basics", key: "basics_body_then_head", label: "Downstairs, Then Upstairs",
+    meaning: "Body shots pull the elbows down; the hook to the chin goes in as they drop.",
+    opportunity: "Landed a body punch.",
+    success: "A head punch landed within 1 s.",
+    params: [
+      p("upstairsChance", "Head shot after the body", 0.35),
+    ],
+  },
+  {
+    id: 94, layer: "basics", key: "basics_mix_levels", label: "Mix Head and Body",
+    meaning: "Don't repeat the same target: switching between head and body stops them timing you.",
+    opportunity: "Every fourth punch thrown.",
+    success: "The last four punches went to both head and body.",
+    params: [
+      p("mixChance", "Switch target level", 0.35),
+    ],
+  },
 ];
+
+/** Close range ("zone 1") for the Basics layer, centre to centre in px.
+ *  Shared by the AI's inside-work bias and the training observer. */
+export const BASICS_INSIDE_PX = 80;
+
+/** The Basics layer's four kinds of incoming punch. Shared by the AI's answer
+ *  pick and the training observer so both classify a punch the same way.
+ *  Body = not aimed at the head, the same bit hit resolution reads. */
+export type BasicsPunchClass = "straight" | "hook" | "uppercut" | "body";
+export function basicsPunchClass(f: { currentPunch: string | null; punchAimsHead: boolean }): BasicsPunchClass | null {
+  const p = f.currentPunch;
+  if (!p) return null;
+  if (!f.punchAimsHead) return "body";
+  if (p === "jab" || p === "cross") return "straight";
+  if (p === "leftHook" || p === "rightHook") return "hook";
+  return "uppercut";
+}
 
 export const FUNDAMENTAL_BY_KEY: Record<string, Fundamental> =
   Object.fromEntries(FUNDAMENTALS.map(f => [f.key, f]));
@@ -1085,6 +1305,9 @@ export function evolveNextGeneration(
   pop: FundamentalSeed[],
   gen: number,
   rand: () => number,
+  /** Builds the replacements for the emptied slots (in population order).
+   *  Absent: every replacement is drawn from the whole space. */
+  replace?: (slots: { id: number; name: string }[], gen: number) => FundamentalSeed[],
 ): EvolveResult {
   const ranked = rankSeeds(pop);
   const keep = Math.ceil(ranked.length / 2);
@@ -1092,6 +1315,9 @@ export function evolveNextGeneration(
   const cut = ranked.slice(keep);
   const survivorIds = new Set(survivors.map(s => s.id));
   const salvageLog: Record<number, string[]> = {};
+  const emptied = pop.filter(p => !survivorIds.has(p.id)).map(p => ({ id: p.id, name: p.name }));
+  const built = replace ? replace(emptied, gen) : [];
+  const builtById = new Map(built.map(b => [b.id, b]));
 
   const next = pop.map(prev => {
     if (survivorIds.has(prev.id)) {
@@ -1107,7 +1333,7 @@ export function evolveNextGeneration(
       .map(f => f.key);
     if (salvaged.length > 0) salvageLog[prev.id] = salvaged;
 
-    const fresh = makeRandomSeed(prev.id, prev.name, gen, rand);
+    const fresh = builtById.get(prev.id) ?? makeRandomSeed(prev.id, prev.name, gen, rand);
     // The lifetime tally belongs to the slot, not the individual, so it crosses
     // the replacement intact — that is the whole point of it never resetting.
     fresh.lifetime = prev.lifetime;
@@ -1150,7 +1376,7 @@ export function deriveNeuralState(seed: { params: Record<string, number> }): Rec
       g("initiative_priority", "firstActChance"), g("responsible_pressure", "advanceRate"),
       g("reset_exploitation", "strikeChance"), g("balance_integrity", "overreachLimit"),
       g("functional_punch_effect", "pushChance")),
-    guardParanoia: avg(g("finish_discipline", "guardFloor"), g("hand_check_disruption", "guardKeep"), g("emergency_blocking", "blockCommit"), 1 - g("trap_engineering", "openingSize"),
+    guardParanoia: avg(g("basics_hands_home", "guardReturn"), g("finish_discipline", "guardFloor"), g("hand_check_disruption", "guardKeep"), g("emergency_blocking", "blockCommit"), 1 - g("trap_engineering", "openingSize"),
       g("distance_first_defense", "guardWhenClose"), g("return_fire_expectation", "recoverGuard"), g("integrated_evasion", "preDefend"),
       g("defensive_responsibility", "guardWhilePunching"), g("threat_assumption", "suspicion"),
       g("threat_assumption", "safeEntry"), g("counter_threat_mapping", "threatWeight"),
@@ -1161,7 +1387,7 @@ export function deriveNeuralState(seed: { params: Record<string, number> }): Rec
       g("counter_window_creation", "baitRate"), g("dead_zone_avoidance", "baitInstead"),
       g("active_patience", "threatWhileWaiting"), g("information_harvesting", "probeRate"),
       g("lead_hand_dominance", "leadActivity")),
-    cleanHitsVsVolume: avg(g("opening_calibration", "probeShare"), g("finish_discipline", "overcommitCap"), g("lead_hand_occupation", "followUp"),
+    cleanHitsVsVolume: avg(g("basics_balanced_range", "rangeDiscipline"), g("opening_calibration", "probeShare"), g("finish_discipline", "overcommitCap"), g("lead_hand_occupation", "followUp"),
       g("feint_credibility", "minLandings"), 1 - g("throwaway_setup", "commitLevel"),
       g("punch_neutralization", "precision"), g("counter_variation", "typeSpread"),
       g("continuous_advantage", "gainThreshold"), g("pressure_decision_quality", "simplifyWhenTired"),
@@ -1194,7 +1420,7 @@ export function deriveNeuralState(seed: { params: Record<string, number> }): Rec
       g("counter_expected_value", "declineChance"), g("initiative_priority", "neutralPatience"),
       g("tempo_control", "tempoOwn"), g("reset_exploitation", "strikeDelay")),
 
-    perfectReactChance: avg(g("pull_counter", "pullTrigger"), g("close_miss_countering", "counterWindow"), g("check_hook_intercept", "rushTrigger"), g("trap_engineering", "punishReadiness"),
+    perfectReactChance: avg(g("basics_tight_counter", "counterChance"), g("pull_counter", "pullTrigger"), g("close_miss_countering", "counterWindow"), g("check_hook_intercept", "rushTrigger"), g("trap_engineering", "punishReadiness"),
       g("counter_window_recognition", "reactSpeed"), g("make_miss_pay_exit", "counterChance"), g("counter_window_creation", "punishReady"),
       g("predictive_timing", "patternWeight"), g("habit_exploitation", "punishChance"),
       g("momentum_management", "interruptChance"), g("reset_advantage", "exploitTheirs")),
@@ -1236,7 +1462,7 @@ export function deriveNeuralState(seed: { params: Record<string, number> }): Rec
       g("counter_variation", "rotateChance"), g("defensive_variation", "methodSpread"),
       g("constraint_control", "rhythmDenial"), g("information_harvesting", "varietyDemand"),
       g("defense_vulnerability_model", "targetSwitch"), g("tempo_control", "changeRate")),
-    rhythmSwayAdapt: avg(g("pull_counter", "exitChance"), g("opening_calibration", "readWeight"),
+    rhythmSwayAdapt: avg(g("basics_head_off_line", "moveAfter"), g("pull_counter", "exitChance"), g("opening_calibration", "readWeight"),
       g("rhythm_variability", "exitVariety"), g("rhythm_variability", "tempoRange"),
       g("defensive_variation", "runLimit"), g("active_defense", "stillnessLimit"),
       g("style_plasticity", "styleRange"), g("layered_adaptation", "adjustRate"),
@@ -1244,7 +1470,7 @@ export function deriveNeuralState(seed: { params: Record<string, number> }): Rec
       g("tempo_control", "syncResist")),
     chargedPunchChance: avg(g("forced_readjustment", "minDisplacement"), g("attrition_targeting", "staminaWeight"), g("setup_distraction_finish", "finishPower"),
       g("punch_neutralization", "timingWeight")),
-    comboCommitChance: avg(g("double_jab_disruption", "doubleChance"), g("finish_discipline", "aggressionGain"), g("lead_hand_occupation", "followUp"),
+    comboCommitChance: avg(g("basics_one_two", "followChance"), g("basics_hook_off_straight", "hookChance"), g("double_jab_disruption", "doubleChance"), g("finish_discipline", "aggressionGain"), g("lead_hand_occupation", "followUp"),
       g("setup_distraction_finish", "threeLayerChance"), g("misdirection", "patternLength"),
       g("style_plasticity", "commitToStyle"), g("momentum_management", "compoundChance"),
       g("advantage_window", "windowLength"), g("advantage_window", "punchBudget"),
@@ -1252,17 +1478,17 @@ export function deriveNeuralState(seed: { params: Record<string, number> }): Rec
     executionIntensity: avg(g("finish_discipline", "aggressionGain"), g("pull_counter", "crossDelay"), g("attrition_targeting", "bodyShare"),
       g("setup_distraction_finish", "finishPower")),
 
-    ringCutoff: avg(g("forced_readjustment", "preferenceWeight"), g("layered_entry", "entryVariety"), 1 - g("back_foot_invitation", "yieldDistance"),
+    ringCutoff: avg(g("basics_cutoff_body_hook", "cutoffChance"), g("forced_readjustment", "preferenceWeight"), g("layered_entry", "entryVariety"), 1 - g("back_foot_invitation", "yieldDistance"),
       1 - g("distance_first_defense", "rangeKeep"),
       g("constraint_control", "optionDenial"), g("constraint_control", "exitDenial"),
       g("ring_generalship", "placeControl"), g("ring_generalship", "centreBias"),
       g("responsible_pressure", "pressureHold"), g("lead_hand_dominance", "controlRange"),
       g("ring_interception", "cutChance")),
-    ropeEscapeAwareness: avg(g("recovery_jab", "minRange"), g("miss_recovery", "resetChance"), g("feint_conversion", "moveInstead"),
+    ropeEscapeAwareness: avg(g("basics_jab_and_exit", "exitChance"), g("basics_off_the_ropes", "escapeChance"), g("recovery_jab", "minRange"), g("miss_recovery", "resetChance"), g("feint_conversion", "moveInstead"),
       g("return_fire_expectation", "exitAfter"), g("front_time_limit", "disengage"),
       g("defensive_responsibility", "rangeDiscipline"), g("advantage_window", "exitOnTime"),
       g("range_elasticity", "dwellLimit"), g("exchange_cycle", "exitWeight")),
-    lateralStrength: avg(g("back_foot_invitation", "counterTrigger"), g("check_hook_intercept", "interceptRange"),
+    lateralStrength: avg(g("basics_circle_off", "circleChance"), g("back_foot_invitation", "counterTrigger"), g("check_hook_intercept", "interceptRange"),
       g("angular_combination_chaining", "angleChance"), g("angular_combination_chaining", "angleSize"),
       g("active_defense", "moveShare"), g("commitment_evasion", "stepSize"), g("make_miss_pay_exit", "exitDistance"),
       g("dead_zone_avoidance", "exitDistance"),
@@ -1276,9 +1502,24 @@ export function deriveNeuralState(seed: { params: Record<string, number> }): Rec
     kdRecovery1: CHAMP.kdRecovery1,
     kdRecovery2: CHAMP.kdRecovery2,
     kdRecovery3: CHAMP.kdRecovery3,
-    survivalInstinct: avg(g("recovery_jab", "resetTrigger"), g("emergency_blocking", "blockCommit"), g("miss_recovery", "resetChance"),
+    survivalInstinct: avg(g("basics_balanced_range", "weightBack"), g("recovery_jab", "resetTrigger"), g("emergency_blocking", "blockCommit"), g("miss_recovery", "resetChance"),
       g("front_time_limit", "hitLimit"),
       g("pressure_decision_quality", "composureUnderFire"), g("pressure_decision_quality", "panicResist")),
+    // Basics: which answer to pick against each kind of incoming punch, plus
+    // moving the head after punching. Seed-only knobs (not in the admin
+    // registry), so only fundamentals-driven AIs read them.
+    basicsSlipStraight: g("basics_slip_straight", "slipChoice"),
+    basicsRollHook: g("basics_roll_hook", "rollChoice"),
+    basicsGuardUppercut: g("basics_guard_uppercut", "guardChoice"),
+    basicsGuardBody: g("basics_elbows_body", "elbowChoice"),
+    basicsHeadOffLine: g("basics_head_off_line", "moveAfter"),
+    basicsReturnJab: g("basics_catch_return_jab", "returnJab"),
+    basicsFireBack: g("basics_catch_hook_fire_back", "fireBack"),
+    basicsSlipRip: g("basics_slip_and_rip", "ripChance"),
+    basicsDoubleHook: g("basics_double_hook", "doubleChance"),
+    basicsBodyHead: g("basics_body_then_head", "upstairsChance"),
+    basicsInsideWork: g("basics_inside_work", "insideChance"),
+    basicsLevelMix: g("basics_mix_levels", "mixChance"),
   };
 
   for (const k of Object.keys(out)) out[k] = clamp(out[k], 0, 1);

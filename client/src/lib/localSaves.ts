@@ -3,6 +3,7 @@ import { DEFAULT_GEAR_COLORS } from "@shared/schema";
 import { loadXpConfig, saveXpConfig, XP_CONFIG_KEY, type XpConfig } from "@/lib/xpConfig";
 import { clampPassiveClock } from "@/game/gymIncome";
 import { reloadScaling } from "@/lib/scalingConfig";
+import { isCareerStorageKey, validateCareerSave } from "@shared/cloudSave";
 
 const SAVES_KEY = "handz_saves";
 const FIGHT_RESULTS_KEY = "handz_fight_results";
@@ -29,6 +30,7 @@ function loadSaves(): Fighter[] {
 
 function persistSaves(fighters: Fighter[]): void {
   localStorage.setItem(SAVES_KEY, JSON.stringify(fighters));
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("handz-career-changed"));
 }
 
 function loadFightResults(): FightResult[] {
@@ -42,6 +44,7 @@ function loadFightResults(): FightResult[] {
 
 function persistFightResults(results: FightResult[]): void {
   localStorage.setItem(FIGHT_RESULTS_KEY, JSON.stringify(results));
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("handz-career-changed"));
 }
 
 export function getFighters(): Fighter[] {
@@ -157,6 +160,8 @@ export function createFighter(data: InsertFighter): Fighter {
     spacialOwned: data.spacialOwned ?? null,
     ringColors: data.ringColors ?? null,
     ringSpacialUnlocked: data.ringSpacialUnlocked ?? false,
+    gymLook: data.gymLook ?? null,
+    outfits: null,
     diamonds: data.diamonds ?? 0,
     shards: data.shards ?? 0,
     diamondLevelsBought: data.diamondLevelsBought ?? 0,
@@ -281,6 +286,21 @@ export function updateFighter(
       if (incoming.bestRankEver !== best) {
         data = { ...data, careerRosterState: { ...incoming, bestRankEver: best } as typeof data.careerRosterState };
       }
+    }
+  }
+  // Slip training, the lifetime slip tally and the paid Defensive Mastery tier
+  // only ever grow; the last one guards a diamond payout against a stale
+  // roster blob paying the same tier twice.
+  if (data.careerRosterState && typeof data.careerRosterState === "object") {
+    const incoming = data.careerRosterState as unknown as Record<string, unknown>;
+    const existing = (fighters[idx].careerRosterState ?? null) as unknown as Record<string, unknown> | null;
+    const patch: Record<string, number> = {};
+    for (const key of ["autoSlipTrainedPct", "slipsLandedTotal", "defensiveMasteryPaidTier", "defensiveMasteryBonusPct"] as const) {
+      const was = Number(existing?.[key]) || 0;
+      if ((Number(incoming[key]) || 0) < was) patch[key] = was;
+    }
+    if (Object.keys(patch).length) {
+      data = { ...data, careerRosterState: { ...incoming, ...patch } as unknown as typeof data.careerRosterState };
     }
   }
   // The stat-point pool is a count of unspent points — it can never be negative.
@@ -551,7 +571,7 @@ function exportBrowserState(fighterId: string): Record<string, string> {
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (!key || !key.startsWith("handz_") || BUNDLE_SKIP_KEYS.includes(key)) continue;
+      if (!key || !isCareerStorageKey(key) || BUNDLE_SKIP_KEYS.includes(key)) continue;
       const owner = perFighterKeyOwner(key);
       // Another career's marker is not this save's business.
       if (owner && owner.fighterId !== fighterId) continue;
@@ -609,7 +629,7 @@ function importBrowserState(
     // The file is user-supplied: ignore anything outside this game's
     // namespace, and never let it rewrite the save list, the fight-result
     // store or another career's PIN.
-    if (typeof bundleKey !== "string" || !bundleKey.startsWith("handz_")) continue;
+    if (typeof bundleKey !== "string" || !isCareerStorageKey(bundleKey)) continue;
     if (typeof raw !== "string" || BUNDLE_SKIP_KEYS.includes(bundleKey)) continue;
     const value = bundleValueForImport(bundleKey, raw, newFighterId);
     if (value === null) continue;
@@ -669,21 +689,26 @@ export function exportSaveFile(fighter: Fighter): SaveFileData {
   };
 }
 
-export function importSaveFile(data: SaveFileData): Fighter {
+export function importSaveFile(data: SaveFileData, options: { replaceExisting?: boolean; preserveIdentity?: boolean } = {}): Fighter {
+  validateCareerSave(data);
   if (!data || data.version !== 1 || !data.fighter) {
     throw new Error("Invalid save file format");
   }
   // Refuse before touching anything — nothing below is undoable.
-  if (loadSaves().length >= 1) {
+  if (loadSaves().length >= 1 && !options.replaceExisting) {
     throw new Error("A save already exists — confirm overwrite first");
   }
-  const newId = generateId();
+  const newId = options.preserveIdentity ? data.fighter.id : generateId();
   // Every write below joins one transaction: a browser that runs out of storage
   // part-way through must end up exactly as it started, not holding an imported
   // item catalog with no career to use it.
   const tx = beginStorageTransaction();
   try {
-    const fighter = commitImport(data, newId, tx);
+    if (options.replaceExisting) {
+      tx.set(SAVES_KEY, "[]");
+      tx.set(FIGHT_RESULTS_KEY, "[]");
+    }
+    const fighter = commitImport(data, newId, tx, options.preserveIdentity);
     // The scaling config is cached in memory for the fight loop, so the import
     // has to invalidate that cache or the old curve keeps being used. Only now
     // that every write has landed, and again after a rollback so the cache can
@@ -699,7 +724,7 @@ export function importSaveFile(data: SaveFileData): Fighter {
   }
 }
 
-function commitImport(data: SaveFileData, newId: string, tx: StorageTransaction): Fighter {
+function commitImport(data: SaveFileData, newId: string, tx: StorageTransaction, preserveIdentity = false): Fighter {
   // The whole browser-held layer first — item catalog, roster customizations,
   // editor configs, settings — so the sections handled specially below (XP
   // config, tuning, gym clock) still get the last word on their own keys.
@@ -755,7 +780,8 @@ function commitImport(data: SaveFileData, newId: string, tx: StorageTransaction)
     // travel with an exported file the same way gear colours do.
     ringColors: data.fighter.ringColors ?? null,
     ringSpacialUnlocked: data.fighter.ringSpacialUnlocked ?? false,
-    createdAt: new Date(),
+    gymLook: data.fighter.gymLook ?? null,
+    createdAt: preserveIdentity ? data.fighter.createdAt : new Date(),
   };
 
   const fighters = loadSaves();
@@ -768,7 +794,7 @@ function commitImport(data: SaveFileData, newId: string, tx: StorageTransaction)
     for (const fr of data.fightResults) {
       results.push({
         ...fr,
-        id: generateId(),
+        id: preserveIdentity ? fr.id : generateId(),
         fighterId: newId,
       });
     }

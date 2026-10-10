@@ -1,14 +1,17 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { requestCloudSave, setScreenKind } from "@/lib/uiChrome";
+import BackgroundTrainingControl from "@/components/BackgroundTrainingControl";
+import { pauseBackgroundTraining } from "@/game/backgroundTraining";
 import * as localSaves from "@/lib/localSaves";
-import { GameState, Archetype, FighterColors, DEFAULT_PLAYER_COLORS, AIDifficulty, TimerSpeed, DoghouseOpponentSpec, BoxingStance } from "@/game/types";
+import { GameState, Archetype, FighterColors, DEFAULT_PLAYER_COLORS, AIDifficulty, TimerSpeed, DoghouseOpponentSpec, BoxingStance, PunchType } from "@/game/types";
+import { creditBagSession } from "@/game/drilledActions";
 import { createInitialState, startFight, startNextRound, xpToNextLevel, extractPerformanceStats, extractPlayerPlaystyle, savePlayerPlaystyle, activateNightmareMode, clearAllKeys, applyItemFightMods, applyAiPatternStudy, foldAiPatternLibrary, attachDrilledActions, collectDrilledActions, collectResetTrainingReps, carryDrilledActions, applyFightEquipment, spreadRefinementPoints, activeRefinementsOnly, MAX_ACTIVE_REFINEMENTS, REFINEMENT_TOTAL_CAP, NIGHTMARE_REFINEMENT_STEP_PCT, nightmareRefinementBudgetFor, DOGHOUSE_ENEMY_STAMINA_MULT, DOGHOUSE_PLAYER_STAMINA_MULT } from "@/game/engine";
 import {
   uniformEquipmentLevels, scaleEquipmentLevels,
   SPARRING_EQUIPMENT_SHARE, NIGHTMARE_EQUIPMENT_SHARE, DOGHOUSE_EQUIPMENT_SHARE,
 } from "@/game/equipmentConfig";
 import { getEquipmentLevels } from "@/lib/equipmentUpgrades";
-import { soundEngine, musicEngine } from "@/game/sound";
-import { FIGHGHT_TRACK_INDEX, MUSIC_TRACK_NAMES } from "@/game/musicTracks";
+import { soundEngine } from "@/game/sound";
 import { resetAutoZoom } from "@/game/renderer";
 import {
   initRosterState,
@@ -37,6 +40,9 @@ import {
   clampPunchEnduranceLoss, punchEnduranceLossOf, PUNCH_ENDURANCE_LOSS_PER_BAG_SESSION,
   NIGHTMARE_KILLS_PER_PUNCH_ENDURANCE,
 } from "@/game/punchEndurance";
+import { applyPurePower, clampPurePower, purePowerOf, PURE_POWER_PER_SESSION } from "@/game/purePower";
+import { grantDefensiveMasteryBonus, perfectBlocksOf, doghousePerfectBlocksBankedOf, MASTERY_PCT_PER_PERFECT_BLOCK, MASTERY_PCT_PER_PERFECT_BLOCK_DOGHOUSE } from "@/game/defensiveMastery";
+import { applySlipTraining, autoSlipTrainedOf, bankSlipsLanded, grantSlipTraining, slipsLandedOf, SLIP_TRAINING_PCT_PER_SLIP, SLIP_TRAINING_PCT_PER_SLIP_DOGHOUSE } from "@/game/slipTraining";
 import { applyResetTraining, resetTrainingOf, growResetTraining, resetSpeedBonusOf, sparSessionsForDifficulty, sparSessionsForSeconds, RESET_SPEED_PER_NIGHTMARE_WIN, RESET_SPEED_PER_DOGHOUSE_WIN } from "@/game/resetTraining";
 import { KEY_FIGHTER_IDS, getRosterDisplayName, type RosterEntry } from "@/game/rosterData";
 import { applySpacialGear, spacialSelectionOf } from "@/game/spacialColor";
@@ -52,6 +58,7 @@ import FightEnd from "@/components/FightEnd";
 import CareerMode, { type TrainingType, RosterEditView, AllocateStats, RefinementView, refinementExchangeCost, refUnlockForceCost, refUnlockShardCost } from "@/components/CareerMode";
 import { SPARRING_MODE_COSTS, type SparringMode } from "@/game/sparringModes";
 import { ringColorsOf } from "@/game/ringColors";
+import { gymLookOf } from "@/game/gymLook";
 import WeightLiftingGame from "@/components/WeightLiftingGame";
 import { PAID_SWEEP_SHARD_COST } from "@/components/GymView";
 import { cappedStatPointForce, FORCE_PER_CAPPED_SP_BOUT, FORCE_PER_CAPPED_SP_TRAINING } from "@/game/statPointEconomy";
@@ -81,10 +88,11 @@ import { rollOpponentItems } from "@/game/itemDistConfig";
 import FightItemsHud from "@/components/FightItemsHud";
 import PatternMemoryHud from "@/components/PatternMemoryHud";
 import LoadingScreen from "@/components/LoadingScreen";
+import { preload3dAssets } from "@/game/three/preload3d";
 import { useChunkedLoader } from "@/lib/useChunkedLoader";
 import { pickRewardCrates, getAiPunchEnduranceLossForRank } from "@/game/rosterGenConfig";
 import { computeForceEarned } from "@/game/forceRewards";
-import { getSparringRewardConfig, SPARRING_WIN_RARITY_CAP, sparringRewardTier, sparringWinRarity, isSparringUpgrade, SPARRING_TIER_LABELS, type SparringDuration } from "@/game/sparringRewards";
+import { getSparringRewardConfig, SPARRING_WIN_RARITY_CAP, sparringRewardTier, sparringWinRarity, isSparringUpgrade, SPARRING_TIER_LABELS, championDefenceDiamonds, type SparringDuration } from "@/game/sparringRewards";
 import type { CrateId } from "@/game/cratesConfig";
 
 /**
@@ -266,7 +274,6 @@ const FIGHT_MILESTONES: Array<{
   description: string;
   icon: string;
 }> = [
-  { type: "wins", threshold: 5, title: "Fight Music Unlocked!", description: "You can now enable custom fight music in your career hub settings.", icon: "🎵" },
   { type: "wins", threshold: 6, title: "Training Upgrade!", description: "You can now choose an additional stat Weight Lifting trains.", icon: "💪" },
   { type: "wins", threshold: 15, title: "Sparring Mastery!", description: "All stats are now available in every sparring session.", icon: "🥊" },
   { type: "bouts", threshold: 15, title: "Iron Conditioning!", description: "Weight Lifting now allows Stamina growth alongside Power and Defense.", icon: "🏆" },
@@ -401,10 +408,19 @@ function withGymWorkFromBout(rs: CareerRosterState | null, st: GameState | null)
  * does: payout handlers rebuild the roster blob wholesale from a snapshot taken
  * at render, which a sibling handler may already have moved past.
  */
+/** Pure Power after a Weight Lifting session adds its 20%, off the freshest save. */
+function liftedPurePower(fighterId: string, rs: CareerRosterState | null): number {
+  const saved = localSaves.getFighter(fighterId)?.careerRosterState as CareerRosterState | null;
+  return clampPurePower(purePowerOf(saved ?? rs) + PURE_POWER_PER_SESSION);
+}
+
 function liftedResetBlock(fighterId: string, rs: CareerRosterState | null, week: number) {
   const saved = localSaves.getFighter(fighterId)?.careerRosterState as CareerRosterState | null;
   return growResetTraining(resetTrainingOf(saved ?? rs), "block", 1, week);
 }
+
+/** Diamonds the Doghouse pays per opponent put away, on top of its other rewards. */
+const DOGHOUSE_DIAMONDS_PER_WIN = 5;
 
 function grantPunchEndurance(fighterId: string, rs: CareerRosterState, gain: number): CareerRosterState {
   if (gain <= 0) return rs;
@@ -424,6 +440,9 @@ function grantPunchEndurance(fighterId: string, rs: CareerRosterState, gain: num
  * wholesale from a snapshot taken at render, which a sibling handler may already
  * have moved past. Clamped, so it stops at the floor instead of going negative.
  */
+/** Free bag mode pays the Punch Endurance cut at this many punches per minute of session. */
+const FREE_BAG_PUNCHES_PER_MINUTE = 100;
+
 function improvedPunchEnduranceLoss(fighterId: string, rs: CareerRosterState | null): number {
   const saved = localSaves.getFighter(fighterId)?.careerRosterState as CareerRosterState | null;
   return clampPunchEnduranceLoss(punchEnduranceLossOf(saved ?? rs) - PUNCH_ENDURANCE_LOSS_PER_BAG_SESSION);
@@ -449,7 +468,15 @@ function makeRefCostMilestoneFilter(currentLevel: number, costReduction: number)
   };
 }
 
+/** Screens whose exit back to the career hub gets the short gym loading screen. */
+const GYM_RETURN_FROM = new Set<string>(["fighting", "fightEnd", "training", "trainingAllocate", "resultsCeremony"]);
+
 type UIMode = "menu" | "classSelect" | "career" | "fighting" | "fightEnd" | "training" | "rosterEdit" | "simulating" | "tutorial" | "tutorialComplete" | "ringWalk" | "resultsCeremony" | "doghouseSetup" | "trainingAllocate";
+/** Fights and minigames: the account/settings gear stays hidden over these. */
+const PLAY_MODES = new Set<string>(["fighting", "training", "tutorial", "ringWalk"]);
+/** Leaving any of these means a fight, minigame or payout just finished: save now. */
+const SAVE_AFTER_MODES = new Set<string>(["fighting", "fightEnd", "training", "trainingAllocate", "resultsCeremony", "tutorial", "simulating", "doghouseSetup"]);
+const BG_TRAINING_PAUSE_MODES = new Set<string>(["fighting", "training", "simulating", "ringWalk", "tutorial", "trainingAllocate"]);
 
 function SimulationScreen({ news, weekNumber, onComplete }: { news: string[]; weekNumber: number; onComplete: () => void }) {
   const [visibleCount, setVisibleCount] = useState(0);
@@ -603,7 +630,7 @@ function TutorialCompleteScreen({ onFinish }: { onFinish: () => void }) {
   );
 }
 
-export default function Game() {
+export default function Game({ autoCreateCareer = false, canEditRoster = false }: { autoCreateCareer?: boolean; canEditRoster?: boolean }) {
   const [gameState, setGameState] = useState<GameState>(createInitialState());
   /**
    * The live fight state the canvas loop mutates 60x a second. `gameState` is
@@ -630,12 +657,43 @@ export default function Game() {
     });
   }, []);
   const [uiMode, setUiModeRaw] = useState<UIMode>("menu");
+  const uiModeRef = useRef<UIMode>("menu");
+  // Background training waits out live bouts, minigames and the week sim:
+  // they need the frame budget, and headless bouts share engine recording state.
+  useEffect(() => {
+    pauseBackgroundTraining("fight", BG_TRAINING_PAUSE_MODES.has(uiMode));
+  }, [uiMode]);
   const setUiMode = useCallback((mode: UIMode) => {
     if (mode !== "fighting") {
       soundEngine.stopCrowdAmbient();
     }
+    const from = uiModeRef.current;
+    uiModeRef.current = mode;
+    setScreenKind(PLAY_MODES.has(mode) ? "play" : mode === "menu" ? "menu" : "other");
+    // Payouts persist in the same handler that switches screens; let them land first.
+    if (from !== mode && (SAVE_AFTER_MODES.has(from) || mode === "fightEnd")) setTimeout(requestCloudSave, 300);
+    // Finishing or quitting a bout or a training minigame: a short loading
+    // screen covers the gym while its 3D scene is rebuilt underneath. Skipped
+    // when a heavier loader (week advance) is already up.
+    if (mode === "career" && from !== mode && GYM_RETURN_FROM.has(from)) {
+      void runLoader({
+        title: "Back To The Gym",
+        minDurationMs: 650,
+        phases: [{ label: "Setting up the gym", run: () => preload3dAssets() }],
+      });
+    }
     setUiModeRaw(mode);
-  }, []);
+  }, [runLoader]);
+  // Boot: the first loading screen pulls in every 3D asset (boxer rig, props,
+  // sign font) so the menu ring and the gym never pop models in after it lifts.
+  useEffect(() => () => setScreenKind("menu"), []);
+  useEffect(() => {
+    void runLoader({
+      title: "HANDZ",
+      minDurationMs: 500,
+      phases: [{ label: "Loading 3D assets", run: () => preload3dAssets() }],
+    });
+  }, [runLoader]);
   /**
    * True while a sparring session that actually resolved an imported roster
    * partner is running. The Import Ticket is only spent when this is set — a
@@ -730,17 +788,15 @@ export default function Game() {
   const [showFightItemsHud, setShowFightItemsHud] = useState(() => {
     try { const v = localStorage.getItem("handz_show_fight_items"); return v === null ? true : v === "true"; } catch { return true; }
   });
-  const [careerFightMusicEnabled, setCareerFightMusicEnabled] = useState(() => {
-    try { return localStorage.getItem("handz_career_fight_music") === "true"; } catch { return false; }
-  });
-  const [careerFightMusicTrack, setCareerFightMusicTrack] = useState<number>(() => {
-    try {
-      const v = parseInt(localStorage.getItem("handz_career_fight_music_track") ?? "", 10);
-      if (!Number.isNaN(v) && v >= 0 && v < MUSIC_TRACK_NAMES.length) return v;
-    } catch {}
-    return FIGHGHT_TRACK_INDEX;
-  });
   const [trainingType, setTrainingType] = useState<TrainingType | null>(null);
+  // Free heavy bag: unscored, no session count, no rewards.
+  const [freeBagMode, setFreeBagMode] = useState(false);
+  /** Free bag: the session's punches in order, banked into Drilled Actions on exit. */
+  const freeBagPunchesRef = useRef<{ type: PunchType; head: boolean }[]>([]);
+  // Chosen free-bag length (minutes); 0 = session never started.
+  const freeBagMinutesRef = useRef(0);
+  // True only once the free-bag clock has run all the way out.
+  const freeBagFullTimeRef = useRef(false);
   const [trainingLiveXp, setTrainingLiveXp] = useState(0);
   const [sparringDifficulty, setSparringDifficulty] = useState<AIDifficulty>("contender");
   const [isSparring, setIsSparring] = useState(false);
@@ -857,21 +913,21 @@ export default function Game() {
   }, [quickFightPlayerLevel, quickFightEnemyLevel, aiDifficulty, roundDurationMins, timerSpeed, maxRounds, playerArmLength, enemyArmLength, towelStoppageEnabled, practiceMode, recordInputs, cpuVsCpu, aiPowerMult, aiSpeedMult, aiStaminaMult, quickFightNightmare]);
 
   const [fighters, setFighters] = useState<Fighter[]>([]);
+  const [careerStartInCreate, setCareerStartInCreate] = useState(false);
   const [fightersLoading] = useState(false);
 
   useEffect(() => {
     // A bout left open by closing the tab never concluded — give its armed
     // boosts back before anything reads the inventory.
     restoreFightBoostEscrow();
-    setFighters(localSaves.getFighters());
+    const loaded = localSaves.getFighters();
+    setFighters(loaded);
+    // A signed-in account with no career goes straight to the career creator.
+    if (autoCreateCareer && loaded.length === 0) {
+      setCareerStartInCreate(true);
+      setUiMode("career");
+    }
   }, []);
-
-  // ===== MUSIC ENGINE HOOKS =====
-  const careerMusicActiveRef = useRef(false);
-  const isSparringRef = useRef(isSparring);
-  useEffect(() => { isSparringRef.current = isSparring; }, [isSparring]);
-  const isNightmareRef = useRef(isNightmare);
-  useEffect(() => { isNightmareRef.current = isNightmare; }, [isNightmare]);
 
   // Real-time nightmare XP bar: recompute fightLiveXp on each new KO
   useEffect(() => {
@@ -890,24 +946,8 @@ export default function Game() {
     patchLiveState(prev => ({ ...prev, fightLiveXp: (activeFighter.xp ?? 0) + liveXpEarned }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState.nightmareKillCount, isNightmare]);
-  const isCareerFightRef = useRef(isCareerFight);
-  useEffect(() => { isCareerFightRef.current = isCareerFight; }, [isCareerFight]);
-
-  // Dynamic fight-round music is on only when the toggle is enabled AND the
-  // career fighter has unlocked it (>=5 wins).
-  const dynamicMusicEnabled = careerFightMusicEnabled && (activeFighter?.wins ?? 0) >= 5;
-  const dynamicMusicEnabledRef = useRef(dynamicMusicEnabled);
-  useEffect(() => { dynamicMusicEnabledRef.current = dynamicMusicEnabled; }, [dynamicMusicEnabled]);
-
-  // Which song the dynamic fight-round music uses (chosen in the career hub).
-  const careerFightMusicTrackRef = useRef(careerFightMusicTrack);
-  useEffect(() => { careerFightMusicTrackRef.current = careerFightMusicTrack; }, [careerFightMusicTrack]);
 
   const pendingAllocApplied = useRef(false);
-
-  useEffect(() => {
-    try { localStorage.setItem("handz_career_fight_music", String(careerFightMusicEnabled)); } catch {}
-  }, [careerFightMusicEnabled]);
 
   useEffect(() => {
     if (!activeFighter) return;
@@ -921,97 +961,12 @@ export default function Game() {
     setTrainingLiveXp(0);
   }, [trainingType]);
 
-  useEffect(() => {
-    try { localStorage.setItem("handz_career_fight_music_track", String(careerFightMusicTrack)); } catch {}
-  }, [careerFightMusicTrack]);
-
-  // Career menus, sim screen, fight start, and sparring
-  useEffect(() => {
-    if (uiMode === "career" || uiMode === "training" || uiMode === "rosterEdit") {
-      careerMusicActiveRef.current = true;
-      musicEngine.start();
-    } else if (uiMode === "menu") {
-      if (musicEngine.isPlaying()) {
-        musicEngine.skipToNext(2000, 1500);
-      } else {
-        musicEngine.start();
-      }
-      careerMusicActiveRef.current = true;
-    } else if (uiMode === "simulating") {
-      musicEngine.fastFadeAndReset();
-    } else if (uiMode === "fighting") {
-      if (isSparringRef.current) {
-        // Sparring against any AI: play only the FIGHGHT track.
-        musicEngine.startForced(FIGHGHT_TRACK_INDEX);
-      } else {
-        // Official career fight: fade out menu music; the per-round effect below
-        // starts the (dynamic or silent) fight-round music when the round begins.
-        musicEngine.stop(1200);
-      }
-    }
-  }, [uiMode]);
-
-  // Career fight end: win = music, loss = silence
-  useEffect(() => {
-    if (uiMode !== "fightEnd") return;
-    if (!isCareerFightRef.current || isSparringRef.current) return;
-    if (gameState.fightWinner === "player") {
-      musicEngine.start(1500);
-    } else {
-      musicEngine.stop(800);
-    }
-  }, [uiMode, gameState.fightWinner]);
-
-  // Career fight between rounds
-  useEffect(() => {
-    if (uiMode !== "fighting") return;
-    if (!isCareerFightRef.current || isSparringRef.current) return;
-    if (gameState.phase === "roundEnd") {
-      // Between rounds: fade music out (dynamic or normal between-round shuffle).
-      if (dynamicMusicEnabledRef.current) {
-        musicEngine.stopDynamic(600);
-      } else {
-        musicEngine.start(600);
-      }
-    } else if (gameState.phase === "fighting") {
-      if (dynamicMusicEnabledRef.current) {
-        // Start the quiet, momentum-driven fight music (chosen song) for this round.
-        musicEngine.startDynamicCareer(careerFightMusicTrackRef.current);
-      } else if (musicEngine.isPlaying()) {
-        musicEngine.stop(600);
-      }
-    }
-  }, [gameState.phase, uiMode]);
-
-  // Pause/resume music with game pause
-  useEffect(() => {
-    if (uiMode !== "fighting") return;
-    if (gameState.isPaused) {
-      musicEngine.pause();
-    } else {
-      musicEngine.resume();
-    }
-  }, [gameState.isPaused, uiMode]);
-
   // Close the punch editor overlay whenever the game leaves the paused state
   useEffect(() => {
     if (!gameState.isPaused && showPausePunchEditor) {
       setShowPausePunchEditor(false);
     }
   }, [gameState.isPaused, showPausePunchEditor]);
-
-  // Browsers block autoplay until the user interacts — retry on first gesture
-  useEffect(() => {
-    const unlock = () => musicEngine.unlock();
-    window.addEventListener("pointerdown", unlock);
-    window.addEventListener("keydown", unlock);
-    return () => {
-      window.removeEventListener("pointerdown", unlock);
-      window.removeEventListener("keydown", unlock);
-    };
-  }, []);
-  // ===== END MUSIC HOOKS =====
-
 
   const refreshFighters = useCallback(() => {
     setFighters(localSaves.getFighters());
@@ -1212,6 +1167,14 @@ export default function Game() {
       rhythmChangeCount: 0,
       chargeUsed: false,
       rhythmHits: 0,
+      perfectBlockCount: 0,
+      feintCount: 0,
+      punchFeintCount: 0,
+      bodyShotCount: 0,
+      slipsDodged: 0,
+      heldPunchCount: 0,
+      resetDone: false,
+      finishLanded: false,
     };
     if (stage === 1) {
       newState.enemy.stamina = Math.round(newState.enemy.stamina / 4);
@@ -1303,6 +1266,7 @@ export default function Game() {
         carryDrilledActions(newState, nmRestart);
         // After activation, which owns the themed floor — same order as entry.
         nmRestart.ringColors = newState.ringColors;
+        nmRestart.gymRingName = newState.gymRingName;
         commitGameState(nmRestart);
         return;
       }
@@ -1342,6 +1306,7 @@ export default function Game() {
         newState.playerRefinement
       );
       restartState.ringColors = newState.ringColors;
+      restartState.gymRingName = newState.gymRingName;
       if (newState.careerEnemySkillPoints) {
         restartState.careerEnemySkillPoints = newState.careerEnemySkillPoints;
       }
@@ -1376,6 +1341,11 @@ export default function Game() {
         playerLoss: newState.player.punchEnduranceLoss,
         enemyLoss: newState.enemy.punchEnduranceLoss,
       });
+      // Same bout run back: the player keeps their trained auto slip chance.
+      restartState.player.autoSlipTrainedBonus = newState.player.autoSlipTrainedBonus;
+      if (activeFighter && !newState.isQuickFight) {
+        applyPurePower(restartState, localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null);
+      }
       // Same bout run back: both corners keep the equipment they walked in with.
       applyFightEquipment(restartState, { player: newState.playerEquipment, opponent: newState.opponentEquipment });
       commitGameState(restartState);
@@ -1689,6 +1659,25 @@ export default function Game() {
           // did not already bank it.
           if (!doghouseEarlyFinishedRef.current) {
             dhUpdatedRosterState = grantPunchEndurance(activeFighter.id, dhUpdatedRosterState, dhOpponentsDefeated);
+            dhUpdatedRosterState = bankSlipsLanded(
+              dhUpdatedRosterState,
+              localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null,
+              slipsLandedOf(newState),
+            );
+            // Perfect blocks are paid opponent by opponent, as each one falls.
+            dhUpdatedRosterState = grantDefensiveMasteryBonus(
+              dhUpdatedRosterState,
+              localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null,
+              doghousePerfectBlocksBankedOf(newState) * MASTERY_PCT_PER_PERFECT_BLOCK_DOGHOUSE,
+            );
+            // Slip training pays only for a round that put someone away.
+            if (dhOpponentsDefeated >= 1) {
+              dhUpdatedRosterState = grantSlipTraining(
+                dhUpdatedRosterState,
+                localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null,
+                slipsLandedOf(newState) * SLIP_TRAINING_PCT_PER_SLIP_DOGHOUSE,
+              );
+            }
           }
         }
 
@@ -1708,6 +1697,10 @@ export default function Game() {
         const dhHaul = rollDoghouseChests(dhSaved, dhInventory, dhOpponentsDefeated, dhUpdatedRosterState?.playerRank ?? null);
         const dhCratesWon = dhHaul.crates;
         if (dhHaul.inventory) dhInventory = dhHaul.inventory;
+        // 5 diamonds per opponent put away, on top of everything else. The
+        // early finish handler pays the same run, so only one of them does.
+        const dhDiamondsEarned = doghouseEarlyFinishedRef.current ? 0 : DOGHOUSE_DIAMONDS_PER_WIN * dhOpponentsDefeated;
+        const dhNewDiamonds = (localSaves.getFighter(activeFighter.id)?.diamonds ?? activeFighter.diamonds ?? 0) + dhDiamondsEarned;
 
         updateFighterMutation.mutate({
           id: activeFighter.id,
@@ -1718,6 +1711,7 @@ export default function Game() {
             careerRosterState: dhUpdatedRosterState,
             itemInventory: dhInventory,
             ...(dhDecayedSP ? { skillPoints: dhDecayedSP } : {}),
+            ...(dhDiamondsEarned > 0 ? { diamonds: dhNewDiamonds } : {}),
           },
         });
         setActiveFighter(prev => prev ? {
@@ -1728,6 +1722,7 @@ export default function Game() {
           careerRosterState: dhUpdatedRosterState,
           itemInventory: dhInventory,
           ...(dhDecayedSP ? { skillPoints: dhDecayedSP } : {}),
+          ...(dhDiamondsEarned > 0 ? { diamonds: dhNewDiamonds } : {}),
         } : null);
 
         // The round paid out, so now the session fee comes due.
@@ -1893,6 +1888,18 @@ export default function Game() {
           sparring: (tb.sparring || 0) + 1,
           totalRhythmCutHits: newRcHits,
         };
+        // Champion sparring: keeping the partner's accuracy down pays diamonds.
+        const defDiamonds = championDefenceDiamonds(sparringDifficulty, newState.roundDuration, newState.enemy.punchesThrown, newState.enemy.punchesLanded);
+        if (defDiamonds > 0) {
+          const oppAccPct = Math.round((newState.enemy.punchesLanded / Math.max(1, newState.enemy.punchesThrown)) * 100);
+          const ddm = {
+            title: "Champion Defence",
+            description: `Partner held to ${oppAccPct}% accuracy — earned ${defDiamonds} Diamond${defDiamonds > 1 ? "s" : ""}!`,
+            icon: "💎",
+          };
+          deferredFightMilestonesRef.current = deferredFightMilestonesRef.current?.length ? [...deferredFightMilestonesRef.current, ddm] : [ddm];
+        }
+        const sparDiamondsEarned = rcDiamonds + defDiamonds;
         if (rcDiamonds > 0) {
           const rcm = {
             title: "Rhythm Cut Mastery",
@@ -1955,10 +1962,28 @@ export default function Game() {
           if (wasInFightCampSpar) {
             updatedRosterState = { ...updatedRosterState, campTrainingSessions: (updatedRosterState.campTrainingSessions ?? 0) + 1 };
           }
+          // Every counted slip goes on the Defensive Mastery tally, win or lose.
+          updatedRosterState = bankSlipsLanded(
+            updatedRosterState,
+            localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null,
+            slipsLandedOf(newState),
+          );
+          // Perfect blocks raise Defensive Mastery, win or lose, at the grade's rate.
+          updatedRosterState = grantDefensiveMasteryBonus(
+            updatedRosterState,
+            localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null,
+            perfectBlocksOf(newState) * (MASTERY_PCT_PER_PERFECT_BLOCK[sparringDifficulty] ?? 0),
+          );
           // Conditioning: winning the session is worth a point. Losing still
           // restarts the decay clock through the stamp above.
           if (sparringWon) {
             updatedRosterState = grantPunchEndurance(activeFighter.id, updatedRosterState, 1);
+            // Slip training: every close-range hand slip pays its grade's rate.
+            updatedRosterState = grantSlipTraining(
+              updatedRosterState,
+              localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null,
+              slipsLandedOf(newState) * (SLIP_TRAINING_PCT_PER_SLIP[sparringDifficulty] ?? 0),
+            );
           }
         }
 
@@ -2038,7 +2063,7 @@ export default function Game() {
             careerRosterState: updatedRosterState,
             ...(sparTotalRefPts > 0 ? { skillRefinement: newSparRef } : {}),
             ...(sparOverflowForce > 0 ? { force: sparForceBase + sparOverflowForce } : {}),
-            ...(rcDiamonds > 0 ? { diamonds: (activeFighter.diamonds ?? 0) + rcDiamonds } : {}),
+            ...(sparDiamondsEarned > 0 ? { diamonds: (activeFighter.diamonds ?? 0) + sparDiamondsEarned } : {}),
             ...(sparDecayedSP ? { skillPoints: sparDecayedSP } : {}),
             ...(sparInventory ? { itemInventory: sparInventory } : {}),
           },
@@ -2053,7 +2078,7 @@ export default function Game() {
           careerRosterState: updatedRosterState,
           ...(sparTotalRefPts > 0 ? { skillRefinement: newSparRef } : {}),
           ...(sparOverflowForce > 0 ? { force: sparForceBase + sparOverflowForce } : {}),
-          ...(rcDiamonds > 0 ? { diamonds: (prev.diamonds ?? 0) + rcDiamonds } : {}),
+          ...(sparDiamondsEarned > 0 ? { diamonds: (prev.diamonds ?? 0) + sparDiamondsEarned } : {}),
           ...(sparDecayedSP ? { skillPoints: sparDecayedSP } : {}),
           ...(sparInventory ? { itemInventory: sparInventory } : {}),
         } : null);
@@ -2954,6 +2979,8 @@ export default function Game() {
       // The Reset buy-backs are the player's own gym work, so they come into
       // every bout they fight. Opponents carry none and fight untrained.
       applyResetTraining(newState, { player: resetTrainingOf(peRs), playerSpeed: resetSpeedBonusOf(peRs) });
+      applySlipTraining(newState, autoSlipTrainedOf(peRs));
+      applyPurePower(newState, peRs);
       // Drilling is cashed in on fight night: the list comes into a career bout
       // so its buffs are live, but recording is off — a bout never moves a
       // counter. Practice and Quick Fight are excluded above and get nothing.
@@ -3332,6 +3359,23 @@ export default function Game() {
       // Conditioning: a point per opponent put away. The latch at the top of
       // this handler is what keeps the run from being paid twice.
       dhUpdatedRosterState = grantPunchEndurance(activeFighter.id, dhUpdatedRosterState, dhOpponentsDefeated);
+      dhUpdatedRosterState = bankSlipsLanded(
+        dhUpdatedRosterState,
+        localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null,
+        slipsLandedOf(liveStateRef.current ?? gameState),
+      );
+      dhUpdatedRosterState = grantDefensiveMasteryBonus(
+        dhUpdatedRosterState,
+        localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null,
+        doghousePerfectBlocksBankedOf(liveStateRef.current ?? gameState) * MASTERY_PCT_PER_PERFECT_BLOCK_DOGHOUSE,
+      );
+      if (dhOpponentsDefeated >= 1) {
+        dhUpdatedRosterState = grantSlipTraining(
+          dhUpdatedRosterState,
+          localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null,
+          slipsLandedOf(liveStateRef.current ?? gameState) * SLIP_TRAINING_PCT_PER_SLIP_DOGHOUSE,
+        );
+      }
     }
 
     // Finishing early still ends the bout — burn the one-fight boosts it used
@@ -3348,6 +3392,8 @@ export default function Game() {
     pendingCratesRef.current = null;
     const dhEarlyHaul = rollDoghouseChests(dhSaved, dhEarlyInventory, dhOpponentsDefeated, dhUpdatedRosterState?.playerRank ?? null);
     if (dhEarlyHaul.inventory) dhEarlyInventory = dhEarlyHaul.inventory;
+    const dhEarlyDiamonds = DOGHOUSE_DIAMONDS_PER_WIN * dhOpponentsDefeated;
+    const dhEarlyNewDiamonds = (localSaves.getFighter(activeFighter.id)?.diamonds ?? activeFighter.diamonds ?? 0) + dhEarlyDiamonds;
 
     updateFighterMutation.mutate({
       id: activeFighter.id,
@@ -3357,6 +3403,7 @@ export default function Game() {
         careerStats: dhNewCareerStats,
         careerRosterState: dhUpdatedRosterState,
         itemInventory: dhEarlyInventory,
+        ...(dhEarlyDiamonds > 0 ? { diamonds: dhEarlyNewDiamonds } : {}),
       },
     });
     setActiveFighter(prev => prev ? {
@@ -3366,6 +3413,7 @@ export default function Game() {
       careerStats: dhNewCareerStats,
       careerRosterState: dhUpdatedRosterState,
       itemInventory: dhEarlyInventory,
+      ...(dhEarlyDiamonds > 0 ? { diamonds: dhEarlyNewDiamonds } : {}),
     } : null);
 
     const dhPlaystyle = extractPlayerPlaystyle(gameState);
@@ -3729,6 +3777,8 @@ export default function Game() {
       enemyLoss: getAiPunchEnduranceLossForRank(rs?.playerRank),
     });
     applyResetTraining(newState, { player: resetTrainingOf(rs), playerSpeed: resetSpeedBonusOf(rs) });
+    applySlipTraining(newState, autoSlipTrainedOf(rs));
+    applyPurePower(newState, rs);
     // Nightmare is gym work: the drilled list comes in and counters may move.
     attachDrilledActions(newState, rs?.drilledActions, true);
     openFightBoostEscrow(fighter.id);
@@ -3751,6 +3801,7 @@ export default function Game() {
     }
     // After activateNightmareMode, which sets the themed floor colour itself.
     newState.ringColors = fighter.ringColors ? ringColorsOf(fighter) : undefined;
+    newState.gymRingName = gymLookOf(localSaves.getFighter(fighter.id) ?? fighter).name ?? null;
     commitGameState(newState);
     setUiMode("fighting");
   };
@@ -3970,6 +4021,8 @@ export default function Game() {
       enemyLoss: getAiPunchEnduranceLossForRank(rs?.playerRank),
     });
     applyResetTraining(newState, { player: resetTrainingOf(rs), playerSpeed: resetSpeedBonusOf(rs) });
+    applySlipTraining(newState, autoSlipTrainedOf(rs));
+    applyPurePower(newState, rs);
     // The Doghouse Round is gym work: counters may move in here.
     attachDrilledActions(newState, rs?.drilledActions, true);
     newState.careerXpMult = (rs && isChampBeaten(rs.roster) ? 1.0 : loadXpConfig().preChampMult) * loadXpConfig().careerMult;
@@ -3978,6 +4031,7 @@ export default function Game() {
     newState.playerCurrentXp = fighter.xp;
     newState.fightLiveXp = fighter.xp;
     newState.ringColors = fighter.ringColors ? ringColorsOf(fighter) : undefined;
+    newState.gymRingName = gymLookOf(localSaves.getFighter(fighter.id) ?? fighter).name ?? null;
     commitGameState(newState);
     setUiMode("fighting");
   };
@@ -3985,6 +4039,7 @@ export default function Game() {
   const handleStartTraining = (fighter: Fighter, type: TrainingType, sparDiff?: AIDifficulty, importedPartnerId?: number, sparDuration: SparringDuration = 60) => {
     // Clear any leftover flag from a session that was started but abandoned.
     importedPartnerUsedRef.current = false;
+    setFreeBagMode(false);
     setActiveFighter(fighter);
     setTrainingType(type);
     if (type === "sparring" && sparDiff) {
@@ -4278,6 +4333,7 @@ export default function Game() {
         newState.player.chargeMeterCounters = rs.savedChargeCounters || 0;
       }
       newState.ringColors = fighter.ringColors ? ringColorsOf(fighter) : undefined;
+      newState.gymRingName = gymLookOf(localSaves.getFighter(fighter.id) ?? fighter).name ?? null;
       commitGameState(newState);
       setUiMode("fighting");
     } else {
@@ -4369,7 +4425,7 @@ export default function Game() {
       // drills a point off the Punch Endurance cost. Weight lifting only stamps
       // its own decay week.
       const trainTracking = trainingType === "weightLifting"
-        ? { lastWLWeek: trainPreWeek, resetTraining: liftedResetBlock(activeFighter.id, updatedRosterState, trainPreWeek) }
+        ? { lastWLWeek: trainPreWeek, resetTraining: liftedResetBlock(activeFighter.id, updatedRosterState, trainPreWeek), purePower: liftedPurePower(activeFighter.id, updatedRosterState) }
         : { lastHBWeek: trainPreWeek, punchEnduranceLoss: improvedPunchEnduranceLoss(activeFighter.id, updatedRosterState) };
       if (prevTrainingsTrain >= 1) {
         const trainInFightCamp = updatedRosterState.selectedOpponentId != null && (updatedRosterState.prepWeeksRemaining ?? 0) > 0;
@@ -4663,7 +4719,7 @@ export default function Game() {
       // is what stops that from silently ceasing to be true.
       const sweepStampWeek = activityStampWeek(f.id, rs);
       const tracking = type === "weightLifting"
-        ? { lastWLWeek: sweepStampWeek, resetTraining: liftedResetBlock(f.id, rs, sweepStampWeek) }
+        ? { lastWLWeek: sweepStampWeek, resetTraining: liftedResetBlock(f.id, rs, sweepStampWeek), purePower: liftedPurePower(f.id, rs) }
         : { lastHBWeek: sweepStampWeek, punchEnduranceLoss: improvedPunchEnduranceLoss(f.id, rs) };
       if ((rs.trainingsSinceLastWeek ?? 0) >= 1) {
         const weekSeed = Date.now();
@@ -4809,6 +4865,58 @@ export default function Game() {
       setSimulationNews(updatedRosterState.newsItems);
       setUiMode("simulating");
     }
+  };
+
+  const handleStartFreeBag = (fighter: Fighter) => {
+    setActiveFighter(fighter);
+    setTrainingLiveXp(0);
+    setFreeBagMode(true);
+    freeBagPunchesRef.current = [];
+    freeBagMinutesRef.current = 0;
+    freeBagFullTimeRef.current = false;
+    setTrainingType("heavyBag");
+    setUiMode("training");
+  };
+
+  const handleFreeBagExit = () => {
+    setFreeBagMode(false);
+    // Free mode pays nothing else, but its strings count as gym drilling.
+    // Built off the freshest saved roster blob (whole-object writes).
+    const punches = freeBagPunchesRef.current;
+    freeBagPunchesRef.current = [];
+    const minutes = freeBagMinutesRef.current;
+    freeBagMinutesRef.current = 0;
+    const ranFullTime = freeBagFullTimeRef.current;
+    freeBagFullTimeRef.current = false;
+    const id = activeFighter?.id;
+    const saved = id ? localSaves.getFighter(id) : null;
+    const rs = saved?.careerRosterState as CareerRosterState | null | undefined;
+    if (id && rs) {
+      let nextRs: CareerRosterState = rs;
+      if (punches.length >= 3) {
+        const stance: BoxingStance = (() => { try { return localStorage.getItem("handz_player_boxing_stance") === "southpaw" ? "southpaw" : "orthodox"; } catch { return "orthodox"; } })();
+        const drilled = creditBagSession(rs.drilledActions, punches, stance);
+        if (drilled) nextRs = { ...nextRs, drilledActions: drilled };
+      }
+      // Hitting the bag 100 times per minute of the chosen length (100 / 200 /
+      // 300) earns the heavy bag's Punch Endurance cut (max stamina per X punches).
+      // Only a session that ran the full clock qualifies — quitting or finishing early never does.
+      // It counts as a full heavy bag session: the cut lands now, and the
+      // three-week rise clock restarts so the next week advance doesn't take it
+      // straight back. Available in and out of fight camp alike.
+      if (ranFullTime && minutes > 0 && punches.length >= minutes * FREE_BAG_PUNCHES_PER_MINUTE) {
+        nextRs = {
+          ...nextRs,
+          lastHBWeek: activityStampWeek(id, rs),
+          punchEnduranceLoss: improvedPunchEnduranceLoss(id, rs),
+        };
+      }
+      if (nextRs !== rs) {
+        updateFighterMutation.mutate({ id, data: { careerRosterState: nextRs } });
+        setActiveFighter(prev => prev && prev.id === id ? { ...prev, careerRosterState: nextRs } : prev);
+      }
+    }
+    handleTrainingQuit();
   };
 
   const handleTrainingQuit = () => {
@@ -5317,7 +5425,7 @@ export default function Game() {
                 canvas element), so overlays pinned to its edges stay on the
                 picture instead of spilling into the black side margins. */}
             <div className="relative" style={{ height: "100vh", aspectRatio: "4 / 3", maxWidth: "100vw" }}>
-              <GameCanvas state={gameState} onStateChange={handleStateChange} careerDynamicMusic={dynamicMusicEnabled} liveStateRef={liveStateRef} />
+              <GameCanvas state={gameState} onStateChange={handleStateChange} liveStateRef={liveStateRef} />
               {/* No item affects a tutorial bout, so the kit row stays hidden
                   there rather than advertising boosts that aren't in play. */}
               {uiMode === "fighting" && showFightItemsHud && !gameState.tutorialMode && (
@@ -5589,7 +5697,7 @@ export default function Game() {
               <MainMenu
                 onQuickFight={handleQuickFight}
                 onCareer={handleCareer}
-                onEditRoster={handleEditRoster}
+                onEditRoster={canEditRoster ? handleEditRoster : undefined}
                 onTutorial={() => { setTutorialStage(1); setUiMode("tutorial"); }}
                 fighterName={activeFighter?.name}
                 fighterLevel={activeFighter?.level}
@@ -5711,6 +5819,7 @@ export default function Game() {
             onDeleteFighter={handleDeleteFighter}
             onAllocateStats={handleAllocateStats}
             onStartTraining={handleStartTraining}
+            onStartFreeBag={handleStartFreeBag}
             onSweepTraining={handleSweepTraining}
             onEndWeek={handleEndWeek}
             onSimulateWeek={handleSimulateWeek}
@@ -5737,7 +5846,8 @@ export default function Game() {
             onBack={() => { sessionStorage.removeItem("handz_hub_passive_shown"); setActiveFighter(null); setUiMode("menu"); }}
             isLoading={fightersLoading}
             initialFighter={activeFighter}
-            onFighterRefresh={(f) => setActiveFighter(prev => (prev && prev.id === f.id ? { ...prev, ...f } : prev))}
+            startInCreate={careerStartInCreate}
+            onFighterRefresh={(f) => { setActiveFighter(prev => (prev && prev.id === f.id ? { ...prev, ...f } : prev)); refreshFighters(); }}
             careerRefStoppageEnabled={careerRefStoppageEnabled}
             onToggleCareerRefStoppage={(enabled) => { setCareerRefStoppageEnabled(enabled); try { localStorage.setItem("handz_career_ref_stoppage", String(enabled)); } catch {} }}
             careerTowelStoppageEnabled={careerTowelStoppageEnabled}
@@ -5746,10 +5856,6 @@ export default function Game() {
             onToggleShowExpBar={(enabled) => { setShowExpBar(enabled); try { localStorage.setItem("handz_show_exp_bar", String(enabled)); } catch {} }}
             showFightItemsHud={showFightItemsHud}
             onToggleShowFightItemsHud={(enabled) => { setShowFightItemsHud(enabled); try { localStorage.setItem("handz_show_fight_items", String(enabled)); } catch {} }}
-            careerFightMusicEnabled={careerFightMusicEnabled}
-            onToggleCareerFightMusic={(enabled) => setCareerFightMusicEnabled(enabled)}
-            careerFightMusicTrack={careerFightMusicTrack}
-            onSelectCareerFightMusic={(idx) => setCareerFightMusicTrack(idx)}
             onUnlockRefinement={handleUnlockRefinement}
             onAllocateRefinement={handleAllocateRefinement}
             onForceSpend={(fighterId, amount) => {
@@ -5820,6 +5926,11 @@ export default function Game() {
               }
             }}
             onBack={() => { sessionStorage.removeItem("handz_hub_passive_shown"); setActiveFighter(null); setUiMode("menu"); }}
+            careerFighterId={(activeFighter.id as unknown) !== -1 ? activeFighter.id : null}
+            onDiamondsInjected={(f) => {
+              setActiveFighter(prev => (prev && prev.id === f.id ? { ...prev, ...f } : prev));
+              refreshFighters();
+            }}
             onRosterRegenerated={() => {
               // Adopt the rosters Roster Generation just rewrote, so the editor
               // and the live career both show the new ranges without a reload.
@@ -5959,6 +6070,20 @@ export default function Game() {
               </>
             );
           }
+          if (freeBagMode) {
+            return (
+              <HeavyBagGame
+                fighter={activeFighter}
+                freeMode
+                onPunch={(p, head) => { freeBagPunchesRef.current.push({ type: p, head }); }}
+                onSessionStart={(m) => { freeBagMinutesRef.current = m; freeBagPunchesRef.current = []; freeBagFullTimeRef.current = false; }}
+                onSessionTimeUp={() => { freeBagFullTimeRef.current = true; }}
+                freeTargetPerMinute={FREE_BAG_PUNCHES_PER_MINUTE}
+                onComplete={handleFreeBagExit}
+                onQuit={handleFreeBagExit}
+              />
+            );
+          }
           return (
             <>
               <HeavyBagGame
@@ -6051,6 +6176,7 @@ export default function Game() {
           );
         })()}
       </div>
+      <BackgroundTrainingControl variant="badge" />
       {statUnlockPending && (() => {
         const alreadyProvidedStats: (keyof SkillPoints)[] =
           statUnlockPending.trainingSource === "weightLifting" ? ["power", "defense"] :

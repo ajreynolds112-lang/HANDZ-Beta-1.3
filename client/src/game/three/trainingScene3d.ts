@@ -7,10 +7,32 @@
  * `setInputs` and the scene runs its own animation loop.
  */
 import * as THREE from "three";
-import type { FighterColors, FighterState, GameState, PunchType } from "../types";
-import { createInitialState, punchPhaseFractions } from "../engine";
+import { VisualEnhancer } from "./visualEnhancer";
+import type { FighterColors, FighterState, GameState, PunchType, SlipDir } from "../types";
+import { applySoftCapPunchSpeed, createInitialState, startSlip, endSlip, redirectSlip, tickSlip } from "../engine";
 import { Fighter3D } from "./fighterModel";
 import { ensureFighterAssets } from "./fighterRig";
+import { fighterAtPunchTime } from "./punchProfiles";
+import { getGymLook, makeGymWallMaterial, patchGymPropColors } from "./gym3d";
+import { getFittedPropParts } from "./props3d";
+import { GYM_BAG_HANG } from "./gymLayout";
+import { GYM_LOOK_DEFAULTS } from "../gymLook";
+
+export interface BagPunch {
+  type: PunchType;
+  progress: number;
+  telegraph?: { timer: number; duration: number } | null;
+}
+
+/** Heavy bag free mode: live defence keys (the HUD mutates this object; read every frame). */
+export interface BagDefense {
+  /** Ducked: the HUD only changes this while no punch is in flight, as in a bout. */
+  duck: boolean;
+  /** C held. */
+  slip: boolean;
+  /** Arrow aiming the slip (unaimed slips go back, as in a bout). */
+  aim: SlipDir | null;
+}
 
 export type TrainingKind = "heavyBag" | "weights";
 
@@ -18,12 +40,15 @@ export interface TrainingInputs {
   colors: FighterColors;
   /** Idle bounce phase (radians). */
   bobPhase: number;
-  /** Heavy bag: the punch being thrown, progress 0..1 over its life. */
-  punch?: { type: PunchType; progress: number } | null;
+  /** Heavy bag: the punch being thrown, progress 0..1 over its life. While
+   *  `telegraph` is set the punch is still winding up (seconds into it). */
+  punch?: BagPunch | null;
   /** Heavy bag: swing push from the HUD (px; decays on its own). */
   bagSwing?: number;
   /** Heavy bag: 0..1 hit flash. */
   hitFlash?: number;
+  /** Heavy bag free mode: ducking and slipping. */
+  defense?: BagDefense;
   /** Weights: press progress for the current rep, 0..1. */
   lift?: number;
 }
@@ -82,10 +107,14 @@ export class TrainingScene3D {
   private inputs: TrainingInputs | null = null;
   private frame = 0;
   private raf = 0;
+  private lastFrameMs = 0;
+  /** Engine rule: a held C only starts one slip; it must come up before the next. */
+  private slipKeyWasUp = true;
   private disposed = false;
   // Heavy bag
   private bagPivot: THREE.Group | null = null;
-  private bagMat: THREE.MeshStandardMaterial | null = null;
+  /** Materials that flash on a hit (the stand-in's leather, or the model's cloned materials). */
+  private bagMats: THREE.MeshStandardMaterial[] = [];
   private bagAngle = 0;
   private bagVel = 0;
   private lastSwing = 0;
@@ -93,6 +122,8 @@ export class TrainingScene3D {
   private barbell: THREE.Group | null = null;
   private liftShown = 0;
   private readonly gloveMid = new THREE.Vector3();
+
+  private readonly enhancer = new VisualEnhancer();
 
   constructor(canvas: HTMLCanvasElement, private kind: TrainingKind) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -106,6 +137,8 @@ export class TrainingScene3D {
 
     this.state = createInitialState();
     this.fighter = this.state.player;
+    // Same pace the HUD times bag punches at, so contact lands on the same frame.
+    applySoftCapPunchSpeed(this.fighter);
     this.opponent = this.state.enemy;
     ensureFighterAssets(() => this.disposed);
 
@@ -135,9 +168,11 @@ export class TrainingScene3D {
       if (m.isMesh) {
         m.geometry?.dispose();
         const mats = Array.isArray(m.material) ? m.material : [m.material];
-        mats.forEach(x => x?.dispose());
+        // Model clones share the gym's cached textures; leave those alone.
+        mats.forEach(x => { if (!x?.userData.sharedMaps) (x as THREE.MeshStandardMaterial | undefined)?.map?.dispose(); x?.dispose(); });
       }
     });
+    this.enhancer.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
   }
@@ -174,18 +209,15 @@ export class TrainingScene3D {
       s.add(line);
     }
     // Rubber training mat under the boxer.
-    const mat2 = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2.4), mat("#23232b", 0.95));
+    const look = getGymLook();
+    const mat2 = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2.4), mat(look.mats ?? "#23232b", 0.95));
     mat2.rotation.x = -Math.PI / 2;
     mat2.position.set(this.kind === "heavyBag" ? 0.5 : 0, 0.004, 0);
     s.add(mat2);
 
-    // Brick back wall + side wall.
-    const wallM = mat("#2c2c3c", 0.95);
-    s.add(box(16, 4.2, 0.2, wallM, 0, 2.1, -3.2));
-    s.add(box(0.2, 4.2, 9, wallM, -5.2, 2.1, 1.2));
-    const mortar = mat("#353548", 0.95);
-    for (let y = 0.3; y < 4.2; y += 0.3) s.add(box(16, 0.02, 0.01, mortar, 0, y, -3.09));
-    s.add(box(16, 0.18, 0.06, mat("#444460", 0.7), 0, 0.09, -3.08));
+    // Brick back wall + side wall, in the career gym's brick and theme colours.
+    s.add(box(16, 4.2, 0.2, makeGymWallMaterial(16, 4.2), 0, 2.1, -3.2));
+    s.add(box(0.2, 4.2, 9, makeGymWallMaterial(9, 4.2), -5.2, 2.1, 1.2));
     // Ceiling beam the chains hang from.
     s.add(box(16, 0.25, 0.3, mat("#3a3a46", 0.6, 0.3), 0, CHAIN_TOP_Y + 0.12, 0));
 
@@ -220,32 +252,38 @@ export class TrainingScene3D {
   private buildHeavyBag(): void {
     const pivot = new THREE.Group();
     pivot.position.set(BAG_DIST_M, CHAIN_TOP_Y, 0);
-    const leather = mat("#8b3a3a", 0.55);
-    this.bagMat = leather;
+    // Code-built stand-in, swapped for the gym's own bag model once it's loaded.
+    const standIn = new THREE.Group();
+    pivot.add(standIn);
+    const look = getGymLook();
+    const leather = mat(look.bagPrimary ?? "#8b3a3a", 0.55);
+    this.bagMats = [leather];
     const bagTopLocal = BAG_BOTTOM_Y + BAG_HEIGHT - CHAIN_TOP_Y;
     const body = new THREE.Mesh(new THREE.CylinderGeometry(BAG_RADIUS, BAG_RADIUS * 0.97, BAG_HEIGHT, 32), leather);
     body.position.y = bagTopLocal - BAG_HEIGHT / 2;
-    pivot.add(body);
-    const capM = mat("#3a1010", 0.6);
+    standIn.add(body);
+    // Custom secondary = the gym bag's tape: caps and bands.
+    const tape = look.bagSecondary;
+    const capM = mat(tape ?? (look.bagPrimary ? GYM_LOOK_DEFAULTS.bagSecondary : "#3a1010"), 0.6);
     const top = new THREE.Mesh(new THREE.CylinderGeometry(BAG_RADIUS * 0.85, BAG_RADIUS, 0.06, 32), capM);
     top.position.y = bagTopLocal + 0.03;
     const bottom = new THREE.Mesh(new THREE.SphereGeometry(BAG_RADIUS * 0.97, 32, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), capM);
     bottom.scale.y = 0.3;
     bottom.position.y = bagTopLocal - BAG_HEIGHT;
-    pivot.add(top, bottom);
-    const seamM = mat("#c9b9a9", 0.7);
+    standIn.add(top, bottom);
+    const seamM = mat(tape ?? "#c9b9a9", 0.7);
     for (const t of [0.32, 0.63]) {
-      const seam = new THREE.Mesh(new THREE.TorusGeometry(BAG_RADIUS * 0.99, 0.006, 6, 40), seamM);
+      const seam = new THREE.Mesh(new THREE.TorusGeometry(BAG_RADIUS * 0.99, tape ? 0.02 : 0.006, 6, 40), seamM);
       seam.rotation.x = Math.PI / 2;
       seam.position.y = bagTopLocal - BAG_HEIGHT * t;
-      pivot.add(seam);
+      standIn.add(seam);
     }
     // Chains: four straps to a swivel, one chain to the beam.
     const steel = mat("#888c94", 0.4, 0.8);
     const swivelY = bagTopLocal + 0.4;
     const main = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, -swivelY, 8), steel);
     main.position.y = swivelY / 2;
-    pivot.add(main);
+    standIn.add(main);
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
       const from = new THREE.Vector3(Math.cos(a) * BAG_RADIUS * 0.8, bagTopLocal + 0.04, Math.sin(a) * BAG_RADIUS * 0.8);
@@ -254,10 +292,11 @@ export class TrainingScene3D {
       const c = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, len, 6), steel);
       c.position.copy(from).add(to).multiplyScalar(0.5);
       c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize());
-      pivot.add(c);
+      standIn.add(c);
     }
     this.bagPivot = pivot;
     this.scene.add(pivot);
+    void this.useGymBagModel(pivot, standIn);
 
     // Floor shadow blobs.
     this.addBlob(BAG_DIST_M, 0, 0.32);
@@ -274,6 +313,46 @@ export class TrainingScene3D {
     // Three-quarter side view from the boxer's right.
     this.camera.position.set(0.25, 1.55, 3.4);
     this.camera.lookAt(0.45, 1.15, 0);
+  }
+
+  /** The same hanging-bag model (and recolour) the career gym draws, hung at the gym's height. */
+  private async useGymBagModel(pivot: THREE.Group, standIn: THREE.Group): Promise<void> {
+    const parts = await getFittedPropParts("gym_hanging_bag");
+    if (!parts || this.disposed) return;
+    const model = new THREE.Group();
+    const mats: THREE.MeshStandardMaterial[] = [];
+    for (const p of parts) {
+      // Own material copy so the hit flash never touches the gym's shared one.
+      const m = (p.material as THREE.MeshStandardMaterial).clone();
+      delete m.userData.bagPatched;
+      m.userData.sharedMaps = true;
+      mats.push(m);
+      const mesh = new THREE.Mesh(p.geometry.clone(), m);
+      mesh.castShadow = true;
+      model.add(mesh);
+    }
+    patchGymPropColors("gym_hanging_bag", model);
+    // Front toward the boxer (-x); bottom at the gym's hanging height.
+    model.rotation.y = -Math.PI / 2;
+    model.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(model);
+    const top = bounds.max.y;
+    // Keep the striking face where the stand-in's was, so punches land on the surface.
+    pivot.position.x = BAG_DIST_M - BAG_RADIUS - bounds.min.x;
+    model.position.y = GYM_BAG_HANG.bottom - CHAIN_TOP_Y;
+    const chainLen = CHAIN_TOP_Y - (GYM_BAG_HANG.bottom + top);
+    pivot.remove(standIn);
+    standIn.traverse(o => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
+    });
+    pivot.add(model);
+    if (chainLen > 0) {
+      const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, chainLen, 6), mat("#8a8d94", 0.4, 0.8));
+      chain.position.y = -chainLen / 2;
+      pivot.add(chain);
+    }
+    this.bagMats = mats;
   }
 
   private buildWeights(): void {
@@ -371,23 +450,66 @@ export class TrainingScene3D {
       f.isRePunch = false;
       f.retractionProgress = 0;
       this.setPunch(f, this.kind === "heavyBag" ? inp.punch ?? null : null);
+      const nowMs = performance.now();
+      const dt = this.lastFrameMs ? Math.min(0.1, (nowMs - this.lastFrameMs) / 1000) : 0;
+      this.lastFrameMs = nowMs;
+      this.applyDefense(f, this.kind === "heavyBag" ? inp.defense : undefined, dt);
       this.frame++;
       this.rig.update(f, inp.colors, this.kind === "heavyBag" ? this.opponent : null, this.state, this.frame, 0);
       // The rig stands on the ring mat height; the gym floor is y = 0.
       this.rig.root.position.set(0, 0, 0);
 
-      if (this.bagPivot && this.bagMat) this.updateBag(inp);
+      if (this.bagPivot) this.updateBag(inp);
       if (this.barbell) {
         this.rig.root.updateMatrixWorld(true);
         this.barbell.position.copy(this.gloveMid).applyMatrix4(this.rig.root.matrixWorld);
         this.barbell.rotation.set(0, this.rig.root.rotation.y, 0);
       }
     }
-    this.renderer.render(this.scene, this.camera);
+    this.enhancer.render(this.renderer, this.scene, this.camera);
+  }
+
+  /**
+   * Free-bag duck and slip, driven by the engine's own slip functions so the
+   * lean, its timing and the hold limit match a bout. Stamina is irrelevant
+   * here, so it is topped back up after each slip charge.
+   */
+  private applyDefense(f: FighterState, d: BagDefense | undefined, dt: number): void {
+    const duck = !!d?.duck;
+    f.defenseState = duck ? "duck" : "none";
+    f.punchAimsHead = !duck;
+    const duckSpeed = 8.0 * 1.2 * 1.05 * (f.duckSpeedMult || 1);
+    f.duckProgress += ((duck ? 1 : 0) - f.duckProgress) * Math.min(1, duckSpeed * dt);
+    if (Math.abs(f.duckProgress - (duck ? 1 : 0)) < 0.01) f.duckProgress = duck ? 1 : 0;
+
+    const slipHeld = !!d?.slip;
+    if (!slipHeld) this.slipKeyWasUp = true;
+    if (f.slipActive) {
+      if (!slipHeld) endSlip(f);
+      else if (d?.aim) redirectSlip(f, d.aim);
+    } else if (slipHeld && this.slipKeyWasUp && f.slipDisabledTimer <= 0) {
+      startSlip(f, d?.aim ?? "back");
+      this.slipKeyWasUp = false;
+    }
+    tickSlip(f, dt);
+    f.stamina = f.maxStamina;
   }
 
   /** Same arm drive as the preview cards: the engine's own phase reading. */
-  private setPunch(f: FighterState, punch: { type: PunchType; progress: number } | null): void {
+  private setPunch(f: FighterState, punch: BagPunch | null): void {
+    if (punch?.telegraph) {
+      f.isPunching = false;
+      f.currentPunch = null;
+      f.punchProgress = 0;
+      f.punchPhase = null;
+      f.telegraphPhase = "down";
+      f.telegraphPunchType = punch.type;
+      f.telegraphTimer = punch.telegraph.timer;
+      f.telegraphDuration = punch.telegraph.duration;
+      return;
+    }
+    f.telegraphPhase = "none";
+    f.telegraphPunchType = null;
     if (!punch) {
       f.isPunching = false;
       f.currentPunch = null;
@@ -397,19 +519,13 @@ export class TrainingScene3D {
     }
     f.isPunching = true;
     f.currentPunch = punch.type;
-    const ext = Math.sin(Math.max(0, Math.min(1, punch.progress)) * Math.PI);
-    const fr = punchPhaseFractions(f);
-    if (fr && ext < 0.999) {
-      const [a, b] = fr.armSpeed;
-      f.punchPhase = "armSpeed";
-      f.punchProgress = a + (1 - Math.sqrt(1 - ext)) * (b - a);
-    } else if (fr) {
-      f.punchPhase = "contact";
-      f.punchProgress = (fr.contact[0] + fr.contact[1]) / 2;
-    } else {
-      f.punchPhase = null;
-      f.punchProgress = Math.asin(ext) / Math.PI;
-    }
+    // Walk the engine's own phase timeline forward (launch → contact → linger
+    // → retraction). Profiled punches (the jab) read punchProgress as their
+    // keyframe clock, so running it back down again replays them in reverse.
+    const placed = fighterAtPunchTime(f, Math.max(0, Math.min(0.9999, punch.progress)), true);
+    f.punchPhase = placed.punchPhase;
+    f.punchProgress = placed.punchProgress;
+    f.retractionProgress = placed.retractionProgress;
   }
 
   private updateBag(inp: TrainingInputs): void {
@@ -424,6 +540,6 @@ export class TrainingScene3D {
     this.bagAngle = Math.max(-0.35, Math.min(0.35, this.bagAngle));
     this.bagPivot!.rotation.z = this.bagAngle;
     const flash = Math.max(0, inp.hitFlash ?? 0);
-    this.bagMat!.emissive.setRGB(0.55 * flash, 0.4 * flash, 0.05 * flash);
+    for (const m of this.bagMats) m.emissive.setRGB(0.55 * flash, 0.4 * flash, 0.05 * flash);
   }
 }

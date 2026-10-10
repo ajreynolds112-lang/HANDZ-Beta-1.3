@@ -53,7 +53,8 @@ const FUNDAMENTAL_TIERS: [number, number, string][] = [
   [25, 36, "Tier 4 — Position, distance and exchange structure"],
   [37, 49, "Tier 5 — Defensive and counterpunching architecture"],
   [50, 58, "Tier 6 — Deception and setups"],
-  [59, Infinity, "Tier 7 — Offensive craft and specialist techniques"],
+  [59, 73, "Tier 7 — Offensive craft and specialist techniques"],
+  [74, Infinity, "Basics — stance, the punches, slipping, rolling, blocking and fight scenarios"],
 ];
 
 function fundamentalsBlocks(): Block[] {
@@ -247,23 +248,6 @@ const SECTIONS: DocSection[] = [
           ["F, then punch key", "Arms a feint for 1 second: the next punch thrown in that window is feinted instead of thrown. It stays out while the punch key is held and snaps back when you let go. No cooldown — tap F again right away for another"],
           ["Punch key during a feint's snap-back", "The same arm turns the feint into the real punch; the other arm abandons it and starts its own"],
         ],
-      },
-      { t: "h", text: "Rhythm and footwork" },
-      {
-        t: "table",
-        head: ["Key", "Action"],
-        rows: [
-          ["X", "Raise rhythm level (max 4)"],
-          ["Z", "Lower rhythm level (min 0)"],
-          ["Tab + Right Arrow", "Increase sway speed"],
-          ["Tab + Left Arrow", "Decrease sway speed"],
-          ["Tab + C", "Cycle foot stance: back foot → neutral → front foot (needs rhythm above 0)"],
-        ],
-      },
-      {
-        t: "note",
-        text:
-          "Foot stance (Tab + C) is not the same thing as your boxing stance. Orthodox/Southpaw decides which hand leads and which key throws which punch, and is switched with Right Shift; foot stance is a weight-shift within whichever stance you are in, and feeds the sway system.",
       },
       { t: "h", text: "System" },
       {
@@ -638,7 +622,13 @@ const SECTIONS: DocSection[] = [
       {
         t: "p",
         text:
-          "A Big Shot is not a separate move or a meter. It is what emerges when a charged punch lands as a critical hit and stuns at the same moment — that combination is what flags a knockdown. There is no button for it. A high-level mouthguard can shrug one off, with the chance rising from around 20% at level 1 to roughly 55% by level 150.",
+          "A Big Shot is a charged punch whose key was held for at least half a second before release, landing clean as a critical hit that also stuns. There is no chance roll: hit all four and it's an automatic knockdown. Big Shots and Rocker Shots go straight through a perfect block, but can still be dodged. AI opponents don't need to hold: any charged punch of theirs can be a Big Shot or Rocker Shot. A high-level mouthguard can shrug one off, with the chance rising from around 20% at level 1 to roughly 55% by level 150.",
+      },
+      { t: "h", text: "The Rocker Shot" },
+      {
+        t: "p",
+        text:
+          "A Rocker Shot is a charged punch held for half a second that crits or stuns. If it lands, even through a normal or perfect block, it takes 35% of the opponent's max stamina. The screen shows \"HE'S HURT\" and the hurt fighter can't slip or duck for 5 seconds. Punch Rolling gives a chance to roll with it and lose nothing.",
       },
       { t: "h", text: "Knockdowns and the count" },
       {
@@ -1055,6 +1045,16 @@ const SECTIONS: DocSection[] = [
         text:
           "Ordinary sparring is free and lives in the gym. It is a full bout against a chosen opponent that does not touch your record, your rating, or your rank.",
       },
+      {
+        t: "p",
+        text:
+          "Slip training: every slip you put in yourself that makes a punch miss from within 80 pixels is counted. Win the session and each one adds to your auto slip chance permanently: +0.001% at Journeyman, +0.002% at Contender, +0.003% at Elite, +0.004% at Champion. In the Doghouse each counts +0.001%, paid if you put at least one opponent away. Auto slips themselves don't count. Auto slip chance from every source combined is capped at 50%, and an auto slip can now fire while you're mid-punch without stopping the punch.",
+      },
+      {
+        t: "p",
+        text:
+          "Defensive Mastery (in the gym, under Punch Endurance) is a 0-100% bar: 35% from your best Defense refinement toward level 100, 35% from your Defense stat toward 1000, and 30% from your auto slip chance toward 45%. Each part fills in proportion. Perfect blocks add on top: +0.0005% each in Journeyman sparring, 0.001% in Contender, 0.0015% in Elite, 0.002% in Champion (win or lose), and 0.004% in the Doghouse — there, blocks are paid each time an opponent goes down, so blocks against the last one standing don't count. Every 10% reached pays diamonds once — 30 at 10% rising by 30 each step to 300 at 100% (1,650 in all).",
+      },
       { t: "h", text: "Nightmare" },
       {
         t: "table",
@@ -1081,7 +1081,7 @@ const SECTIONS: DocSection[] = [
       {
         t: "p",
         text:
-          "The Doghouse Round is a single brutal round with its own knockdown and knockout rules. Sessions in both modes are unlimited as long as you can pay for them, and both are grandfathered for existing careers already past the win thresholds.",
+          "The Doghouse Round is a single brutal round with its own knockdown and knockout rules. Both fighters walk in with 1.5x (you) and about 1.75x (the opponent) their normal stamina. Each opponent put away pays 5 diamonds on top of the XP and chests. Sessions in both modes are unlimited as long as you can pay for them, and both are grandfathered for existing careers already past the win thresholds.",
       },
       {
         t: "note",

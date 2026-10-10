@@ -7,6 +7,7 @@
  * an engine function that does, so a bout plays out identically in either view.
  */
 import * as THREE from "three";
+import { VisualEnhancer } from "./visualEnhancer";
 import type { FighterColors, GameState } from "../types";
 import { getCameraResetEpoch } from "../renderer";
 import { Arena3D } from "./arena3d";
@@ -15,8 +16,8 @@ import { FightEffects3D, type EffectFighter } from "./effects3d";
 import { Fighter3D } from "./fighterModel";
 import { ensureFighterAssets } from "./fighterRig";
 import { loadGeneratedProps } from "./props3d";
-import { GymEnvironment3D } from "./gym3d";
-import { type GymZone3D, makeGymHomeCamera, poseGymHomeCamera } from "./gymLayout";
+import { GymEnvironment3D, getGymRingName } from "./gym3d";
+import { type GymZone3D, makeGymHomeCamera, poseGymCamera } from "./gymLayout";
 import { MAT_HEIGHT, toSceneLen, toSceneX, toSceneZ } from "./worldMapping";
 
 const SCREEN_W = 800;
@@ -30,10 +31,14 @@ export interface GymHomeView {
   idle: { fighter: GameState["player"]; state: GameState; colors: FighterColors } | null;
   /** Fight week: an empty ring, no sparring fighters or referee. */
   hideFighters: boolean;
+  /** 0 = home shot, 1 = ringside view of the sparring bout (eased by the caller). */
+  ringView?: number;
 }
 
 export interface FightSceneRenderOptions {
   gymHome?: GymHomeView;
+  /** Custom apron lettering for the ring-colour editor's empty-ring preview. */
+  ringName?: string | null;
   /** An empty ring: no fighters or referee (the idle ring behind career screens). */
   hideFighters?: boolean;
 }
@@ -86,6 +91,8 @@ export class FightScene3D {
   private projVec = new THREE.Vector3();
 
   private fillAspect: boolean;
+
+  private readonly enhancer = new VisualEnhancer();
 
   constructor(private canvas: HTMLCanvasElement, options: FightSceneOptions = {}) {
     this.fillAspect = options.fillAspect === true;
@@ -204,6 +211,8 @@ export class FightScene3D {
     this.fighters.forEach((fig, i) => {
       const entry = list[i];
       fig.root.visible = !!entry;
+      // Nose lines aim at each other: the two mains at one another, Nightmare extras at the player.
+      fig.aimAt = entry ? this.fighters[i === 0 ? 1 : 0] ?? null : null;
       if (entry) fig.update(entry.f, entry.colors, entry.opp, state, this.frame, epoch);
     });
 
@@ -274,12 +283,14 @@ export class FightScene3D {
     const home = opts?.gymHome;
     this.setVenue(home || (state.sparringMode && !state.tutorialMode) ? "gym" : "arena");
     if (home) {
-      poseGymHomeCamera(this.homeCam, performance.now() / 1000);
+      poseGymCamera(this.homeCam, performance.now() / 1000, home.ringView ?? 0);
       this.activeCam = this.homeCam;
     } else {
       this.cam.update(state, getCameraResetEpoch());
       this.activeCam = this.cam.camera;
     }
+    const gymRingName = state.gymRingName === undefined ? getGymRingName() ?? null : state.gymRingName;
+    this.arena.setSkirtText(opts?.ringName ?? (this.venue === "gym" ? gymRingName : null));
     this.arena.update(state, performance.now());
     if (this.venue === "gym") this.gym.update({ night: home ? home.night : state.importSparring === true, hovered: home?.hovered ?? null, home: !!home });
     this.syncFighters(state);
@@ -289,7 +300,7 @@ export class FightScene3D {
     }
     this.syncIdle(home);
     this.syncEffects(state);
-    this.renderer.render(this.scene, this.activeCam);
+    this.enhancer.render(this.renderer, this.scene, this.activeCam);
   }
 
   dispose(): void {
@@ -304,6 +315,7 @@ export class FightScene3D {
       const mesh = obj as THREE.Mesh;
       if (mesh.isMesh && mesh.geometry) mesh.geometry.dispose();
     });
+    this.enhancer.dispose();
     this.renderer.dispose();
   }
 }

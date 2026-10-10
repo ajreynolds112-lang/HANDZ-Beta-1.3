@@ -15,8 +15,10 @@ import * as localSaves from "@/lib/localSaves";
 import { regenerateRosterNumbers } from "@/game/careerRoster";
 import type { CareerRosterState } from "@shared/schema";
 import { ADMIN_PIN, isValidPin } from "@/lib/pinAuth";
-import { ArrowLeft, RotateCcw, Lock, Download, Upload, Star, Music, Lightbulb, Plus, Minus, Users, Package, BookOpen, Swords, PersonStanding } from "lucide-react";
+import { ArrowLeft, RotateCcw, Lock, Download, Upload, Star, Volume2, Lightbulb, Plus, Minus, Users, Package, BookOpen, Swords, PersonStanding } from "lucide-react";
 import ItemsEditorView from "@/components/ItemsEditorView";
+import CareerInjectCard from "@/components/CareerInjectCard";
+import type { Fighter } from "@shared/schema";
 import GameDocsView from "@/components/GameDocsView";
 import PoseEditorView from "@/components/PoseEditorView";
 import { RefinementTuningCard } from "@/components/RefinementTuningCard";
@@ -27,12 +29,14 @@ import {
   sanitizeAiPatternConfig, type AiPatternConfig,
 } from "@/game/aiPatterns";
 import { isUnderTheHoodEnabled, setUnderTheHoodEnabled } from "@/components/PatternMemoryHud";
+import { getStandHeightConfig, saveStandHeightConfig, invalidateStandHeightCache, DEFAULT_STAND_HEIGHT_CONFIG, STAND_SIT_MIN, STAND_SIT_MAX } from "@/lib/standHeightConfig";
 import {
   applyParameterFile,
   buildParameterFile,
   pushTuningDefaults,
   startTuningDefaultsWatcher,
   validateTuningBundle,
+  TUNING_BUNDLE_KIND,
   type TuningBundle,
 } from "@/lib/tuningBundle";
 
@@ -50,6 +54,7 @@ const LS_AI_RANGE_CONFIG_KEY = "handz_ai_range_config";
 const LS_STOPPAGE_CONFIG_KEY = "handz_stoppage_config";
 const LS_AI_PATTERN_CONFIG_KEY = "handz_ai_pattern_config";
 const LS_FATIGUE_CONFIG_KEY = "handz_fatigue_config";
+const LS_PUNCH_COUNTER_CONFIG_KEY = "handz_punch_counter_config";
 
 /**
  * Directional perfect block: when on, a standing perfect block only nullifies
@@ -117,6 +122,11 @@ export interface MaxStamAmounts {
    * shrugs off doesn't eat the allowance.
    */
   rhythmCutFightCap: number;
+  /**
+   * Rocker Shot taken: a charged, held (0.5s) punch that crits or stuns and isn't
+   * perfect blocked. Percent mode by default (35% of the bout-start pool).
+   */
+  rockerShotTaken: number;
   /** Every `ringMileageInterval` seconds the fighter spends walking. */
   ringMileage: number;
   /** Surcharge on a punch that actually goes out charged. */
@@ -200,6 +210,7 @@ const DEFAULT_MAX_STAM_POINTS: MaxStamAmounts = {
   perfectBlock: 2,
   rhythmCutHit: -2.5,
   rhythmCutFightCap: 125,
+  rockerShotTaken: -87.5,
   ringMileage: -2,
   chargedPunchThrown: -3,
   chargedCritRefund: 8,
@@ -219,6 +230,7 @@ const DEFAULT_MAX_STAM_PERCENT: MaxStamAmounts = {
   perfectBlock: 0.8,
   rhythmCutHit: -1,
   rhythmCutFightCap: 50,
+  rockerShotTaken: -35,
   ringMileage: -0.8,
   chargedPunchThrown: -1.2,
   chargedCritRefund: 3.2,
@@ -239,8 +251,17 @@ function allMaxStamFlags(value: boolean): MaxStamFlags {
   return flags;
 }
 
+/** Events that default to percent mode (usePoints off) rather than points. */
+const PERCENT_DEFAULT_KEYS: (keyof MaxStamAmounts)[] = ["rockerShotTaken"];
+
+function defaultUsePointsFlags(): MaxStamFlags {
+  const flags = allMaxStamFlags(true);
+  for (const k of PERCENT_DEFAULT_KEYS) flags[k] = false;
+  return flags;
+}
+
 export const DEFAULT_MAX_STAM_CONFIG: MaxStamConfig = {
-  usePoints: allMaxStamFlags(true),
+  usePoints: defaultUsePointsFlags(),
   enabled: allMaxStamFlags(true),
   points: { ...DEFAULT_MAX_STAM_POINTS },
   percent: { ...DEFAULT_MAX_STAM_PERCENT },
@@ -252,7 +273,7 @@ export const DEFAULT_MAX_STAM_CONFIG: MaxStamConfig = {
 function cloneMaxStamDefaults(): MaxStamConfig {
   return {
     ...DEFAULT_MAX_STAM_CONFIG,
-    usePoints: allMaxStamFlags(true),
+    usePoints: defaultUsePointsFlags(),
     enabled: allMaxStamFlags(true),
     points: { ...DEFAULT_MAX_STAM_POINTS },
     percent: { ...DEFAULT_MAX_STAM_PERCENT },
@@ -275,9 +296,9 @@ function numOr(v: unknown, fallback: number): number {
  * config tuned under either of them fighting exactly the way it did. `enabled`
  * only has the absent case, and absent means every event is live.
  */
-function loadMaxStamFlags(raw: unknown, fallback: boolean): MaxStamFlags {
+function loadMaxStamFlags(raw: unknown, fallback: boolean | MaxStamFlags): MaxStamFlags {
   if (typeof raw === "boolean") return allMaxStamFlags(raw);
-  const flags = allMaxStamFlags(fallback);
+  const flags = typeof fallback === "boolean" ? allMaxStamFlags(fallback) : { ...fallback };
   if (raw && typeof raw === "object") {
     for (const k of MAX_STAM_KEYS) {
       const v = (raw as Record<string, unknown>)[k];
@@ -301,7 +322,7 @@ function loadMaxStamConfig(): MaxStamConfig {
       if (typeof parsed[k] === "number" && Number.isFinite(parsed[k])) legacy[k] = parsed[k];
     }
     return {
-      usePoints: loadMaxStamFlags(parsed.usePoints, true),
+      usePoints: loadMaxStamFlags(parsed.usePoints, defaultUsePointsFlags()),
       enabled: loadMaxStamFlags(parsed.enabled, true),
       points: { ...def.points, ...legacy, ...(parsed.points ?? {}) },
       percent: { ...def.percent, ...(parsed.percent ?? {}) },
@@ -907,6 +928,95 @@ export function getStoppageConfig(): StoppageConfig {
 }
 
 /**
+ * Punch speed ceiling and the slip counter.
+ *
+ * `maxPunchSpeedMult` caps every speed-up of a punch's arm phases combined —
+ * the Speed stat, heavy bag, items, rhythm, the speed-boost timer, drilled
+ * mastery — as a multiple of the fighter's base (0-point, unboosted) speed.
+ * Punch mechanics that slow or shape a punch (charging, half guard, stun slow,
+ * the standing jab) sit outside the cap. The Speed stat's share of the
+ * telegraph is capped too; Fast Twitch's telegraph bonus stays additive on top.
+ *
+ * The rest is the guard-down slip counter: a hand-put slip that makes a head
+ * punch miss slows the thrower and the round clock, and opens a counter window
+ * of the same length for the slipper.
+ */
+export interface PunchCounterConfig {
+  maxPunchSpeedMult: number;
+  counterWindowSec: number;
+  counterSlowMult: number;
+  counterClockMult: number;
+  counterDamageMult: number;
+  counterCritBonus: number;
+  counterLockSec: number;
+  counterStaggerPx: number;
+  counterStaggerSec: number;
+  directionalSlipCounterMult: number;
+}
+
+export const DEFAULT_PUNCH_COUNTER_CONFIG: PunchCounterConfig = {
+  maxPunchSpeedMult: 1.65,
+  counterWindowSec: 0.28,
+  counterSlowMult: 0.1,
+  counterClockMult: 0.1,
+  counterDamageMult: 2,
+  counterCritBonus: 0.15,
+  counterLockSec: 0.5,
+  counterStaggerPx: 6,
+  counterStaggerSec: 0.25,
+  directionalSlipCounterMult: 1.2,
+};
+
+export const PUNCH_COUNTER_RANGES: Record<keyof PunchCounterConfig, [number, number]> = {
+  maxPunchSpeedMult: [1, 10],
+  counterWindowSec: [0, 5],
+  counterSlowMult: [0.01, 1],
+  counterClockMult: [0.01, 1],
+  counterDamageMult: [0, 20],
+  counterCritBonus: [0, 1],
+  counterLockSec: [0, 10],
+  counterStaggerPx: [0, 100],
+  counterStaggerSec: [0.01, 5],
+  directionalSlipCounterMult: [0, 10],
+};
+
+export function clampPunchCounterField(key: keyof PunchCounterConfig, v: number): number {
+  if (!Number.isFinite(v)) return DEFAULT_PUNCH_COUNTER_CONFIG[key];
+  const [lo, hi] = PUNCH_COUNTER_RANGES[key];
+  return Math.min(hi, Math.max(lo, v));
+}
+
+function sanitizePunchCounterConfig(cfg: Partial<PunchCounterConfig>): PunchCounterConfig {
+  const out = { ...DEFAULT_PUNCH_COUNTER_CONFIG };
+  for (const k of Object.keys(out) as (keyof PunchCounterConfig)[]) {
+    const v = cfg?.[k];
+    if (typeof v === "number") out[k] = clampPunchCounterField(k, v);
+  }
+  return out;
+}
+
+function loadPunchCounterConfig(): PunchCounterConfig {
+  try {
+    const raw = localStorage.getItem(LS_PUNCH_COUNTER_CONFIG_KEY);
+    if (!raw) return { ...DEFAULT_PUNCH_COUNTER_CONFIG };
+    return sanitizePunchCounterConfig(JSON.parse(raw));
+  } catch { return { ...DEFAULT_PUNCH_COUNTER_CONFIG }; }
+}
+
+function savePunchCounterConfig(cfg: PunchCounterConfig) {
+  const clean = sanitizePunchCounterConfig(cfg);
+  localStorage.setItem(LS_PUNCH_COUNTER_CONFIG_KEY, JSON.stringify(clean));
+  punchCounterCache = { ...clean };
+}
+
+/** Cached: punch timing and the slip-counter slow-down are read every tick. */
+let punchCounterCache: PunchCounterConfig | null = null;
+export function getPunchCounterConfig(): PunchCounterConfig {
+  if (!punchCounterCache) punchCounterCache = loadPunchCounterConfig();
+  return punchCounterCache;
+}
+
+/**
  * AI pattern memory: how quickly each tier recognizes a repeated combination,
  * how many it can hold, and how confidently it counters one. See aiPatterns.ts
  * for what the numbers mean.
@@ -942,8 +1052,10 @@ export function invalidateNeuralParamCaches(): void {
   fatigueCache = null;
   turnCache = null;
   aiRangeCache = null;
+  invalidateStandHeightCache();
   stoppageCache = null;
   aiPatternCache = null;
+  punchCounterCache = null;
 }
 
 type Difficulty = "journeyman" | "contender" | "elite" | "champion";
@@ -1267,9 +1379,13 @@ interface NeuralNetworkViewProps {
    * numbers back into memory instead of waiting for a reload.
    */
   onRosterRegenerated?: () => void;
+  /** The career this screen was opened from; enables the Career Injects card. */
+  careerFighterId?: string | null;
+  /** Fired with the freshly persisted fighter after a diamond/force/shard inject. */
+  onDiamondsInjected?: (fighter: Fighter) => void;
 }
 
-export default function NeuralNetworkView({ onBack, onRosterRegenerated }: NeuralNetworkViewProps) {
+export default function NeuralNetworkView({ onBack, onRosterRegenerated, careerFighterId, onDiamondsInjected }: NeuralNetworkViewProps) {
   const [unlocked, setUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
@@ -1287,7 +1403,9 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated }: Neura
   const [maxStamConfig, setMaxStamConfig] = useState<MaxStamConfig>(() => getMaxStamConfig());
   const [turnConfig, setTurnConfig] = useState<TurnConfig>(() => getTurnConfig());
   const [aiRangeConfig, setAiRangeConfig] = useState<AiRangeConfig>(() => getAiRangeConfig());
+  const [standSit, setStandSit] = useState(() => getStandHeightConfig().standSit);
   const [stoppageConfig, setStoppageConfig] = useState<StoppageConfig>(() => getStoppageConfig());
+  const [punchCounterConfig, setPunchCounterConfig] = useState<PunchCounterConfig>(() => getPunchCounterConfig());
   // Bumped after an upload so self-contained cards remount from storage.
   const [paramsRev, setParamsRev] = useState(0);
   const [aiPatternConfig, setAiPatternConfig] = useState<AiPatternConfig>(() => getAiPatternConfig());
@@ -1426,6 +1544,12 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated }: Neura
     saveAiRangeConfig(next);
   };
 
+  const updateStandSit = (raw: string) => {
+    const val = parseFloat(raw);
+    if (isNaN(val)) return;
+    setStandSit(saveStandHeightConfig({ standSit: val }).standSit);
+  };
+
   const resetAiRangeConfig = () => {
     setAiRangeConfig({ ...DEFAULT_AI_RANGE_CONFIG });
     saveAiRangeConfig({ ...DEFAULT_AI_RANGE_CONFIG });
@@ -1444,6 +1568,19 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated }: Neura
   const resetStoppageConfig = () => {
     setStoppageConfig({ ...DEFAULT_STOPPAGE_CONFIG });
     saveStoppageConfig({ ...DEFAULT_STOPPAGE_CONFIG });
+  };
+
+  const updatePunchCounterField = (key: keyof PunchCounterConfig, raw: string) => {
+    const val = parseFloat(raw);
+    if (isNaN(val)) return;
+    const next: PunchCounterConfig = { ...punchCounterConfig, [key]: clampPunchCounterField(key, val) };
+    setPunchCounterConfig(next);
+    savePunchCounterConfig(next);
+  };
+
+  const resetPunchCounterConfig = () => {
+    setPunchCounterConfig({ ...DEFAULT_PUNCH_COUNTER_CONFIG });
+    savePunchCounterConfig({ ...DEFAULT_PUNCH_COUNTER_CONFIG });
   };
 
   const updateAiPatternField = <K extends Exclude<keyof AiPatternConfig, "enabled">>(key: K, raw: string) => {
@@ -1473,19 +1610,9 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated }: Neura
     setTimeout(() => setXpDefaultSaved(false), 2000);
   };
 
-  const downloadAllData = () => {
-    const data = {
-      version: 1,
-      xpConfig: loadXpConfig(),
-      xpDefaults: loadXpDefaults(),
-      neural: {
-        states: loadSavedState() || DEFAULT_STATES,
-        defaults: loadCustomDefaults(),
-        presets: loadPresets(),
-        fighterOverrides: loadAllFighterNeurals(),
-      },
-    };
-    const json = JSON.stringify(data, null, 2);
+  /** Same file as Download Parameters: every registered tunable plus the AI Training state. */
+  const downloadAllData = async () => {
+    const json = JSON.stringify(await buildParameterFile(), null, 2);
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1495,9 +1622,33 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated }: Neura
     URL.revokeObjectURL(url);
   };
 
+  /** Apply a full parameter file and re-read everything this screen shows. */
+  const applyFullParameterFile = async (bundle: TuningBundle) => {
+    await applyParameterFile(bundle);
+    invalidateNeuralParamCaches();
+
+    // Everything this screen shows, re-read from what just landed.
+    setXpConfig(loadXpConfig());
+    setXpUserDefaults(loadXpDefaults());
+    setRcConfig(loadRcConfig());
+    setMaxStamConfig(getMaxStamConfig());
+    setTurnConfig(getTurnConfig());
+    setAiRangeConfig(getAiRangeConfig());
+    setStoppageConfig(getStoppageConfig());
+    setPunchCounterConfig(getPunchCounterConfig());
+    setParamsRev(r => r + 1);
+    setAiPatternConfig(loadAiPatternConfig());
+    setFightTips(getFightTips());
+    setNightmareBypass(localStorage.getItem(LS_NIGHTMARE_BYPASS_KEY) === "true");
+    setRefinementBypass(localStorage.getItem(LS_REFINEMENT_BYPASS_KEY) === "true");
+    setDirectionalPb(isDirectionalPerfectBlockEnabled());
+    setParamEpoch(n => n + 1);
+    void pushTuningDefaults();
+  };
+
   const handleUploadData = (file: File) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       let data: unknown;
       try {
         data = JSON.parse(e.target?.result as string);
@@ -1505,6 +1656,24 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated }: Neura
         setUploadStatus("error");
         setUploadErrorMsg("File is not valid JSON — check for missing commas, brackets, or quotes.");
         setTimeout(() => { setUploadStatus("idle"); setUploadErrorMsg(""); }, 5000);
+        return;
+      }
+
+      // A full parameter file (what Download Data / Download Parameters write)
+      // goes through the same applier as Upload Parameters. Older files that
+      // carry only XP + neural sections still take the legacy path below.
+      if ((data as { kind?: unknown } | null)?.kind === TUNING_BUNDLE_KIND) {
+        const invalid = validateTuningBundle(data);
+        if (invalid) {
+          setUploadStatus("error");
+          setUploadErrorMsg(invalid);
+          setTimeout(() => { setUploadStatus("idle"); setUploadErrorMsg(""); }, 5000);
+          return;
+        }
+        await applyFullParameterFile(data as TuningBundle);
+        setUploadStatus("success");
+        setShowUploadZone(false);
+        setTimeout(() => setUploadStatus("idle"), 2500);
         return;
       }
 
@@ -1573,25 +1742,7 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated }: Neura
       const invalid = validateTuningBundle(data);
       if (invalid) { fail(invalid); return; }
 
-      await applyParameterFile(data as TuningBundle);
-      invalidateNeuralParamCaches();
-
-      // Everything this screen shows, re-read from what just landed.
-      setXpConfig(loadXpConfig());
-      setXpUserDefaults(loadXpDefaults());
-      setRcConfig(loadRcConfig());
-      setMaxStamConfig(getMaxStamConfig());
-      setTurnConfig(getTurnConfig());
-      setAiRangeConfig(getAiRangeConfig());
-      setStoppageConfig(getStoppageConfig());
-      setParamsRev(r => r + 1);
-      setAiPatternConfig(loadAiPatternConfig());
-      setFightTips(getFightTips());
-      setNightmareBypass(localStorage.getItem(LS_NIGHTMARE_BYPASS_KEY) === "true");
-      setRefinementBypass(localStorage.getItem(LS_REFINEMENT_BYPASS_KEY) === "true");
-      setDirectionalPb(isDirectionalPerfectBlockEnabled());
-      setParamEpoch(n => n + 1);
-      void pushTuningDefaults();
+      await applyFullParameterFile(data as TuningBundle);
 
       setParamStatus("success");
       setParamError("");
@@ -1810,6 +1961,7 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated }: Neura
           <h2 className="text-xl font-bold">Neural Network</h2>
         </div>
       </div>
+      {careerFighterId && <CareerInjectCard fighterId={careerFighterId} onInjected={onDiamondsInjected} />}
       <GithubPushCard />
       <Card className="p-3 w-full" style={{ background: "#0a1a0a", border: "1px solid #1a4a1a" }}>
         <label className="flex items-start gap-2 cursor-pointer" data-testid="toggle-under-the-hood">
@@ -2035,8 +2187,8 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated }: Neura
           }}
           data-testid="button-download-sounds"
         >
-          <Music className="w-4 h-4" />
-          {soundsDlPct !== null ? `Downloading… ${soundsDlPct}%` : "Download Sounds & Music"}
+          <Volume2 className="w-4 h-4" />
+          {soundsDlPct !== null ? `Downloading… ${soundsDlPct}%` : "Download Sounds"}
         </Button>
       </div>
       {pinEntered && (
@@ -2432,6 +2584,7 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated }: Neura
                     { key: "stunTaken", label: "Stunned" },
                     { key: "rhythmCutHit", label: "Rhythm cut taken" },
                     { key: "rhythmCutFightCap", label: "Most all rhythm cuts can take in one bout" },
+                    { key: "rockerShotTaken", label: "Rocker Shot taken" },
                   ],
                 },
                 {
@@ -2604,6 +2757,24 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated }: Neura
                 onChange={e => updateAiRangeField("standDistanceOffsetPx", e.target.value)}
                 className="w-24 h-7 text-xs text-right"
                 data-testid="input-ai-range-stand-offset"
+              />
+            </div>
+          </Card>
+          <Card className="p-3 w-full space-y-3" style={{ background: "#0a1a0a", border: "1px solid #1a4a1a" }}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold" style={{ color: "#c8ffaa" }}>Stand Height</p>
+              <Button size="sm" variant="outline" onClick={() => updateStandSit(String(DEFAULT_STAND_HEIGHT_CONFIG.standSit))} className="text-xs h-7 px-2" data-testid="button-reset-stand-height" style={{ borderColor: "#1a7a1a", color: "#c8ffaa" }}>
+                <RotateCcw className="w-3 h-3 mr-1" /> Reset
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs flex-1" style={{ color: "#c8ffaa" }}>Hip drop into knees (× leg length)</span>
+              <Input
+                type="number" step="0.002" min={STAND_SIT_MIN} max={STAND_SIT_MAX}
+                value={standSit}
+                onChange={e => updateStandSit(e.target.value)}
+                className="w-24 h-7 text-xs text-right"
+                data-testid="input-stand-height-sit"
               />
             </div>
           </Card>
@@ -2887,6 +3058,48 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated }: Neura
                   className="w-24 h-7 text-xs text-right"
                   data-testid={`input-stoppage-${key}`}
                 />
+              </div>
+            ))}
+          </Card>
+          <Card className="p-3 w-full space-y-3" style={{ background: "#0a1a0a", border: "1px solid #1a4a1a" }}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold" style={{ color: "#c8ffaa" }}>Punch Speed &amp; Counters</p>
+              <Button size="sm" variant="outline" onClick={resetPunchCounterConfig} className="text-xs h-7 px-2" data-testid="button-reset-punch-counter-config" style={{ borderColor: "#1a7a1a", color: "#c8ffaa" }}>
+                <RotateCcw className="w-3 h-3 mr-1" /> Reset
+              </Button>
+            </div>
+            {(
+              [
+                { heading: "PUNCH SPEED", rows: [
+                  { key: "maxPunchSpeedMult", label: "Max punch speed (x base)", step: "0.05" },
+                ] },
+                { heading: "SLIP COUNTER", rows: [
+                  { key: "counterWindowSec", label: "Slow-mo / counter window (s)", step: "0.01" },
+                  { key: "counterSlowMult", label: "Thrower slow-down (x speed)", step: "0.01" },
+                  { key: "counterClockMult", label: "Round clock slow-down (x speed)", step: "0.01" },
+                  { key: "counterDamageMult", label: "Counter damage (x)", step: "0.1" },
+                  { key: "counterCritBonus", label: "Counter crit chance (+)", step: "0.01" },
+                  { key: "counterLockSec", label: "Landed counter lockout (s)", step: "0.05" },
+                  { key: "counterStaggerPx", label: "Landed counter stagger (px)", step: "1" },
+                  { key: "counterStaggerSec", label: "Landed counter stagger time (s)", step: "0.05" },
+                  { key: "directionalSlipCounterMult", label: "Directional slip counter damage (x)", step: "0.05" },
+                ] },
+              ] as { heading: string; rows: { key: keyof PunchCounterConfig; label: string; step: string }[] }[]
+            ).map(({ heading, rows }) => (
+              <div key={heading} className="space-y-1.5">
+                <p className="text-[10px] pt-1 font-semibold" style={{ color: "#8fdc6a" }}>{heading}</p>
+                {rows.map(({ key, label, step }) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <span className="text-xs flex-1" style={{ color: "#c8ffaa" }}>{label}</span>
+                    <Input
+                      type="number" step={step} min={PUNCH_COUNTER_RANGES[key][0]} max={PUNCH_COUNTER_RANGES[key][1]}
+                      value={punchCounterConfig[key]}
+                      onChange={e => updatePunchCounterField(key, e.target.value)}
+                      className="w-24 h-7 text-xs text-right"
+                      data-testid={`input-punch-counter-${key}`}
+                    />
+                  </div>
+                ))}
               </div>
             ))}
           </Card>

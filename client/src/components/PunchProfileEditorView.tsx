@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Copy, Pause, Play, Redo2, RotateCcw, Save, Star, Undo2 } from "lucide-react";
+import { ArrowLeft, Copy, Pause, Play, Redo2, RotateCcw, Save, Star, Swords, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,8 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import PunchAnimEditor from "@/components/PunchAnimEditor";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
+import PunchRingTest from "@/components/PunchRingTest";
 import PunchTimelineLane, { type PhaseBand } from "@/components/PunchTimelineLane";
 import { createPoseStage, GROUPS, JOINT_LABEL } from "@/components/poseStage";
 import { createInitialState, punchPhaseFractions, punchTotalDuration } from "@/game/engine";
@@ -19,7 +21,7 @@ import {
   PROFILE_SLOTS, PUNCH_ROLES, PUNCH_ROLE_LABEL, type AxisTracks, type Key, type PunchProfile,
   copyProfileSlot, enginePunchForRole, fighterAtPunchTime, loadProfileStore, saveProfile, setDefaultSlot,
   evalSpeed, realTimeOf, setPunchProfileDraft, validLoopStart, SPEED_MIN, speedSlowdown, warpTime, PROFILE_TIME_SCALE,
-  ROT_MAX, boneLimits, type AxisLimits,
+  ROT_MAX, boneLimits, type AxisLimits, HEIGHT_MAX, GUARD_LOCK_JOINTS, isGuardLocked, profileBones, type BoneTracks,
 } from "@/game/three/punchProfiles";
 
 const AXIS_LANES = [
@@ -41,7 +43,7 @@ const slotLabel = (p: PunchProfile | null, i: number) => `#${i + 1} ${p ? (p.nam
 /**
  * Neural Network → Punch Animation: keyframe each of the six punches on the 3D
  * boxer. Pick a joint (click it or the list) to get its X/Y/Z rotation lanes
- * under the looping playback track; a fifth lane re-times the punch. Saved
+ * under the looping playback track; a Height lane raises/lowers the hips and a Speed lane re-times the punch. Saved
  * profiles live in 50 slots per punch; southpaw wears the exact mirror.
  */
 export default function PunchProfileEditorView({ onBack }: { onBack: () => void }) {
@@ -63,6 +65,10 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   const [pendingSwitch, setPendingSwitch] = useState<{ role: PunchType; slot: number } | "leave" | null>(null);
   const [showBase, setShowBase] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const [ringTest, setRingTest] = useState(false);
+  const [fullGuard, setFullGuard] = useState(false);
+  const ringTestRef = useRef(ringTest);
+  ringTestRef.current = ringTest;
   const dirty = JSON.stringify(draft) !== savedSnap;
   useEffect(() => { setCopyTo(c => (c === slot ? (slot + 1) % PROFILE_SLOTS : c)); }, [slot]);
 
@@ -92,6 +98,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (ringTestRef.current) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) redo(); else undo();
@@ -141,7 +148,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
       const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
       last = now;
       const p = playRef.current;
-      if (!p.playing || !(p.baseDuration > 0)) return;
+      if (!p.playing || !(p.baseDuration > 0) || ringTestRef.current) return;
       const keys = speedRef.current;
       const k = p.rate / (p.baseDuration * PLAYBACK_STRETCH);
       // Sub-step so a short fast section isn't jumped over in one frame.
@@ -161,10 +168,20 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   }, []);
   const u = realTimeOf(draft.speed, tau);
 
+  // Right-click an arm joint: Full Guard Follow (held at its Edit Poses guard) ↔ normal animation.
+  const toggleGuardLock = (b: BoneName) => {
+    if (!GUARD_LOCK_JOINTS.includes(b)) return;
+    const r = viewRef.current.role;
+    checkpoint();
+    setDraft(d => ({ ...d, guardLock: { ...d.guardLock, [b]: !isGuardLocked(d, r, b) } }));
+  };
+  const toggleGuardLockRef = useRef(toggleGuardLock);
+  toggleGuardLockRef.current = toggleGuardLock;
+
   // ── 3D stage ──
   const hostRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef({ role, southpaw, selected });
-  viewRef.current = { role, southpaw, selected };
+  const viewRef = useRef({ role, southpaw, selected, fullGuard });
+  viewRef.current = { role, southpaw, selected, fullGuard };
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -172,7 +189,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
       const v = viewRef.current;
       return {
         southpaw: v.southpaw,
-        fullGuard: false,
+        fullGuard: v.fullGuard,
         selected: v.southpaw ? mirrorName(v.selected) : v.selected,
         pose: (a) => {
           a.isPunching = true;
@@ -184,7 +201,8 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
           Object.assign(a, fighterAtPunchTime(a, realTimeOf(speedRef.current, tauRef.current), true));
         },
       };
-    }, b => setSelected(viewRef.current.southpaw ? mirrorName(b) : b));
+    }, b => setSelected(viewRef.current.southpaw ? mirrorName(b) : b),
+    b => toggleGuardLockRef.current(viewRef.current.southpaw ? mirrorName(b) : b));
   }, []);
 
   // ── scrubbing ──
@@ -196,19 +214,30 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
     tauRef.current = Math.min(0.9999, warpTime(speedRef.current, real));
     setTau(tauRef.current);
   };
-  // Right-click toggles the Loop Start: on the marker removes it, anywhere else places it there.
+  // Right-click the playback bar: a menu sets / removes the Loop Start and the Full Guard Slide.
   const loopStart = validLoopStart(draft.loopStart);
-  const toggleLoopAt = (clientX: number) => {
+  const guardSlide = validLoopStart(draft.guardSlide);
+  const menuXRef = useRef(0);
+  /** Animation time under the last right-click on the playback bar. */
+  const menuTau = () => {
     const r = scrubRef.current!.getBoundingClientRect();
-    const real = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
-    const cur = validLoopStart(draftRef.current.loopStart);
-    const hitMarker = cur != null && Math.abs(realTimeOf(speedRef.current, cur) - real) * r.width < 8;
-    const next = hitMarker ? null : validLoopStart(warpTime(speedRef.current, real));
-    if (next == null && cur == null) return;
+    const real = Math.max(0, Math.min(1, (menuXRef.current - r.left) / r.width));
+    return validLoopStart(warpTime(speedRef.current, real));
+  };
+  const setLoopStart = (next: number | null) => {
+    if (next == null && validLoopStart(draftRef.current.loopStart) == null) return;
     checkpoint();
     setDraft(d => {
       const { loopStart: _drop, loopMode: _mode, ...rest } = d;
       return next == null ? rest : { ...rest, loopStart: next, ...(d.loopMode === "slide" ? { loopMode: "slide" as const } : {}) };
+    });
+  };
+  const setGuardSlide = (next: number | null) => {
+    if (next == null && validLoopStart(draftRef.current.guardSlide) == null) return;
+    checkpoint();
+    setDraft(d => {
+      const { guardSlide: _drop, ...rest } = d;
+      return next == null ? rest : { ...rest, guardSlide: next };
     });
   };
   const slideMode = loopStart != null && draft.loopMode === "slide";
@@ -220,17 +249,34 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
     });
   };
 
+  const toggleAutoMotion = () => {
+    checkpoint();
+    setDraft(d => {
+      const { autoMotion: _a, ...rest } = d;
+      return d.autoMotion ? rest : { ...rest, autoMotion: true };
+    });
+  };
+
   // ── editing ──
-  const tracks = draft.bones[selected] ?? EMPTY_TRACKS();
+  // Full guard On edits the On animation (bones); Off edits the Off animation
+  // (bonesOff), which plays the On keys until its first edit copies them in.
+  const viewBones = profileBones(draft, fullGuard);
+  const editSet = (d: PunchProfile): { key: "bones" | "bonesOff"; bones: BoneTracks } =>
+    fullGuard ? { key: "bones", bones: { ...d.bones } } : { key: "bonesOff", bones: { ...(d.bonesOff ?? d.bones) } };
+  const tracks = viewBones[selected] ?? EMPTY_TRACKS();
   const setAxis = (axis: number, keys: Key[]) => {
     setDraft(d => {
-      const cur = d.bones[selected] ?? EMPTY_TRACKS();
+      const { key, bones } = editSet(d);
+      const cur = bones[selected] ?? EMPTY_TRACKS();
       const next = [...cur] as AxisTracks;
       next[axis] = keys;
-      const bones = { ...d.bones };
       if (next.some(k => k.length)) bones[selected] = next; else delete bones[selected];
-      return { ...d, bones };
+      return { ...d, [key]: bones };
     });
+  };
+  const copyOnToOff = () => {
+    checkpoint();
+    setDraft(d => ({ ...d, bonesOff: { ...d.bones } }));
   };
   const limits = boneLimits(draft, selected);
   // Typed a new max angle for one track: keys beyond it are pulled in to it.
@@ -241,20 +287,25 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
       lim[axis] = v;
       const all = { ...(d.limits ?? {}) };
       if (lim.every(x => x === ROT_MAX)) delete all[selected]; else all[selected] = lim;
-      const bones = { ...d.bones };
-      const cur = bones[selected];
-      if (cur) {
-        const next = [...cur] as AxisTracks;
-        next[axis] = cur[axis].map(k => ({ t: k.t, v: Math.max(-v, Math.min(v, k.v)) }));
-        bones[selected] = next;
-      }
+      // Both animations share the limit, so both are pulled in.
+      const clampSet = (src: BoneTracks): BoneTracks => {
+        const bones = { ...src };
+        const cur = bones[selected];
+        if (cur) {
+          const next = [...cur] as AxisTracks;
+          next[axis] = cur[axis].map(k => ({ t: k.t, v: Math.max(-v, Math.min(v, k.v)) }));
+          bones[selected] = next;
+        }
+        return bones;
+      };
       const { limits: _l, ...rest } = d;
-      return Object.keys(all).length ? { ...rest, bones, limits: all } : { ...rest, bones };
+      const sets = { bones: clampSet(d.bones), ...(d.bonesOff ? { bonesOff: clampSet(d.bonesOff) } : {}) };
+      return Object.keys(all).length ? { ...rest, ...sets, limits: all } : { ...rest, ...sets };
     });
   };
   const clearJoint = () => {
     checkpoint();
-    setDraft(d => { const bones = { ...d.bones }; delete bones[selected]; return { ...d, bones }; });
+    setDraft(d => { const { key, bones } = editSet(d); delete bones[selected]; return { ...d, [key]: bones }; });
   };
 
   // ── slots ──
@@ -276,7 +327,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   };
   const slots = store.slots[role];
   const isDefault = store.active[role] === slot;
-  const keyedBones = Object.keys(draft.bones).length;
+  const keyedBones = Object.keys(viewBones).length;
 
   return (
     <div className="flex flex-col h-full w-full gap-2 p-3 overflow-hidden" data-testid="punch-profile-editor">
@@ -293,6 +344,9 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
             </Button>
           ))}
         </div>
+        <Button variant="outline" size="sm" onClick={() => setRingTest(true)} data-testid="button-punchanim-ringtest">
+          <Swords className="w-4 h-4 mr-1" /> Test in ring
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setShowBase(b => !b)} data-testid="button-punchanim-base">
           {showBase ? "Keyframes" : "Base params"}
         </Button>
@@ -373,12 +427,18 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
                   <div key={g}>
                     <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{g}</div>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {bones.map(b => (
-                        <Button key={b} size="sm" variant={b === selected ? "default" : "outline"} className="h-6 px-1.5 text-[11px]"
-                          onClick={() => setSelected(b)} data-testid={`button-punchanim-joint-${b}`}>
-                          {JOINT_LABEL[b]}{draft.bones[b] ? " •" : ""}
+                      {bones.map(b => {
+                        const locked = GUARD_LOCK_JOINTS.includes(b) && isGuardLocked(draft, role, b);
+                        return (
+                        <Button key={b} size="sm" variant={b === selected ? "default" : "outline"}
+                          className={`h-6 px-1.5 text-[11px]${locked ? (b === selected ? " bg-amber-500 hover:bg-amber-500/90 text-black" : " border-amber-500 text-amber-400") : ""}`}
+                          onClick={() => setSelected(b)}
+                          onContextMenu={e => { if (!GUARD_LOCK_JOINTS.includes(b)) return; e.preventDefault(); toggleGuardLock(b); }}
+                          data-testid={`button-punchanim-joint-${b}`}>
+                          {JOINT_LABEL[b]}{viewBones[b] ? " •" : ""}
                         </Button>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -398,12 +458,14 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
                   <SelectContent>{RATES.map(r => <SelectItem key={r} value={String(r)}>{r}×</SelectItem>)}</SelectContent>
                 </Select>
               </div>
+              <ContextMenu>
+              <ContextMenuTrigger asChild>
               <div ref={scrubRef} className="relative flex-1 h-7 rounded bg-black/50 border border-border cursor-pointer select-none overflow-hidden"
                 style={{ touchAction: "none" }}
                 onPointerDown={e => { if (e.button !== 0) return; e.currentTarget.setPointerCapture(e.pointerId); scrubAt(e.clientX); }}
                 onPointerMove={e => { if (e.currentTarget.hasPointerCapture(e.pointerId)) scrubAt(e.clientX); }}
-                onContextMenu={e => { e.preventDefault(); toggleLoopAt(e.clientX); }}
-                title="Right-click to set or remove the Loop Start"
+                onContextMenu={e => { menuXRef.current = e.clientX; }}
+                title="Right-click to set or remove the Loop Start or Full Guard Slide"
                 data-testid="track-punchanim-playback">
                 {realBands.map((b, i) => (
                   <div key={b.label} className="absolute inset-y-0 flex items-center justify-center text-[9px] text-white/45 overflow-hidden"
@@ -417,8 +479,31 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
                     <span className={`absolute top-0 left-1 text-[9px] whitespace-nowrap ${slideMode ? "text-violet-300" : "text-cyan-300"}`}>{slideMode ? "Slide Back" : "Loop Start"}</span>
                   </div>
                 </>)}
+                {guardSlide != null && (<>
+                  <div className="absolute inset-y-0 left-0 pointer-events-none bg-emerald-400/15" style={{ width: `${realTimeOf(draft.speed, guardSlide) * 100}%` }} />
+                  <div className="absolute inset-y-0 w-0.5 pointer-events-none bg-emerald-400" style={{ left: `${realTimeOf(draft.speed, guardSlide) * 100}%` }} data-testid="marker-punchanim-guardslide">
+                    <span className="absolute bottom-0 right-1 text-[9px] whitespace-nowrap text-emerald-300">Full Guard Slide</span>
+                  </div>
+                </>)}
                 <div className="absolute inset-y-0 w-0.5 bg-yellow-300" style={{ left: `${u * 100}%` }} />
               </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem onSelect={() => setGuardSlide(menuTau())} data-testid="menu-punchanim-guardslide-set">
+                  {guardSlide == null ? "Add Full Guard Slide here" : "Move Full Guard Slide here"}
+                </ContextMenuItem>
+                <ContextMenuItem disabled={guardSlide == null} onSelect={() => setGuardSlide(null)} data-testid="menu-punchanim-guardslide-remove">
+                  Remove Full Guard Slide
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem onSelect={() => setLoopStart(menuTau())} data-testid="menu-punchanim-loopstart-set">
+                  {loopStart == null ? "Add Loop Start here" : "Move Loop Start here"}
+                </ContextMenuItem>
+                <ContextMenuItem disabled={loopStart == null} onSelect={() => setLoopStart(null)} data-testid="menu-punchanim-loopstart-remove">
+                  Remove Loop Start
+                </ContextMenuItem>
+              </ContextMenuContent>
+              </ContextMenu>
               <span className="w-24 text-[11px] text-muted-foreground tabular-nums text-right">
                 {(u * duration).toFixed(2)}s / {duration.toFixed(2)}s
               </span>
@@ -427,23 +512,41 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
                 data-testid="button-punchanim-loopmode">
                 {slideMode ? "Slide Back" : "Loop Back"}
               </Button>
+              <Button size="sm" variant={fullGuard ? "default" : "outline"} className="h-7 px-2 text-[11px]" onClick={() => setFullGuard(g => !g)}
+                aria-pressed={fullGuard} data-testid="button-punchanim-fullguard">
+                Full guard: {fullGuard ? "On" : "Off"}
+              </Button>
+              {!fullGuard && (
+                <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={copyOnToOff}
+                  disabled={!draft.bonesOff || JSON.stringify(draft.bonesOff) === JSON.stringify(draft.bones)} data-testid="button-punchanim-copy-on">
+                  Copy On animation
+                </Button>
+              )}
+              <Button size="sm" variant={draft.autoMotion ? "default" : "outline"} className="h-7 px-2 text-[11px]" onClick={toggleAutoMotion}
+                aria-pressed={!!draft.autoMotion} data-testid="button-punchanim-automotion">
+                Auto motion: {draft.autoMotion ? "On" : "Off"}
+              </Button>
             </div>
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground pl-[88px]">
               <span className="font-semibold text-foreground mr-auto">{JOINT_LABEL[selected]}</span>
-              <span>Right-click adds or removes a point · drag a point to move it · Shift-click copies a point · Shift-right-click pastes · right-click the playback bar toggles Loop Start</span>
-              <Button size="sm" variant="ghost" className="h-6 text-[11px]" disabled={!draft.bones[selected]} onClick={clearJoint} data-testid="button-punchanim-clear-joint">
+              <span>Right-click adds or removes a point · drag a point to move it · Shift-click copies a point · Shift-right-click pastes · right-click the playback bar sets Loop Start or Full Guard Slide</span>
+              <Button size="sm" variant="ghost" className="h-6 text-[11px]" disabled={!viewBones[selected]} onClick={clearJoint} data-testid="button-punchanim-clear-joint">
                 <RotateCcw className="w-3 h-3 mr-1" /> Clear joint
               </Button>
             </div>
             {AXIS_LANES.map((ax, i) => (
               <PunchTimelineLane key={`${selected}-${i}`} label={ax.label} kind="rotation" color={ax.color} keys={tracks[i]}
-                playhead={tau} loopStart={loopStart} slideMode={slideMode} bands={bands} limit={limits[i]} onLimitChange={v => setLimit(i, v)} onBeginEdit={checkpoint} onChange={k => setAxis(i, k)} testId={`lane-punchanim-${"xyz"[i]}`} />
+                playhead={tau} loopStart={loopStart} slideMode={slideMode} guardSlide={guardSlide} bands={bands} limit={limits[i]} onLimitChange={v => setLimit(i, v)} onBeginEdit={checkpoint} onChange={k => setAxis(i, k)} testId={`lane-punchanim-${"xyz"[i]}`} />
             ))}
-            <PunchTimelineLane label="Speed" kind="speed" color="#eab308" keys={draft.speed} playhead={tau} loopStart={loopStart} slideMode={slideMode} bands={bands} height={52}
+            <PunchTimelineLane label="Height" kind="height" color="#a855f7" keys={draft.height ?? []} playhead={tau} loopStart={loopStart} slideMode={slideMode} guardSlide={guardSlide} bands={bands} limit={HEIGHT_MAX} height={52}
+              onBeginEdit={checkpoint} onChange={k => setDraft(d => { const { height: _h, ...rest } = d; return k.length ? { ...rest, height: k } : rest; })} testId="lane-punchanim-height" />
+            <PunchTimelineLane label="Speed" kind="speed" color="#eab308" keys={draft.speed} playhead={tau} loopStart={loopStart} slideMode={slideMode} guardSlide={guardSlide} bands={bands} height={52}
               onBeginEdit={checkpoint} onChange={k => setDraft(d => ({ ...d, speed: k }))} testId="lane-punchanim-speed" />
           </Card>
         </>
       )}
+
+      {ringTest && <PunchRingTest southpaw={southpaw} onExit={() => setRingTest(false)} />}
 
       <AlertDialog open={confirmSave} onOpenChange={setConfirmSave}>
         <AlertDialogContent>
@@ -451,7 +554,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
             <AlertDialogTitle>Save {PUNCH_ROLE_LABEL[role]} profile to slot #{slot + 1}?</AlertDialogTitle>
             <AlertDialogDescription>
               {slots[slot] ? `This replaces "${slots[slot]!.name || "Untitled"}". ` : ""}
-              {keyedBones} joint{keyedBones === 1 ? "" : "s"} keyed{draft.speed.length ? ", speed track set" : ""}. Southpaw uses its mirror.
+              {keyedBones} joint{keyedBones === 1 ? "" : "s"} keyed{draft.height?.length ? ", height track set" : ""}{draft.speed.length ? ", speed track set" : ""}. Southpaw uses its mirror.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <label className="flex items-center gap-2 text-sm">

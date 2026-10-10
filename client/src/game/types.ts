@@ -386,6 +386,14 @@ export interface AiBrainState {
   forcedLow: boolean;
   forcedDuck: boolean;
   stepOutDesiredMove: number;
+  /** The current run of duck requests was turned into another defensive move;
+   *  keep refusing it until a tick goes by without one. */
+  duckVetoRun?: boolean;
+  /** Was the fighter ducking when the duck gate last ran? A duck can be asked
+   *  for between AI ticks (reaction notifiers), so onset is judged against this. */
+  duckGatePrevDuck?: boolean;
+  /** fightElapsedTime of the last rolled duck veto. */
+  duckVetoAt?: number;
 
   // Base defense reaction, step-out half. Optional because HMR keeps live
   // brains: updateAI backfills the block before anything reads it.
@@ -412,6 +420,24 @@ export interface AiBrainState {
    * always used. See `perfectBlockIntent` in aiFundamentals.
    */
   perfectBlockIntent01: number;
+  /**
+   * Basics-layer answers, 0..1 each, from a fundamentals seed. Null/absent means
+   * the old fixed-odds reflex pick (every non-seed brain keeps it unchanged).
+   */
+  basics?: {
+    slipStraight: number; rollHook: number; guardUppercut: number; guardBody: number; headOffLine: number;
+    /** Second batch (fight scenarios); 0 on a seed saved before they existed. */
+    returnJab: number; fireBack: number; slipRip: number; doubleHook: number;
+    bodyHead: number; insideWork: number; levelMix: number;
+  } | null;
+  /** Edge detector for "a punch just finished" (head off the centre line). */
+  basicsWasPunching?: boolean;
+  /** Scenario follow-ups: edge baselines and one queued answer with expiry. */
+  basicsPrev?: { oppPunching: boolean; oppCls: string | null; evaded: boolean; hitTaken: boolean;
+    blockedByMe: number; blockedByOpp: number; landed: number; oppLanded: number; ownHook: string | null; ownBody: boolean };
+  basicsQueue?: { punches: string[]; body: boolean; until: number } | null;
+  /** Last two levels the brain aimed at (true = body), for level mixing. */
+  basicsLevels?: boolean[];
   perfectBlockHoldMs: number;      // adaptive hold length, clamped to the Defense-scaled max
 
   /** Seconds since the last fatigue Reset roll. Rolled once a second, not per tick. */
@@ -944,12 +970,13 @@ export const KD_FALL_DURATION = 0.55;
 export const BIG_SHOT_TEXT_DURATION = 1.6;
 
 /**
- * Final gate on a Big Shot. The conjunction that qualifies one — charged, crit,
- * stun and a rhythm cut on the same punch — is already rare; this cuts what is
- * left by a further 90%, so the drop is a genuine once-in-a-career moment
- * rather than the guaranteed payoff of a lucky punch.
+ * How long a punch key must be held before release for the punch to count as
+ * "held" for a Big Shot or Rocker Shot (the hold also builds hold-to-power).
  */
-export const BIG_SHOT_BASE_CHANCE = 0.10;
+export const POWER_SHOT_HOLD_SEC = 0.5;
+
+/** Seconds a fighter can't slip or duck after taking a Rocker Shot. */
+export const ROCKER_DEFENSE_LOCK_SEC = 5;
 
 export const SKIN_COLOR_PRESETS = [
   "#f5d0b0", "#e8c4a0", "#d4a574", "#c49a6c", "#a87040", "#8d5524", "#6b3a1f", "#3b1f0e",
@@ -1185,6 +1212,8 @@ export interface FighterState {
   baseBobSpeed: number;
   defenseState: DefenseState;
   preDuckBlockState: DefenseState | null;
+  /** AI asked to come up from a duck before its punch was halfway back; applied once it is. */
+  heldDuckRelease?: DefenseState;
   guardBlend: number;
   isPunching: boolean;
   currentPunch: PunchType | null;
@@ -1194,10 +1223,20 @@ export interface FighterState {
   isHit: boolean;
   hitTimer: number;
   critHitTimer: number;
+  /** Crit stagger: punch inputs fail while > 0 (seconds). */
+  critStaggerTimer: number;
+  /** Crit stagger slide: seconds left, total duration, unit direction and distance (px). */
+  critStaggerMoveTimer: number;
+  critStaggerMoveDuration: number;
+  critStaggerDirX: number;
+  critStaggerDirZ: number;
+  critStaggerDist: number;
   cleanHitEyeTimer: number;
   regenPauseTimer: number;
   moveSpeed: number;
   punchSpeedMult: number;
+  /** punchSpeedMult as built (0 Speed points, no boosts); the max-punch-speed cap is measured against it. */
+  basePunchSpeedMult?: number;
   damageMult: number;
   defenseMult: number;
   staminaCostMult: number;
@@ -1296,8 +1335,6 @@ export interface FighterState {
   chargeArmTimer: number;
   chargeMeterCounters: number;
   chargeMeterBars: number;
-  chargeEmpoweredTimer: number;
-  chargeEmpoweredDuration: number;
   chargeMeterLockoutTimer: number;
   chargeHoldTimer: number;
   chargeFlashTimer: number;
@@ -1327,6 +1364,16 @@ export interface FighterState {
   pendingPunchInputTimer: number;
   pendingPunchCharged: boolean;
   pendingPunchBody: boolean;
+  /**
+   * Hold-to-power: extra power (fraction, summed into the power pool) earned by
+   * how long the player held the punch key before releasing it. Set at each
+   * player launch site; the AI never sets it.
+   */
+  holdPowerPct?: number;
+  pendingPunchHoldPct?: number;
+  /** Seconds the player held the key of the punch now out (0 for the AI). */
+  holdSec?: number;
+  pendingPunchHoldSec?: number;
   timeSinceLastPunch: number;
   timeSinceGuardRaised: number;
   perfectBlockActive: boolean;
@@ -1340,14 +1387,72 @@ export interface FighterState {
   perfectBlockKeyWasUp: boolean;
   /**
    * Manual slip: the head slides off the punch line and the torso tilts with it.
-   * The head is only actually off the line once that slide finishes, and only for
-   * a short window after it — a head shot arriving while the fighter is still
-   * moving, or after they have sat in the slipped position too long, lands. Body
-   * shots are untouched throughout. Holding pins the fighter in place, the hold is
+   * Head shots miss for the whole slip, except a same-side punch launched
+   * 0.01-0.02s before a left/right slip input. Body shots are untouched. Holding pins the fighter in place, the hold is
    * capped, and nothing locks the next slip out — but every slip costs stamina,
    * consecutive ones more, and eating a head shot mid-slip locks it out briefly.
    */
   slipActive: boolean;
+  /**
+   * The current slip is an auto slip (Slippery / Defense): free, started the
+   * moment a head punch launched, and it locks feint, Reset and slip input out
+   * until it has slid into place.
+   */
+  slipAuto: boolean;
+  /** actionClock of the last successful Reset; opens the Slippery auto-slip window. */
+  autoSlipResetAt: number;
+  /**
+   * Auto slip against a body shot: instead of slipping, the fighter steps out of
+   * range and back in. Seconds left (0 = no step), total length, how far out at
+   * the peak (px), the unit direction away from the puncher, and the
+   * displacement actually applied so far (so the step returns exactly).
+   */
+  autoStepTimer: number;
+  autoStepDuration: number;
+  autoStepDist: number;
+  autoStepDirX: number;
+  autoStepDirZ: number;
+  autoStepAppliedX: number;
+  autoStepAppliedZ: number;
+  /**
+   * Fight clock (state.fightElapsedTime) mirrored onto the fighter every tick,
+   * so code holding only a fighter can stamp when something happened.
+   */
+  actionClock: number;
+  /** actionClock when the latest slip input (start or re-aim) came in. */
+  slipInputAt: number;
+  /** actionClock when the current/latest punch launched. */
+  punchLaunchedAt: number;
+  /**
+   * Duck tracking was live when this punch launched from a standing posture: if
+   * the defender is ducking at contact, it finds their head. Latched at launch.
+   */
+  punchAimsDuckHead: boolean;
+  /**
+   * actionClock until which duck tracking is live. A fresh Reset sets it to
+   * 10s + 0.1s per Focus level (to 1000); any punch that gets through (not a
+   * perfect block) turns it off until the next Reset. 0 = off.
+   */
+  duckTrackUntil: number;
+  /**
+   * Punches that got through since the last Reset. Duck tracking turns off once
+   * this exceeds duckTrackExtraHits (the max-stamina decay gap bonus).
+   */
+  duckTrackHitsTaken: number;
+  /** Per tick: the tracked punch in flight is following a live duck, so the arm takes the low line. */
+  duckTrackLowLine: boolean;
+  /** Counts down from a crit/stun to the head: the head snaps, then eases back. Punches/feints locked while > 0. */
+  stunHeadTurnTimer: number;
+  /** Full length of the current head snap (turn 0.75s, uppercut look-up 0.875s). */
+  headSnapDuration?: number;
+  /** The current head snap tips the head up (uppercut) instead of turning it. */
+  headSnapUp?: boolean;
+  /** Which way that turn goes in body space: +1 = toward the fighter's left (a left hook), -1 = right. */
+  stunHeadTurnDir: number;
+  /** Counts down from a landed hook to the head: the head turns 30° with the hook and back (visual only). */
+  hookHeadTurnTimer?: number;
+  /** +1 = a left hook (head turns left), -1 = a right hook. */
+  hookHeadTurnDir?: number;
   slipDir: SlipDir;
   /**
    * Seconds since this slip started. Both the slide and the dodge window that
@@ -1360,6 +1465,32 @@ export interface FighterState {
   slipHoldTimer: number;
   /** Lockout left after being caught in the head mid-slip. */
   slipDisabledTimer: number;
+  /** Seconds left with ducking locked out (set by taking a Rocker Shot). */
+  duckDisabledTimer?: number;
+  /**
+   * Slips the player put in themselves (not auto slips) that made a punch miss
+   * from within SLIP_TRAINING_RANGE_PX this bout. Counted in every mode; only
+   * the sparring payouts read it.
+   */
+  inputSlipsLanded?: number;
+  /** Career-trained auto slip chance, as a fraction (0.00004 = +0.004%). */
+  autoSlipTrainedBonus?: number;
+  /**
+   * Slip-counter mechanic. A hand-put slip (not in full guard) that dodges a
+   * head punch slows the thrower (punch phases incl. retraction, and movement)
+   * and the round clock to 10% for SLIP_COUNTER_SLOW_SEC; the slipper's counter
+   * window is the same span.
+   * slipSlowTimer: seconds left of this fighter running slowed.
+   * slipCounterTimer: seconds left to launch the counter.
+   * slipCounterQueued: a windup was started inside the window; its punch counts.
+   * slipCounterPunch: the current punch is a slip counter (latched at launch).
+   */
+  slipSlowTimer?: number;
+  slipCounterTimer?: number;
+  slipCounterQueued?: boolean;
+  slipCounterPunch?: boolean;
+  /** Seconds left of the punch/feint/slip lockout from being hit by a slip counter. */
+  counterHitLockTimer?: number;
   /**
    * Slip chain: how long is left for the next slip to still count as consecutive,
    * and how many consecutive ones have been paid for so far. Every slip re-arms
@@ -1369,6 +1500,8 @@ export interface FighterState {
   slipChainCount: number;
   /** The slip key has to be released before another slip can start. */
   slipKeyWasUp: boolean;
+  /** Player is holding C: no automatic slips (head slip or body-shot step) until it is released. */
+  autoSlipSuppressed?: boolean;
   /** 0..1 eased lean. Outlives the slip itself so the torso snaps back. */
   slipLean: number;
   /** Lean the current slip started its slide from, so a re-slip does not pop. */
@@ -1518,6 +1651,13 @@ export interface FighterState {
   /** Limbs are touching and this fighter's rhythm is the more exposed of the
    *  two: no walking toward the opponent and no jabs. Recomputed every tick. */
   limbContactPinned?: boolean;
+  /** The two fighters' legs (or bodies) are touching: no movement toward the
+   *  opponent at all. Recomputed every tick before either corner moves. */
+  legContact?: boolean;
+  /** This tick's movement from staggers and punch pushback, which the leg
+   *  collision passes through untouched. Zeroed at the start of every tick. */
+  legExemptDx?: number;
+  legExemptDz?: number;
   /** Roster id whose assigned punch-animation profiles this fighter wears (3D
    *  view only). Unset → the per-punch default profile. */
   punchProfileRosterId?: number;
@@ -1557,6 +1697,8 @@ export interface FighterState {
   slipperyDodgeBonus?: number;
   /** Slippery refinement: multiplier on how fast the fighter slides into a slip. */
   slipperySpeedMult?: number;
+  /** Slippery refinement level (0 = none): auto-slip chance. */
+  slipperyLevel?: number;
   dodgePenalty?: number;
   /**
    * The fighter-wide additive power pool, as a fraction. Every "more power"
@@ -1681,6 +1823,22 @@ export interface FighterState {
   movingTime?: number;
   /** Guards against one tick being charged mileage twice -- see accrueRingMileage. */
   mileageChargedThisTick?: boolean;
+  /** Step cycles walked (fraction = how far through the current step). Drives the feet and the rhythm. */
+  walkCycle?: number;
+  /** Stride of the step in hand (m); 0 when the feet are planted. */
+  walkStride?: number;
+  /** Set by any voluntary step this tick; cleared at the top of the tick. */
+  walkedThisTick?: boolean;
+  /** Seconds since the fighter last stepped. */
+  stepIdle?: number;
+  /** Player step in progress (runs to completion after the arrow is released). */
+  stepActive?: boolean;
+  /** walkCycle value at which the step in hand completes. */
+  stepEnd?: number;
+  /** How long the arrows have been held. */
+  stepHold?: number;
+  stepDirX?: number;
+  stepDirZ?: number;
   /**
    * Life Drain heals still counting down. Each clean landed punch pushes one
    * entry; the fight loop fires and drops it when its timer runs out.
@@ -1689,11 +1847,11 @@ export interface FighterState {
   slipperyCloseRangeStreak?: number;
   punchRollingRepunchBoost?: number;
   /**
-   * Chance to shrug off a BIG SHOT — the punch still lands for its full
-   * multiplied damage, it just doesn't drop this fighter on the spot.
+   * Punch Rolling: chance to roll with a ROCKER SHOT and lose no max stamina.
+   * (Field name kept from when it negated Big Shots, for tuning-key compat.)
    */
   punchRollingBigShotNegate?: number;
-  /** The mouthguard's share of the same save — stacks with the one above. */
+  /** The mouthguard's chance to shrug off a BIG SHOT knockdown. */
   equipmentBigShotNegate?: number;
   /**
    * Drilled Actions: the player's live drilling context for this bout — the
@@ -1862,6 +2020,8 @@ export interface GameState {
   practiceMode: boolean;
   cpuAttacksEnabled: boolean;
   cpuDefenseEnabled: boolean;
+  /** Punch Animation ring test: the enemy is a stand-still dummy — never attacks, defends or moves, only turns to face the player. */
+  dummyEnemy?: boolean;
   sparringMode: boolean;
   doghouseMode: boolean;
   /**
@@ -1876,6 +2036,10 @@ export interface GameState {
    */
   directionalPerfectBlock: boolean;
   doghouseOpponentsDefeated: number;
+  /** Player perfect blocks paid toward Defensive Mastery — banked at each Doghouse opponent defeated. */
+  doghousePerfectBlocksBanked?: number;
+  /** Player's perfectBlocksMade at the last Doghouse opponent defeated. */
+  doghousePerfectBlocksAtLastKO?: number;
   doghouseStaminaMult: number;
   doghousePowerMult: number;
   doghouseOpponentPool: DoghouseOpponentSpec[];
@@ -1900,6 +2064,8 @@ export interface GameState {
    * repaints the hub alone and leaves bouts untouched.
    */
   ringColors?: RingColors | null;
+  /** Saved gym name for sparring apron lettering; ignored in official bouts. */
+  gymRingName?: string | null;
   totalEnemyKDs: number;
   kdSequence: ("player" | "enemy")[];
   towelImmunityUsed: boolean;
@@ -1912,6 +2078,8 @@ export interface GameState {
   aiKoStopTime: number;
   aiKoPendingResult: "KO" | "TKO" | null;
   bigShotTextTimer: number;
+  /** ROCKER SHOT banner time left (seconds). */
+  rockerShotTextTimer?: number;
   kdEarlyStopCheckedCount: number;
   introAnimActive: boolean;
   introAnimTimer: number;
@@ -2031,6 +2199,16 @@ export interface TutorialTracking {
   feintCount: number;
   punchFeintCount: number;
   rhythmHits: number;
+  /** Real body shots thrown (Shift + punch). */
+  bodyShotCount: number;
+  /** Incoming punches dodged with a hand slip (C). */
+  slipsDodged: number;
+  /** Real punches released after a hold of at least POWER_SHOT_HOLD_SEC. */
+  heldPunchCount: number;
+  /** Reset scenario: the player pressed B while prompted. */
+  resetDone: boolean;
+  /** Reset scenario: a clean (unblocked) player punch landed on the finish prompt. */
+  finishLanded: boolean;
 }
 
 export interface SequenceTracker {

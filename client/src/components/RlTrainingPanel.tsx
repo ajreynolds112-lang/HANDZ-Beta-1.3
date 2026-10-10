@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Play, Pause, Swords, Upload } from "lucide-react";
 import { AI_STRINGS_BY_ID } from "@/game/aiStrings";
 import { RL_UTILITIES, RL_UTILITY_LABELS, rlPolicyToJson, type RlPolicy } from "@/game/rlPolicy";
-import { loadRlDeployConfig, saveRlDeployConfig, rlPolicyDeployProblem, getDeployedRlPolicy, RL_DEPLOY_MODE_LABELS } from "@/game/rlDeploy";
+import { loadRlDeployConfig, saveRlDeployConfig, rlPolicyDeployProblem, RL_DEPLOY_MODE_LABELS } from "@/game/rlDeploy";
 import {
   RL_REWARD_TERMS,
   RL_REWARD_TERM_LABELS,
@@ -19,7 +19,6 @@ import {
 } from "@/game/rlReward";
 import {
   createRlRun,
-  createRlRunFromPolicy,
   loadRlCheckpoint,
   rlRecentSummary,
   sanitizeRlOpponentMix,
@@ -32,6 +31,7 @@ import {
   runRlFrame,
   saveRlRun,
   stableRlPolicy,
+  runFromDeployedIfAhead,
   stopRl,
   type RlRuntime,
 } from "@/game/rlTraining";
@@ -127,23 +127,6 @@ function PickTables({ picks, policy }: { picks: RlPickCounts | null; policy: RlP
       </div>
     </div>
   );
-}
-
-/**
- * A run continuing from the deployed policy when that policy is further
- * trained than `current` (uploaded, or synced from another browser) — so the
- * trainer and its step count follow the policy you actually trained. Keeps
- * the run's reward, opponent mix and PPO settings. Null when the run is level
- * or ahead, or the policy doesn't fit this build.
- */
-function runFromDeployedIfAhead(current: RlRun | null): RlRun | null {
-  const deployed = getDeployedRlPolicy();
-  if (!deployed) return null;
-  const steps = Math.floor(deployed.meta?.trainedSteps ?? 0);
-  // A browser with no run at all takes any deployed policy over random weights.
-  if (current && steps <= current.totalSteps) return null;
-  const seed = (Math.random() * 0x7fffffff) >>> 0;
-  return createRlRunFromPolicy(deployed, seed, current ? { reward: current.pendingReward, mix: current.mix, ppo: current.ppo } : undefined);
 }
 
 export default function RlTrainingPanel({ runRef, rtRef, running, setRunning, onFight }: {

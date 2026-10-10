@@ -23,6 +23,7 @@ import { DEFAULT_RUN_CONFIG } from "./aiTraining";
 import { startHeadlessBout, stepHeadless, type CornerSetup, type HeadlessBoutCore } from "./headlessBout";
 import { getNeuralOverrides, setTrainingNeuralOverride } from "@/components/NeuralNetworkView";
 import type { RlPolicy } from "./rlPolicy";
+import { getDeployedRlPolicy } from "./rlDeploy";
 import {
   startPpoUpdate,
   stepPpoUpdate,
@@ -52,6 +53,7 @@ import {
   rolloutReady,
   rlNextDraw,
   saveRlCheckpoint,
+  createRlRunFromPolicy,
   type RlOpponentKind,
   type RlRun,
 } from "./rlRun";
@@ -308,4 +310,21 @@ export function saveRlRun(run: RlRun, rt: RlRuntime): Promise<void> {
 /** The policy to deploy or fight: never one caught half-way through an update. */
 export function stableRlPolicy(run: RlRun, rt: RlRuntime): RlPolicy {
   return stableRlRun(run, rt).policy.clone();
+}
+
+/**
+ * A run continuing from the deployed policy when that policy is further
+ * trained than `current` (uploaded, or synced from another browser) — so the
+ * trainer and its step count follow the policy you actually trained. Keeps
+ * the run's reward, opponent mix and PPO settings. Null when the run is level
+ * or ahead, or the policy doesn't fit this build.
+ */
+export function runFromDeployedIfAhead(current: RlRun | null): RlRun | null {
+  const deployed = getDeployedRlPolicy();
+  if (!deployed) return null;
+  const steps = Math.floor(deployed.meta?.trainedSteps ?? 0);
+  // A browser with no run at all takes any deployed policy over random weights.
+  if (current && steps <= current.totalSteps) return null;
+  const seed = (Math.random() * 0x7fffffff) >>> 0;
+  return createRlRunFromPolicy(deployed, seed, current ? { reward: current.pendingReward, mix: current.mix, ppo: current.ppo } : undefined);
 }

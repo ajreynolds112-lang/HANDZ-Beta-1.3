@@ -1,27 +1,12 @@
 import { useRef, useEffect, useCallback, type MutableRefObject } from "react";
 import { GameState } from "./types";
 import { renderGame, isPauseButtonClick, getPauseMenuClickIndex, getPauseItems, getSoundSliderClick, getControlsBackClick, getTutorialContinueClick } from "./renderer";
-import { soundEngine, musicEngine, DYNAMIC_MUSIC_LEVELS } from "./sound";
+import { soundEngine } from "./sound";
 import { updateGame, handleKeyDown, handleKeyUp, clearAllKeys, advanceTutorialContinue } from "./engine";
 import { FightScene3D } from "./three/FightScene3D";
 
 const BASE_W = 800;
 const BASE_H = 600;
-
-// Map the live round state to a dynamic-music intensity. player* fields are the
-// human's offense (good); enemyKDsThisRound counts times the PLAYER was dropped
-// (bad), so the player's KD credit is playerKDsThisRound.
-function computeDynamicMusicTarget(rs: GameState["roundStats"]): number {
-  const player = rs.playerDamageThisRound + rs.playerKDsThisRound * 30 + rs.playerLandedThisRound * 1.5;
-  const enemy = rs.enemyDamageThisRound + rs.enemyKDsThisRound * 30 + rs.enemyLandedThisRound * 1.5;
-  const diff = player - enemy;
-  const kdLead = rs.playerKDsThisRound - rs.enemyKDsThisRound;
-  if (diff <= -35 || kdLead <= -1) return DYNAMIC_MUSIC_LEVELS.losingBadly;
-  if (diff >= 35 || kdLead >= 1) return DYNAMIC_MUSIC_LEVELS.dominating;
-  if (diff <= -12) return DYNAMIC_MUSIC_LEVELS.losing;
-  if (diff >= 12) return DYNAMIC_MUSIC_LEVELS.winning;
-  return DYNAMIC_MUSIC_LEVELS.even;
-}
 
 /**
  * The live fight state changes 60x a second, but only a handful of its fields
@@ -42,7 +27,6 @@ const THROTTLED_PUSH_MS = 250;
 interface GameCanvasProps {
   state: GameState;
   onStateChange: (state: GameState) => void;
-  careerDynamicMusic?: boolean;
   /**
    * Shared handle on the live (mutated) fight state. The parent uses it so that
    * patches applied between throttled pushes build on the live object instead of
@@ -51,16 +35,13 @@ interface GameCanvasProps {
   liveStateRef?: MutableRefObject<GameState>;
 }
 
-export default function GameCanvas({ state, onStateChange, careerDynamicMusic = false, liveStateRef }: GameCanvasProps) {
+export default function GameCanvas({ state, onStateChange, liveStateRef }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const internalStateRef = useRef<GameState>(state);
   const stateRef = liveStateRef ?? internalStateRef;
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
-  const dynamicMusicRef = useRef<boolean>(careerDynamicMusic);
-  const prevCritRef = useRef<number>(0);
-  const prevStunRef = useRef<number>(0);
   // The last state object handed to (or received from) React. A prop that is not
   // this object is a genuinely new state from outside the loop (fight start,
   // restart, quit) and replaces the live one; the throttled pushes must not.
@@ -78,7 +59,6 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
     stateRef.current = state;
     lastSigRef.current = uiSignature(state);
   }
-  dynamicMusicRef.current = careerDynamicMusic;
 
   /** Snapshot the live state into React, keeping the ref bookkeeping in sync. */
   const pushState = useCallback((next: GameState) => {
@@ -105,22 +85,6 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
       const sig = uiSignature(newState);
       if (sig !== lastSigRef.current || timestamp - lastPushRef.current >= THROTTLED_PUSH_MS) {
         pushState({ ...newState });
-      }
-
-      // Dynamic career fight-round music: only during live official career rounds.
-      if (dynamicMusicRef.current && newState.careerFightMode && !newState.sparringMode && newState.phase === "fighting" && !newState.isPaused) {
-        musicEngine.setDynamicTarget(computeDynamicMusicTarget(newState.roundStats));
-        const p = newState.player;
-        // Rising edge of the player's crit/stun timers => a fresh stun/crit hit.
-        if (p.critHitTimer > prevCritRef.current + 1e-4 || p.stunPunchDisableTimer > prevStunRef.current + 1e-4) {
-          musicEngine.triggerDuck();
-        }
-        prevCritRef.current = p.critHitTimer;
-        prevStunRef.current = p.stunPunchDisableTimer;
-        musicEngine.updateDynamic(dt);
-      } else {
-        prevCritRef.current = newState.player.critHitTimer;
-        prevStunRef.current = newState.player.stunPunchDisableTimer;
       }
     }
 
@@ -245,13 +209,11 @@ export default function GameCanvas({ state, onStateChange, careerDynamicMusic = 
           if (slider.value === -1) {
             soundEngine.uiClick();
             soundEngine.toggleMute();
-            musicEngine.refreshVolume();
           } else if (slider.value === -2) {
             soundEngine.uiBack();
             newState.pauseSoundTab = false;
           } else {
             soundEngine.updateSetting(slider.key, slider.value);
-            if (slider.key === "master" || slider.key === "music") musicEngine.refreshVolume();
           }
           pushState(newState);
         }

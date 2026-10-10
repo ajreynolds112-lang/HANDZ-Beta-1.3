@@ -27,7 +27,7 @@ function makeRingState(): GameState {
  * colours here rather than at the call sites, so a save that predates ring
  * colours (or no career at all) simply draws the stock ring.
  */
-export default function RingOnlyBackground({ colors }: { colors?: RingColors | null }) {
+export default function RingOnlyBackground({ colors, ringName }: { colors?: RingColors | null; ringName?: string | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<GameState>(makeRingState());
   const animFrameRef = useRef<number>(0);
@@ -36,6 +36,8 @@ export default function RingOnlyBackground({ colors }: { colors?: RingColors | n
   // The render loop is started once and never re-created, so the live palette
   // reaches it through a ref instead of the effect's closure.
   const colorsRef = useRef(ringColorsOf({ ringColors: colors ?? undefined }));
+  const ringNameRef = useRef(ringName);
+  ringNameRef.current = ringName;
   useEffect(() => { colorsRef.current = ringColorsOf({ ringColors: colors ?? undefined }); }, [colors]);
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export default function RingOnlyBackground({ colors }: { colors?: RingColors | n
       const ctx = canvasRef.current?.getContext("2d") ?? null;
       view3d.draw(ctx, stateRef.current, {
         hud: false,
-        scene: { hideFighters: true },
+        scene: { hideFighters: true, ringName: ringNameRef.current },
       });
 
       animFrameRef.current = requestAnimationFrame(loop);

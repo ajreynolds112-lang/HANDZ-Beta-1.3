@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { registerCloudSaves } from "./cloudSaves";
 import { insertFighterSchema, insertFightResultSchema } from "@shared/schema";
 import { z } from "zod";
 import { execSync } from "child_process";
@@ -87,6 +88,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  await registerCloudSaves(app);
   app.get("/api/fighters", async (_req, res) => {
     const fighters = await storage.getFighters();
     res.json(fighters);

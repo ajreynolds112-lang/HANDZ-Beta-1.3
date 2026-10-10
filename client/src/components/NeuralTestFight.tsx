@@ -277,7 +277,7 @@ export default function NeuralTestFight({ onExit }: { onExit: () => void }) {
     restartLockRef.current = 0.4;
   }, []);
 
-  // Silent so a test run never fights the menu music, and the module-level key
+  // Silent so a test run makes no sound, and the module-level key
   // state is cleared on the way out so a held key does not leak into the game.
   useEffect(() => {
     soundEngine.setSilent(true);

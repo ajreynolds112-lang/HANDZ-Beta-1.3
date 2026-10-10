@@ -28,28 +28,35 @@ import { initAiBrain } from "@/game/ai";
 import { resetAutoZoom } from "@/game/renderer";
 import { soundEngine } from "@/game/sound";
 import { useFightScene3D } from "@/game/three/useFightScene3D";
-import { setTrainingNeuralOverrides, promoteToChampion } from "@/components/NeuralNetworkView";
+import { setTrainingNeuralOverrides } from "@/components/NeuralNetworkView";
 import {
   FUNDAMENTALS, EXEC_FLOOR, type FundamentalSeed,
-  normalizeSeed, executionRate, lifetimeRate, winRate, rankSeeds,
-  deriveNeuralState, paramId,
+  executionRate, lifetimeRate, winRate, rankSeeds,
+  paramId,
 } from "@/game/aiFundamentals";
 import {
   type TrainingRun, type GenerationRecord, type FightObserver,
   type Pairing, type CycleBase, type FundCycleRecord, type CycleStat,
-  DEFAULT_RUN_CONFIG, SWEEP_LENGTH,
-  createRun, runHeadless, advanceFundamental, cycleComplete, startCycle,
-  currentFundamental, cycleStat, cycleSize,
-  neuralOverridesFor, seedRosterId,
-  newObserver, observeAiTick, foldAiObservations,
+  DEFAULT_RUN_CONFIG, SWEEP_LENGTH, sweepPosition, setSweepSelection,
+  createRun, runHeadless, cycleComplete, currentFundamental, cycleStat, cycleSize,
+  neuralOverridesForRun, seedRosterId, newObserver, observeAiTick, foldAiObservations,
 } from "@/game/aiTraining";
-import { serializeStore, deserializeStore, emptyStore } from "@/game/fundamentalStates";
-import { publishChampionFundamentals } from "@/game/championStates";
+import {
+  normalizeLearner, sigmaFor, LEAGUE_SIZE, GATE_MIN_BOUTS, GATE_ROLLBACK_BELOW,
+  type LearnerState, type GateTally, type GateDecision,
+} from "@/game/fundamentalLearning";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { X, Play, Pause, RotateCcw, Swords, ChevronLeft } from "lucide-react";
 import RlTrainingPanel from "@/components/RlTrainingPanel";
 import type { RlRun } from "@/game/rlRun";
-import { buildLearnerBrain, newRlRuntime, RL_LEARNER_ROSTER_ID, type RlRuntime } from "@/game/rlTraining";
+import { buildLearnerBrain, newRlRuntime, stableRlRun, stopRl, RL_LEARNER_ROSTER_ID, type RlRuntime } from "@/game/rlTraining";
+import { saveFundamentalsRun, loadFundamentalsRun, closeFundamentalCycle } from "@/game/fundamentalsRunStore";
+import {
+  pauseBackgroundTraining, takeSharedFundamentalsRun, takeSharedRlRun,
+  shareFundamentalsRun, shareRlRun,
+} from "@/game/backgroundTraining";
+import BackgroundTrainingControl from "@/components/BackgroundTrainingControl";
 import type { RlPolicy } from "@/game/rlPolicy";
 
 type TrainingMode = "fundamentals" | "rl";
@@ -58,7 +65,6 @@ type Sparring =
   | { kind: "seed"; seed: FundamentalSeed; minutes: number; obs: FightObserver }
   | { kind: "rl"; policy: RlPolicy; minutes: number };
 
-const LS_KEY = "handz_ai_training";
 /** Keys the fight owns while a spar is up, kept in step with GameCanvas. */
 const GAME_KEYS = [
   "arrowleft", "arrowright", "arrowup", "arrowdown", "escape", " ",
@@ -71,106 +77,6 @@ const FRAME_BUDGET_MS = 12;
 /** How often the in-flight cycle is written back. */
 const AUTOSAVE_MS = 10000;
 
-interface Persisted {
-  population: FundamentalSeed[];
-  gen: number;
-  history: GenerationRecord[];
-  // The part-finished cycle. A cycle is 75 bouts and a sweep is 73 of them, so
-  // without these a reload throws away everything gathered since the last
-  // fundamental closed.
-  fundIndex?: number;
-  schedule?: Pairing[];
-  cursor?: number;
-  completed?: number;
-  cycleBase?: Record<number, CycleBase>;
-  /** Situation memory assembled so far, one entry per closed fundamental. */
-  championStates?: Record<string, unknown>;
-  /** Seed id -> what it has learned about the fundamental still under test. */
-  cycleStores?: Record<string, Record<string, unknown>>;
-  /** The assembled champion — one fundamental's winner at a time. */
-  champion?: FundamentalSeed;
-  cycleLog?: FundCycleRecord[];
-}
-
-function load(): Persisted | null {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return null;
-    const p = JSON.parse(raw) as Persisted;
-    if (!Array.isArray(p.population) || p.population.length === 0) return null;
-    return { ...p, population: p.population.map(normalizeSeed) };
-  } catch { return null; }
-}
-
-function save(run: TrainingRun) {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify({
-      population: run.population, gen: run.gen, history: run.history.slice(-25),
-      fundIndex: run.fundIndex,
-      schedule: run.schedule, cursor: run.cursor, completed: run.completed,
-      cycleBase: run.cycleBase,
-      champion: run.champion, cycleLog: run.cycleLog,
-      championStates: serializeStore(run.championStates ?? emptyStore()),
-      cycleStores: Object.fromEntries(Object.entries(run.cycleStores)
-        .map(([id, st]) => [id, serializeStore(st)])),
-    } satisfies Persisted));
-  } catch { /* storage full or unavailable — training is scratch work, carry on */ }
-}
-
-/**
- * Put a part-finished sweep back where it was: same fundamental, same fixtures,
- * same place in them, same pending per-pairing evidence, and the same champion
- * assembled so far. Rebuilding instead would restart the fundamental from zero
- * on every reload.
- *
- * Nothing needs requeuing: a headless bout either finishes inside the frame or
- * has its cursor put back, so no bout is ever half-run when this is written.
- */
-function restoreCycle(run: TrainingRun, saved: Persisted) {
-  const size = run.population.length;
-
-  if (Number.isFinite(saved.fundIndex)) {
-    run.fundIndex = Math.min(Math.max(saved.fundIndex as number, 0), FUNDAMENTALS.length - 1);
-  }
-  if (saved.champion) run.champion = normalizeSeed(saved.champion);
-  if (Array.isArray(saved.cycleLog)) run.cycleLog = saved.cycleLog;
-  // The memory belongs with the champion, not with the cycle: it is the whole
-  // sweep's worth of closed fundamentals and survives a reopened cycle.
-  if (saved.championStates) run.championStates = deserializeStore(saved.championStates);
-
-  const sched = saved.schedule;
-  // Length is checked, not just validity. A save written before the sweep
-  // existed carries a whole 1000-bout generation in this field, and every
-  // pairing in it is still a legal pairing — adopting it would run one
-  // fundamental for thirteen cycles' worth of bouts.
-  const expected = ((size * (size - 1)) / 2) * run.meetingsPerFundamental;
-  const usable = Array.isArray(sched)
-    && sched.length === expected
-    && !sched.some(p => !p || p.a >= size || p.b >= size || p.a < 0 || p.b < 0)
-    // Without a baseline there is nothing to measure the cycle against, and the
-    // one createRun took was against the founders this population replaced — so
-    // every seed's accumulated total would read as this cycle's work.
-    && !!saved.cycleBase;
-
-  if (!usable) {
-    // Reopen the cycle on the restored fundamental rather than leaving it on the
-    // one createRun happened to build, and re-baseline against this population.
-    startCycle(run, Math.random);
-    return;
-  }
-
-  run.schedule = sched as Pairing[];
-  run.cursor = Math.min(Math.max(saved.cursor ?? 0, 0), run.schedule.length);
-  run.completed = Math.min(Math.max(saved.completed ?? 0, 0), run.schedule.length);
-  run.cycleBase = saved.cycleBase!;
-  // Part-learned memory for the fundamental still open. Without it the cycle
-  // would close having moved the champion's parameters but with nothing to
-  // remember them by, and the old situations would outlive the values.
-  run.cycleStores = {};
-  for (const [id, st] of Object.entries(saved.cycleStores ?? {})) {
-    run.cycleStores[Number(id)] = deserializeStore(st);
-  }
-}
 
 const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 
@@ -184,7 +90,7 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
 
   const [running, setRunning] = useState(false);
   const [, forceTick] = useState(0);
-  const [tab, setTab] = useState<"board" | "fundamentals">("board");
+  const [tab, setTab] = useState<"board" | "fundamentals" | "select">("board");
   const [selected, setSelected] = useState(0);
   const [sparring, setSparring] = useState<Sparring | null>(null);
   const [mode, setMode] = useState<TrainingMode>("fundamentals");
@@ -209,28 +115,25 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
 
   // Boot the population, then publish it so the AI can find each seed's brain.
   if (runRef.current === null) {
-    const saved = load();
-    const run = createRun(DEFAULT_RUN_CONFIG, Math.random);
-    if (saved) {
-      run.population = saved.population.slice(0, DEFAULT_RUN_CONFIG.populationSize);
-      run.gen = saved.gen || 1;
-      run.history = saved.history || [];
-      restoreCycle(run, saved);
-    }
+    // Background training hands over its live run (it is paused while this
+    // screen is open); otherwise the run is read back from storage.
+    pauseBackgroundTraining("view", true);
+    rlRunRef.current = takeSharedRlRun();
+    const run = takeSharedFundamentalsRun() ?? loadFundamentalsRun();
     runRef.current = run;
-    setTrainingNeuralOverrides(neuralOverridesFor(run.population));
+    setTrainingNeuralOverrides(neuralOverridesForRun(run));
   }
 
   const run = runRef.current!;
 
   const republish = useCallback(() => {
-    setTrainingNeuralOverrides(neuralOverridesFor(runRef.current!.population));
+    setTrainingNeuralOverrides(neuralOverridesForRun(runRef.current!));
   }, []);
 
   useEffect(() => {
     soundEngine.setSilent(true);
     // Leaving the screen or closing the tab must not cost the cycle.
-    const flush = () => { if (runRef.current) save(runRef.current); };
+    const flush = () => { if (runRef.current) saveFundamentalsRun(runRef.current); };
     window.addEventListener("beforeunload", flush);
     return () => {
       window.removeEventListener("beforeunload", flush);
@@ -238,6 +141,12 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
       soundEngine.setSilent(false);
       setTrainingNeuralOverrides(null);
       clearAllKeys();
+      // Hand the live runs back so background training (if switched on)
+      // carries on from exactly here.
+      if (runRef.current) shareFundamentalsRun(runRef.current);
+      if (rlRunRef.current) shareRlRun(stableRlRun(rlRunRef.current, rlRtRef.current));
+      stopRl(rlRtRef.current);
+      pauseBackgroundTraining("view", false);
     };
   }, []);
 
@@ -251,20 +160,7 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
 
       if (runningRef.current && !sparring && modeRef.current === "fundamentals") {
         runHeadless(r, FRAME_BUDGET_MS);
-        if (cycleComplete(r)) {
-          // advanceFundamental writes the winner's parameters for the fundamental
-          // that just closed into run.champion, then opens the next fundamental —
-          // rolling the generation if that was the last one. The champion is read
-          // after it returns, so what goes out is the assembly including this
-          // fundamental, not the previous state of it.
-          advanceFundamental(r, Math.random);
-          promoteToChampion(deriveNeuralState(r.champion));
-          // The parameters and the situations they were learned in go out
-          // together: ordinary play needs both to switch fundamental mid-bout.
-          publishChampionFundamentals(r.champion.params, r.championStates);
-          setTrainingNeuralOverrides(neuralOverridesFor(r.population));
-          save(r);
-        }
+        if (cycleComplete(r)) closeFundamentalCycle(r);
       }
 
       // The standings only move when a bout ends, so redrawing the tables every
@@ -276,7 +172,7 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
       // Checkpoint the cycle as it goes, not just at its boundary.
       if (ts - saveRef.current > AUTOSAVE_MS) {
         saveRef.current = ts;
-        save(r);
+        saveFundamentalsRun(r);
       }
       rafRef.current = requestAnimationFrame(loop);
     };
@@ -287,9 +183,12 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
   const reset = () => {
     setRunning(false);
     const fresh = createRun(DEFAULT_RUN_CONFIG, Math.random);
+    // The training list is a preference, not progress: it survives a reset.
+    const keep = runRef.current?.selected;
+    if (keep && keep.length > 0) setSweepSelection(fresh, keep, Math.random);
     runRef.current = fresh;
     republish();
-    save(fresh);
+    saveFundamentalsRun(fresh);
   };
 
   if (sparring && sparring.kind === "seed") {
@@ -308,7 +207,7 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
           clearAllKeys();
           // The spar folds the AI's fundamentals straight into the seed, so the
           // population on disk is stale until this runs.
-          save(runRef.current!);
+          saveFundamentalsRun(runRef.current!);
           setSparring(null);
         }}
       />
@@ -338,7 +237,16 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
   const fund = currentFundamental(run);
   const cycleTotal = cycleSize(run);
   const cycleFrac = cycleTotal > 0 ? Math.min(1, run.completed / cycleTotal) : 0;
-  const sweepFrac = (run.fundIndex + cycleFrac) / SWEEP_LENGTH;
+  const sweep = sweepPosition(run);
+  const sweepFrac = (sweep.pos + cycleFrac) / sweep.len;
+  const pickedList = run.selected ?? [];
+  const picked = new Set(pickedList);
+  const looping = picked.size > 0;
+  const applySelection = (keys: string[]) => {
+    setSweepSelection(run, keys, Math.random);
+    saveFundamentalsRun(run);
+    forceTick(n => (n + 1) % 1000000);
+  };
 
   // Cycle figures are read once and shared by the panel and the standings, so
   // the two can never disagree about who is leading the fundamental.
@@ -371,7 +279,7 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
           </div>
           {mode === "fundamentals" && <>
           <div className="text-xs text-white/50" data-testid="text-sweep-position">
-            Generation {run.gen} · fundamental {run.fundIndex + 1}/{SWEEP_LENGTH} · {run.completed}/{cycleTotal} bouts
+            Generation {run.gen} · fundamental {sweep.pos + 1}/{sweep.len}{looping ? " selected" : ""} · {run.completed}/{cycleTotal} bouts
           </div>
           <div className="ml-auto flex gap-2">
             <Button size="sm" onClick={() => setRunning(v => !v)} data-testid="button-training-toggle">
@@ -383,6 +291,8 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
           </div>
           </>}
         </div>
+
+        <BackgroundTrainingControl />
 
         {mode === "rl" ? (
           <RlTrainingPanel
@@ -401,7 +311,9 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
             <div className="h-full bg-yellow-500 transition-all" style={{ width: `${sweepFrac * 100}%` }} />
           </div>
           <div className="flex justify-between text-[11px] text-white/40">
-            <span data-testid="text-sweep-count">{run.fundIndex + 1} / {SWEEP_LENGTH} fundamentals</span>
+            <span data-testid="text-sweep-count">
+              {sweep.pos + 1} / {sweep.len} {looping ? "selected fundamentals (looping)" : "fundamentals"}
+            </span>
             <span>{pct(sweepFrac)} of generation {run.gen}</span>
           </div>
         </div>
@@ -449,7 +361,69 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
           <Button size="sm" variant={tab === "fundamentals" ? "default" : "outline"} onClick={() => setTab("fundamentals")} data-testid="button-tab-fundamentals">
             Fundamentals
           </Button>
+          <Button size="sm" variant={tab === "select" ? "default" : "outline"} onClick={() => setTab("select")} data-testid="button-tab-select">
+            Training list {looping ? `(${picked.size})` : "(all)"}
+          </Button>
         </div>
+
+        {tab === "select" && (
+          <div className="space-y-2" data-testid="panel-training-list">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-white/50">
+              <span>
+                Tick the fundamentals to train. The sweep visits only those, in order, and
+                starts over after the last one (the generation cut happens there). Nothing
+                ticked trains all {SWEEP_LENGTH}. A cycle already under way finishes first.
+              </span>
+              <div className="ml-auto flex gap-2">
+                <Button size="sm" variant="outline" className="h-7"
+                  onClick={() => applySelection(FUNDAMENTALS.map(f => f.key))} data-testid="button-select-all">
+                  All
+                </Button>
+                <Button size="sm" variant="outline" className="h-7"
+                  onClick={() => applySelection([])} data-testid="button-select-none">
+                  Clear
+                </Button>
+              </div>
+            </div>
+            {[
+              { title: "Advanced", list: FUNDAMENTALS.filter(f => f.layer !== "basics") },
+              { title: "Basics", list: FUNDAMENTALS.filter(f => f.layer === "basics") },
+            ].map(g => (
+              <div key={g.title} className="rounded border border-white/10 p-2">
+                <div className="flex items-center gap-2 pb-1 text-xs text-white/60">
+                  <span>{g.title}</span>
+                  <button className="text-white/40 underline hover:text-white/70"
+                    onClick={() => applySelection(pickedList.concat(g.list.map(f => f.key).filter(k => !picked.has(k))))}
+                    data-testid={`button-select-group-${g.title.toLowerCase()}`}>
+                    tick all
+                  </button>
+                  <button className="text-white/40 underline hover:text-white/70"
+                    onClick={() => applySelection(pickedList.filter(k => !g.list.some(f => f.key === k)))}
+                    data-testid={`button-clear-group-${g.title.toLowerCase()}`}>
+                    untick all
+                  </button>
+                </div>
+                <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {g.list.map(f => {
+                    const on = picked.has(f.key);
+                    return (
+                      <label key={f.key} className="flex cursor-pointer items-center gap-2 text-xs" title={f.meaning}>
+                        <Checkbox checked={on}
+                          onCheckedChange={v => applySelection(v
+                            ? pickedList.concat(f.key)
+                            : pickedList.filter(k => k !== f.key))}
+                          data-testid={`checkbox-fund-${f.key}`} />
+                        <span className="w-6 text-right tabular-nums text-white/35">{f.id}</span>
+                        <span className={on ? "text-white" : "text-white/60"}>{f.label}</span>
+                        {f.key === fund.key && <span className="text-yellow-500/80">· testing</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {tab === "board" && (
           <div className="space-y-2">
@@ -461,6 +435,7 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
                     <th className="p-2 text-right">W</th>
                     <th className="p-2 text-right">Bouts</th>
                     <th className="p-2 text-right">Win rate</th>
+                    <th className="p-2 text-right" title="wins / bouts against frozen past champions this generation">League</th>
                     <th className="p-2 text-right" title={`execution of ${fund.label} in this cycle only`}>
                       {fund.label}
                     </th>
@@ -482,6 +457,11 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
                         <td className="p-2 text-right">{s.wins}</td>
                         <td className="p-2 text-right">{s.bouts}</td>
                         <td className="p-2 text-right">{pct(winRate(s))}</td>
+                        <td className="p-2 text-right tabular-nums text-white/60">
+                          {run.leagueTally?.[s.id]?.bouts
+                            ? `${run.leagueTally[s.id].wins}/${run.leagueTally[s.id].bouts}`
+                            : <span className="text-white/25">—</span>}
+                        </td>
                         <td className="p-2 text-right tabular-nums text-white/60">
                           {!c || c.attempts === 0
                             ? <span className="text-white/25" title="nothing credited this cycle">—</span>
@@ -542,7 +522,7 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
 
             {lastClosed && (
               <div className="text-xs text-white/40">
-                Last sent: <span className="text-white/60">{lastClosed.label}</span> from{" "}
+                Last closed: <span className="text-white/60">{lastClosed.label}</span>, situations from{" "}
                 <span className="text-white/60">{lastClosed.winnerName}</span>.
               </div>
             )}
@@ -557,6 +537,54 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
                 </Button>
               ))}
               <span>against {ranked[0]?.name ?? "the leader"}.</span>
+            </div>
+
+            <div className="rounded border border-white/10 p-3 text-xs space-y-1" data-testid="panel-learning">
+              <div className="text-white/60">Learning</div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-white/50">
+                <span>
+                  {fund.label} search width{" "}
+                  <span className="text-white/80 tabular-nums">{pct(sigmaFor(run.learner ?? normalizeLearner(null), fund.key))}</span>
+                </span>
+                <span>
+                  steps taken <span className="text-white/80 tabular-nums">{run.learner?.steps[fund.key] ?? 0}</span>
+                </span>
+                {lastClosed && (
+                  <span>
+                    last step ({lastClosed.label}){" "}
+                    <span className="text-white/80 tabular-nums">
+                      {lastClosed.stepped ? pct(lastClosed.stepSize ?? 0) : "none"}
+                    </span>
+                  </span>
+                )}
+                <span>
+                  league <span className="text-white/80">{run.league?.length ?? 0}/{LEAGUE_SIZE}</span>
+                </span>
+                <span>
+                  gate{" "}
+                  {run.lastGood
+                    ? <span className="text-white/80 tabular-nums">
+                        {run.gate?.wins ?? 0}–{run.gate?.losses ?? 0} of {run.gate?.bouts ?? 0}
+                        {(run.gate?.bouts ?? 0) < GATE_MIN_BOUTS && <span className="text-white/40"> (needs {GATE_MIN_BOUTS})</span>}
+                      </span>
+                    : <span className="text-white/40">opens after gen 1</span>}
+                </span>
+                {run.lastGate && (
+                  <span className={run.lastGate.rolledBack ? "text-red-400/80" : "text-green-400/80"}>
+                    gen {run.lastGate.gen}: {run.lastGate.rolledBack ? "rolled back" : "passed"} at {pct(run.lastGate.rate)}
+                  </span>
+                )}
+              </div>
+              <div className="text-white/40">
+                Each closed cycle moves the Champion's block for that fundamental one step toward
+                the seeds that executed it better than the field and away from the ones that did
+                worse — every seed counts, rates are weighed by how many chances they rest on, and
+                no parameter moves more than 12% of its range in one step. Replacements are drawn
+                around the Champion at a width that grows while steps agree and shrinks when they
+                flip, plus one fully random explorer. Every seed also boxes the last {LEAGUE_SIZE}{" "}
+                champions that passed their gate; the Champion boxes the last one that passed, and
+                a generation that wins under {pct(GATE_ROLLBACK_BELOW)} of those is rolled back.
+              </div>
             </div>
 
             {run.history.length > 0 && (
@@ -574,6 +602,11 @@ export default function AiTrainingView({ onExit }: { onExit: () => void }) {
                     <span className="text-white/40">
                       best {pct(h.standings[0]?.rate ?? 0)}
                     </span>
+                    {h.gate?.decided && (
+                      <span className={h.gate.rolledBack ? "text-red-400/70" : "text-green-400/70"}>
+                        gate {h.gate.rolledBack ? "rolled back" : "passed"} {pct(h.gate.rate)}
+                      </span>
+                    )}
                     {Object.keys(h.salvage).length > 0 && (
                       <span className="text-yellow-500/70">
                         {Object.values(h.salvage).reduce((a, b) => a + b.length, 0)} fundamentals carried over

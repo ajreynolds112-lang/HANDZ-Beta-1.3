@@ -41,7 +41,11 @@ export const GYM_SPOTS = {
   trophyB: { x: GYM_ROOM.minX + 0.24, z: -6.2, rotY: FACE_PX },
   // Side wall (z = minZ), decor behind the ring.
   speedBag: { x: -3.2, z: GYM_ROOM.minZ + 0.45, rotY: FACE_Z },
-  gloveRack: { x: -6.2, z: GYM_ROOM.minZ + 0.05, rotY: FACE_Z },
+  // Glove pairs: z puts the rack's flat back on the wall (model depth × GYM_GLOVES.scale).
+  gloveRack: { x: -6.2, z: GYM_ROOM.minZ + 0.14, rotY: FACE_Z },
+  // Two more pairs on the side wall behind the ring (seen in the ring view only), clear of the posters.
+  gloveRack2: { x: 0.5, z: GYM_ROOM.minZ + 0.14, rotY: FACE_Z },
+  gloveRack3: { x: 3.8, z: GYM_ROOM.minZ + 0.14, rotY: FACE_Z },
   // Weights station out on the training floor, in front of the bag row.
   plateRack: { x: -10.2, z: -1.9, rotY: 0.6 },
   benchPress: { x: -8.4, z: -1.4, rotY: 0.4 },
@@ -55,6 +59,9 @@ export const GYM_SPOTS = {
   player: { x: -6.9, z: 5.75, rotY: 0 },
   equipCrate: { x: -4.4, z: 2.6, rotY: 0.55 },
 } as const;
+
+/** Wall glove pairs: model scale, and the hang height of the pair's lowest point. */
+export const GYM_GLOVES = { scale: 0.42, y: 1.45, ringY: 2.3 };
 
 /** Hanging bag: height of the bag's lowest point, and the ceiling beam it hangs from. */
 export const GYM_BAG_HANG = { bottom: 0.55, beamY: 5.6 };
@@ -89,7 +96,8 @@ export const GYM_ZONE_BOXES: Record<Exclude<GymZone3D, "ring">, Box[]> = {
   trophyA: [wall(GYM_SPOTS.trophyA, TROPHY_CASE.w / 2, TROPHY_CASE.h)],
   trophyB: [wall(GYM_SPOTS.trophyB, TROPHY_CASE.w / 2, TROPHY_CASE.h)],
   office: [box(O.x0, 0, O.z0, O.x1, O.h, O.z1), around(GYM_SPOTS.waterCrate, 0.4, 0.5)],
-  player: [around(GYM_SPOTS.player, 0.36, 1.95), around(GYM_SPOTS.woodBench, 0.8, 0.5, 0.5)],
+  // The fighter only — the bench behind them is scenery, not a target.
+  player: [around(GYM_SPOTS.player, 0.36, 1.95)],
   equipCrate: [around(GYM_SPOTS.equipCrate, 0.5, 0.65, 0.4)],
 };
 
@@ -139,6 +147,34 @@ export function poseGymHomeCamera(cam: THREE.PerspectiveCamera, t: number): void
   cam.updateMatrixWorld();
 }
 
+/**
+ * Ring view: hovering the ring pans from the home shot to a ringside view of
+ * the AI sparring bout. `k` (0 = home, 1 = ring) blends the two poses; the
+ * caller eases it.
+ */
+const RING_POS = new THREE.Vector3(-1.2, 4.3, 9.1);
+const RING_TARGET = new THREE.Vector3(0, MAT_HEIGHT + 0.5, -0.2);
+const _homePos = new THREE.Vector3();
+const _homeQuat = new THREE.Quaternion();
+const _ringQuat = new THREE.Quaternion();
+export function poseGymCamera(cam: THREE.PerspectiveCamera, t: number, k: number): void {
+  poseGymHomeCamera(cam, t);
+  if (k <= 0) return;
+  _homePos.copy(cam.position);
+  _homeQuat.copy(cam.quaternion);
+  cam.position.set(
+    RING_POS.x + 0.12 * Math.sin(t * 0.19),
+    RING_POS.y + 0.05 * Math.sin(t * 0.31 + 0.4),
+    RING_POS.z,
+  );
+  cam.lookAt(RING_TARGET);
+  _ringQuat.copy(cam.quaternion);
+  const e = Math.min(1, k);
+  cam.position.lerpVectors(_homePos, cam.position, e);
+  cam.quaternion.slerpQuaternions(_homeQuat, _ringQuat, e);
+  cam.updateMatrixWorld();
+}
+
 const restCam = makeGymHomeCamera();
 const _v = new THREE.Vector3();
 
@@ -170,9 +206,10 @@ export function pickGymZone(sx: number, sy: number, cam: THREE.Camera = restCam)
       }
     }
   }
-  // Ring: seen from low down, so test the rope-height plane, the mat and the
+  // Ring: seen from low down, so test the air just above it (where the
+  // sparring fighters' heads are), the rope-height plane, the mat and the
   // apron's middle — any hit inside the rhombus counts unless a prop is nearer.
-  for (const y of [MAT_HEIGHT + 1.3, MAT_HEIGHT, MAT_HEIGHT * 0.5]) {
+  for (const y of [MAT_HEIGHT + 2.1, MAT_HEIGHT + 1.3, MAT_HEIGHT, MAT_HEIGHT * 0.5]) {
     const t = (y - _ray.origin.y) / _ray.direction.y;
     if (!(t > 0 && t < bestD)) continue;
     _ray.at(t, _hit);

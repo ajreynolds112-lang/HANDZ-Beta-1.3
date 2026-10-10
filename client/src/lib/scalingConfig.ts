@@ -93,11 +93,20 @@ function autoGuardSeconds(coef: number, ramp: number, pts: number, caps: Scaling
   return t * coef * (1 + ramp * Math.min(1, Math.max(0, (t - 0.2) / 0.8)));
 }
 
+/** Speed-stat punch ratio: `zero` at 0 pts rising linearly to `cap` at the soft cap, flat beyond. */
+export function speedPunchAt(zero: number, cap: number, pts: number, caps: ScalingCaps): number {
+  const z = Math.max(0.1, zero);
+  const r = Math.max(z, cap);
+  return z + (r - z) * Math.min(1, Math.max(0, pts / Math.max(1, caps.speedSoftCap)));
+}
+
 export const POINT_COEF_DEFS: PointCoefDef[] = [
   { id: "powerDamage", label: "Damage multiplier (quadratic)", stat: "Power", value: 5, unit: "x", note: "both corners, identical",
     atPoints: (c, p, k) => 1 + c * tFull(p, k) ** 2 },
-  { id: "speedPunchAtCap", label: "Punch speed at the soft cap (whole punch incl. telegraph)", stat: "Speed", value: 2, unit: "x", note: "linear from 1x at 0 pts, flat past the cap",
-    atPoints: (c, p, k) => 1 + (Math.max(1, c) - 1) * Math.min(1, Math.max(0, p / Math.max(1, k.speedSoftCap))) },
+  { id: "speedPunchAtZero", label: "Punch speed at 0 pts (whole punch incl. telegraph)", stat: "Speed", value: 1.3, unit: "x", note: "linear up to the soft-cap value",
+    atPoints: (c, p, k) => speedPunchAt(c, pointCoef("speedPunchAtCap", 1.7), p, k) },
+  { id: "speedPunchAtCap", label: "Punch speed at the soft cap (whole punch incl. telegraph)", stat: "Speed", value: 1.7, unit: "x", note: "linear from the 0-pt value, flat past the cap",
+    atPoints: (c, p, k) => speedPunchAt(pointCoef("speedPunchAtZero", 1.3), c, p, k) },
   { id: "speedMove", label: "Move speed", stat: "Speed", value: 0.15, unit: "x",
     atPoints: (c, p, k) => 1 + tSpeed(p, k) * c },
   { id: "speedDuck", label: "Duck speed", stat: "Speed", value: 0.6, unit: "x",
@@ -120,8 +129,6 @@ export const POINT_COEF_DEFS: PointCoefDef[] = [
     atPoints: (c, p, k) => 1 + tFull(p, k) * c },
   { id: "focusStun", label: "Stun power", stat: "Focus", value: 1.8, unit: "x",
     atPoints: (c, p, k) => 1 + tFull(p, k) * c },
-  { id: "focusChargeWindow", label: "Charge window seconds", stat: "Focus", value: 2.1, unit: "s",
-    atPoints: (c, p, k) => 3.0 + tFull(p, k) * c },
 ];
 
 /**
@@ -206,6 +213,15 @@ export function defaultScalingConfig(): ScalingConfig {
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
+/**
+ * Point-coefficient defaults that shipped and were later changed in code. The
+ * whole config is persisted on any edit, so a stored value equal to one of
+ * these is the old default riding along, and the new default should win.
+ */
+const RETIRED_POINT_DEFAULTS: Record<string, number[]> = {
+  speedPunchAtCap: [1.904],
+};
+
 /** The gap effects the retired single master scale used to multiply. Migration only. */
 const LEGACY_MASTER_SCALE_IDS = [
   "gapPowerBypass", "gapMiniStun", "gapStanceSwitch", "gapCrit",
@@ -259,7 +275,8 @@ function mergeConfig(raw: unknown): ScalingConfig {
   if (src.points && typeof src.points === "object") {
     for (const p of POINT_COEF_DEFS) {
       const v = (src.points as Record<string, unknown>)[p.id];
-      if (isNum(v)) base.points[p.id] = v;
+      // A saved copy of a since-retuned default is the old default, not a choice.
+      if (isNum(v) && !RETIRED_POINT_DEFAULTS[p.id]?.includes(v)) base.points[p.id] = v;
     }
   }
   if (src.caps && typeof src.caps === "object") {

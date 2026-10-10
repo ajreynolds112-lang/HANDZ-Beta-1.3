@@ -23,7 +23,7 @@ export interface PropPlacement {
 }
 
 /** A renderable piece of a prop: geometry already in prop-local space. */
-interface PropPart {
+export interface PropPart {
   geometry: THREE.BufferGeometry;
   material: THREE.Material;
 }
@@ -185,31 +185,66 @@ function partsFromModel(root: THREE.Object3D, spec: PropSpec): PropPart[] {
 }
 
 /**
- * Load whatever generated props the manifest lists and hand each to its slot.
- * Failures are logged and leave the stand-in in place.
+ * Fitted parts per prop id, loaded once per page. Every scene (gym home,
+ * sparring, arena, menu ring) draws from this one cache, so a scene built after
+ * the preload finishes gets its models on the first frame instead of popping
+ * them in over the stand-ins.
+ */
+let fittedCache: Map<string, PropPart[]> | null = null;
+let fittedPromise: Promise<Map<string, PropPart[]>> | null = null;
+
+/** Start (or join) the one-time GLB load. Resolves once every model is fitted or failed. */
+export function preloadGeneratedProps(): Promise<Map<string, PropPart[]>> {
+  if (fittedPromise) return fittedPromise;
+  fittedPromise = (async () => {
+    const out = new Map<string, PropPart[]>();
+    let manifest: PropManifest;
+    try {
+      const res = await fetch(PROP_MANIFEST_URL, { cache: "no-cache" });
+      if (!res.ok) return out;
+      manifest = await res.json();
+    } catch {
+      return out;
+    }
+    if (!Array.isArray(manifest?.assets) || manifest.assets.length === 0) return out;
+    const loader = new GLTFLoader();
+    await Promise.all(manifest.assets.map(async entry => {
+      const spec = PROP_CATALOG.find(p => p.id === entry.id);
+      if (!spec) return;
+      try {
+        const gltf = await loader.loadAsync(`/models/${entry.file}`);
+        const parts = partsFromModel(gltf.scene, spec);
+        if (parts.length > 0) out.set(entry.id, parts);
+      } catch (err) {
+        console.warn(`[3D] prop "${entry.id}" failed to load, keeping stand-in`, err);
+      }
+    }));
+    return out;
+  })().then(m => { fittedCache = m; return m; });
+  return fittedPromise;
+}
+
+function applyFitted(slots: Map<string, PropSlot>, fitted: Map<string, PropPart[]>): void {
+  slots.forEach((slot, id) => {
+    const parts = fitted.get(id);
+    // Slots dispose their geometry, so each one gets its own copy; materials are shared.
+    if (parts) slot.useModel(parts.map(p => ({ geometry: p.geometry.clone(), material: p.material })));
+  });
+}
+
+/**
+ * Hand every slot its generated model. Synchronous when the preload has already
+ * finished; otherwise the stand-ins show until it does. Failures leave the
+ * stand-in in place.
  */
 export async function loadGeneratedProps(slots: Map<string, PropSlot>, isCancelled: () => boolean): Promise<void> {
-  let manifest: PropManifest;
-  try {
-    const res = await fetch(PROP_MANIFEST_URL, { cache: "no-cache" });
-    if (!res.ok) return;
-    manifest = await res.json();
-  } catch {
-    return;
-  }
-  if (!Array.isArray(manifest?.assets) || manifest.assets.length === 0) return;
-  const loader = new GLTFLoader();
-  await Promise.all(manifest.assets.map(async entry => {
-    const spec = PROP_CATALOG.find(p => p.id === entry.id);
-    const slot = slots.get(entry.id);
-    if (!spec || !slot) return;
-    try {
-      const gltf = await loader.loadAsync(`/models/${entry.file}`);
-      if (isCancelled()) return;
-      const parts = partsFromModel(gltf.scene, spec);
-      if (parts.length > 0) slot.useModel(parts);
-    } catch (err) {
-      console.warn(`[3D] prop "${entry.id}" failed to load, keeping stand-in`, err);
-    }
-  }));
+  if (fittedCache) { applyFitted(slots, fittedCache); return; }
+  const fitted = await preloadGeneratedProps();
+  if (isCancelled()) return;
+  applyFitted(slots, fitted);
+}
+
+/** One prop's fitted GLB parts from the shared cache (undefined if it has no model). Shared: clone before mutating. */
+export async function getFittedPropParts(id: string): Promise<PropPart[] | undefined> {
+  return (fittedCache ?? await preloadGeneratedProps()).get(id);
 }

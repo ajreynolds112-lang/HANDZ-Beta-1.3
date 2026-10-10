@@ -78,6 +78,8 @@ function drawScreenOverlays(ctx: CanvasRenderingContext2D, state: GameState): vo
 
   if (state.bigShotTextTimer > 0 && !state.menuBackground) {
     drawBigShotBanner(ctx, state.bigShotTextTimer);
+  } else if ((state.rockerShotTextTimer ?? 0) > 0 && !state.menuBackground) {
+    drawBigShotBanner(ctx, state.rockerShotTextTimer!, "HE'S HURT", ["#e8f6ff", "#5ab8ff", "#2a3ce0"]);
   }
 
   if (state.tutorialMode && state.tutorialPrompt && !state.isPaused) {
@@ -451,10 +453,9 @@ function drawChargeMeter(ctx: CanvasRenderingContext2D, x: number, y: number, w:
     ctx.fillRect(segX, y, segW, h);
 
     if (filled) {
-      const empowered = fighter.chargeEmpoweredTimer > 0;
       const grad = ctx.createLinearGradient(segX, y, segX, y + h);
-      grad.addColorStop(0, empowered ? "#ffcc00" : "#3388ff");
-      grad.addColorStop(1, empowered ? "#ff8800" : "#1155cc");
+      grad.addColorStop(0, "#3388ff");
+      grad.addColorStop(1, "#1155cc");
       ctx.fillStyle = grad;
       ctx.fillRect(segX, y, segW, h);
     } else if (partial > 0) {
@@ -487,9 +488,12 @@ function drawCountdown(ctx: CanvasRenderingContext2D, timer: number): void {
   ctx.restore();
 }
 
-// The one-in-a-lifetime punch: charged, critical, stunning and straight through
-// the rhythm. Slams in, holds, then fades with the knockdown it caused.
-function drawBigShotBanner(ctx: CanvasRenderingContext2D, timer: number): void {
+// Big Shot (charged + held + crit + stun) and Rocker Shot share this banner:
+// slams in, holds, then fades.
+function drawBigShotBanner(
+  ctx: CanvasRenderingContext2D, timer: number, text = "BIG SHOT",
+  colors: [string, string, string] = ["#fff3c4", "#ffb020", "#e02a1c"],
+): void {
   const age = BIG_SHOT_TEXT_DURATION - timer;
   const slam = Math.min(1, age / 0.14);
   const scale = 2.2 - 1.2 * slam * slam;
@@ -505,14 +509,14 @@ function drawBigShotBanner(ctx: CanvasRenderingContext2D, timer: number): void {
 
   ctx.lineWidth = 8;
   ctx.strokeStyle = "#1a0505";
-  ctx.strokeText("BIG SHOT", 0, 0);
+  ctx.strokeText(text, 0, 0);
 
   const grad = ctx.createLinearGradient(0, -28, 0, 28);
-  grad.addColorStop(0, "#fff3c4");
-  grad.addColorStop(0.5, "#ffb020");
-  grad.addColorStop(1, "#e02a1c");
+  grad.addColorStop(0, colors[0]);
+  grad.addColorStop(0.5, colors[1]);
+  grad.addColorStop(1, colors[2]);
   ctx.fillStyle = grad;
-  ctx.fillText("BIG SHOT", 0, 0);
+  ctx.fillText(text, 0, 0);
   ctx.restore();
 }
 
@@ -610,9 +614,8 @@ export function getPauseItems(isCareer: boolean, state?: GameState): string[] {
 const SOUND_SLIDER_W = 200;
 const SOUND_SLIDER_H = 8;
 const SOUND_SLIDER_X = CANVAS_W / 2 - SOUND_SLIDER_W / 2;
-const SOUND_CATEGORIES: { label: string; key: "master" | "sfx" | "crowd" | "ui" | "music" }[] = [
+const SOUND_CATEGORIES: { label: string; key: "master" | "sfx" | "crowd" | "ui" }[] = [
   { label: "Master", key: "master" },
-  { label: "Music", key: "music" },
   { label: "SFX", key: "sfx" },
   { label: "Crowd", key: "crowd" },
   { label: "UI", key: "ui" },
@@ -633,7 +636,7 @@ export function getPauseMenuClickIndex(x: number, y: number, isCareer: boolean =
   return -1;
 }
 
-export function getSoundSliderClick(x: number, y: number): { key: "master" | "sfx" | "crowd" | "ui" | "music"; value: number } | null {
+export function getSoundSliderClick(x: number, y: number): { key: "master" | "sfx" | "crowd" | "ui"; value: number } | null {
   for (let i = 0; i < SOUND_CATEGORIES.length; i++) {
     const sliderY = SOUND_SLIDER_START_Y + i * SOUND_SLIDER_SPACING + 20;
     if (x >= SOUND_SLIDER_X && x <= SOUND_SLIDER_X + SOUND_SLIDER_W &&
@@ -657,30 +660,62 @@ export function getSoundSliderClick(x: number, y: number): { key: "master" | "sf
   return null;
 }
 
-// Shared by the overlay and its Back hit box, so the button stays under the
-// text when a line is added to the list.
-const CONTROLS_ROWS: [string, string][] = [
-  ["Move", "Arrow Keys"],
-    ["Duck", "Shift"],
-    ["Jab", "W"],
-    ["Cross", "E"],
-    ["L Hook", "Q"],
-    ["R Hook", "R"],
-    ["L Upper", "S"],
-    ["R Upper", "D"],
-    ["Body Shot", "Shift + Punch"],
-    ["Charge Punch", "A, then Punch"],
-    ["Feint", "F, then Punch"],
-    ["Full Guard", "Space x2"],
-    ["Block Up/Down", "Space + Arrow"],
-    ["Perfect Block", "V"],
-  ["Rhythm Up", "Tab + Right"],
-  ["Rhythm Down", "Tab + Left"],
-  ["Pause", "Esc"],
+// Shared by the overlay and its Back hit box. Two columns of grouped rows:
+// defence and rhythm on the left, attacks on the right.
+type ControlsGroup = { title: string; rows: [string, string][] };
+
+const CONTROLS_COLUMNS: ControlsGroup[][] = [
+  [
+    {
+      title: "MOVE & DEFEND",
+      rows: [
+        ["Move", "Arrow Keys"],
+        ["Duck", "Shift"],
+        ["Slip", "Hold C + Arrow Keys"],
+        ["Reset", "B"],
+        ["Toggle Guard", "Space"],
+        ["Full Guard", "Space x2"],
+        ["Block Up/Down", "Space + Arrow"],
+        ["Perfect Block", "V"],
+      ],
+    },
+    {
+      title: "MENU",
+      rows: [
+        ["Pause", "Esc"],
+      ],
+    },
+  ],
+  [
+    {
+      title: "ATTACK",
+      rows: [
+        ["Jab", "W"],
+        ["Cross", "E"],
+        ["L Hook", "Q"],
+        ["R Hook", "R"],
+        ["L Upper", "S"],
+        ["R Upper", "D"],
+        ["Body Shot", "Shift + Punch"],
+        ["Held Punch", "Hold Punch Key, then Release"],
+        ["Charge Punch", "A, then Punch"],
+        ["Feint", "F, then Punch"],
+      ],
+    },
+  ],
 ];
 
-const CONTROLS_START_Y = 90;
-const CONTROLS_LINE_H = 22;
+const CONTROLS_TOP_Y = 92;
+const CONTROLS_COL_W = 350;
+const CONTROLS_COL_GAP = 24;
+const CONTROLS_PAD_X = 16;
+const CONTROLS_HEADER_H = 30;
+const CONTROLS_ROW_H = 24;
+const CONTROLS_GROUP_GAP = 18;
+
+function controlsColumnHeight(groups: ControlsGroup[]): number {
+  return groups.reduce((h, g, i) => h + (i > 0 ? CONTROLS_GROUP_GAP : 0) + CONTROLS_HEADER_H + g.rows.length * CONTROLS_ROW_H, 0);
+}
 
 function drawControlsOverlay(ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = "#ffffff";
@@ -689,20 +724,39 @@ function drawControlsOverlay(ctx: CanvasRenderingContext2D): void {
   ctx.textBaseline = "middle";
   ctx.fillText("CONTROLS", CANVAS_W / 2, 50);
 
-  const startY = CONTROLS_START_Y;
-  const lineH = CONTROLS_LINE_H;
-  const colLabelX = CANVAS_W / 2 - 20;
-  const colValueX = CANVAS_W / 2 + 20;
+  const totalW = CONTROLS_COLUMNS.length * CONTROLS_COL_W + (CONTROLS_COLUMNS.length - 1) * CONTROLS_COL_GAP;
+  const left0 = (CANVAS_W - totalW) / 2;
 
-  ctx.font = "14px 'Oxanium', sans-serif";
-  CONTROLS_ROWS.forEach(([label, value], i) => {
-    const y = startY + i * lineH;
-    ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-    ctx.textAlign = "right";
-    ctx.fillText(label, colLabelX, y);
-    ctx.fillStyle = "#ffcc44";
-    ctx.textAlign = "left";
-    ctx.fillText(value, colValueX, y);
+  CONTROLS_COLUMNS.forEach((groups, c) => {
+    const x = left0 + c * (CONTROLS_COL_W + CONTROLS_COL_GAP);
+    let y = CONTROLS_TOP_Y;
+    groups.forEach((group, gi) => {
+      if (gi > 0) y += CONTROLS_GROUP_GAP;
+      const boxH = CONTROLS_HEADER_H + group.rows.length * CONTROLS_ROW_H;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
+      ctx.beginPath();
+      ctx.roundRect(x, y, CONTROLS_COL_W, boxH, 6);
+      ctx.fill();
+
+      ctx.fillStyle = "#ffcc44";
+      ctx.font = "bold 12px 'Oxanium', sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(group.title, x + CONTROLS_PAD_X, y + CONTROLS_HEADER_H / 2 + 1);
+      ctx.fillStyle = "rgba(255, 204, 68, 0.3)";
+      ctx.fillRect(x + CONTROLS_PAD_X, y + CONTROLS_HEADER_H - 2, CONTROLS_COL_W - CONTROLS_PAD_X * 2, 1);
+
+      ctx.font = "14px 'Oxanium', sans-serif";
+      group.rows.forEach(([label, value], i) => {
+        const rowY = y + CONTROLS_HEADER_H + i * CONTROLS_ROW_H + CONTROLS_ROW_H / 2;
+        ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+        ctx.textAlign = "left";
+        ctx.fillText(label, x + CONTROLS_PAD_X, rowY);
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "right";
+        ctx.fillText(value, x + CONTROLS_COL_W - CONTROLS_PAD_X, rowY);
+      });
+      y += boxH;
+    });
   });
 
   const backY = controlsBackY();
@@ -713,7 +767,7 @@ function drawControlsOverlay(ctx: CanvasRenderingContext2D): void {
 }
 
 function controlsBackY(): number {
-  return CONTROLS_START_Y + CONTROLS_ROWS.length * CONTROLS_LINE_H + 20;
+  return CONTROLS_TOP_Y + Math.max(...CONTROLS_COLUMNS.map(controlsColumnHeight)) + 36;
 }
 
 export function getControlsBackClick(x: number, y: number): boolean {

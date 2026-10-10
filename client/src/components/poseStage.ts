@@ -22,7 +22,11 @@ export const GROUPS: [string, BoneName[]][] = [
 export interface PoseStageFrame {
   southpaw: boolean;
   fullGuard: boolean;
+  /** Hold the boxer in a full duck. */
+  duck?: boolean;
   selected: BoneName | null;
+  /** Show the nose line (and hold the head off its fight aim, so the line can be tuned). */
+  noseLine?: boolean;
   /** Last word on the posed fighter each frame (e.g. drive a punch). */
   pose?: (fighter: FighterState, state: GameState) => void;
 }
@@ -32,7 +36,7 @@ export interface PoseStageFrame {
  * (drag), shift-drag to raise/lower, wheel zoom, click a joint to pick it.
  * Returns the disposer.
  */
-export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, onPick: (b: BoneName) => void): () => void {
+export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, onPick: (b: BoneName) => void, onContextPick?: (b: BoneName) => void): () => void {
   let disposed = false;
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
@@ -57,6 +61,12 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
   const marker = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 12), new THREE.MeshBasicMaterial({ color: "#facc15", depthTest: false }));
   marker.renderOrder = 10;
   scene.add(marker);
+  const noseLine = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 1, 8), new THREE.MeshBasicMaterial({ color: "#f97316", depthTest: false }));
+  noseLine.renderOrder = 11;
+  noseLine.visible = false;
+  scene.add(noseLine);
+  const nlO = new THREE.Vector3(), nlD = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+  const NOSE_FROM = 0.1, NOSE_TO = 1.4;
 
   const camera = new THREE.PerspectiveCamera(35, 1, 0.05, 50);
   const orbit = { yaw: 0.55, pitch: 0.12, dist: 4.6 };
@@ -95,15 +105,25 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
       d.x = a.x + PROFILE_VIEW_OPP_PX; d.z = 300; d.facingAngle = Math.PI;
       a.boxingStance = (v.southpaw ? "southpaw" : "orthodox") as typeof a.boxingStance;
       a.guardBlend = v.fullGuard ? 1 : 0;
+      a.defenseState = v.duck ? "duck" : "none";
+      a.duckProgress = v.duck ? 1 : 0;
       a.isPunching = false;
       a.currentPunch = null;
       v.pose?.(a, st);
+      fig.aimHead = !v.noseLine;
       fig.update(a, st.playerColors, d, st, 1);
       fig.root.position.set(0, 0, 0);
       fig.root.updateMatrixWorld(true);
       const bone = v.selected ? bindOf()[v.selected]?.bone : null;
       marker.visible = !!bone;
       if (bone) bone.getWorldPosition(marker.position);
+      noseLine.visible = !!v.noseLine;
+      if (v.noseLine) {
+        fig.noseRay(nlO, nlD);
+        noseLine.position.copy(nlO).addScaledVector(nlD, (NOSE_FROM + NOSE_TO) / 2);
+        noseLine.quaternion.setFromUnitVectors(Y, nlD);
+        noseLine.scale.set(1, NOSE_TO - NOSE_FROM, 1);
+      }
     }
     camera.position.set(
       target.x + Math.cos(orbit.pitch) * Math.cos(orbit.yaw) * orbit.dist,
@@ -129,10 +149,8 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
       orbit.pitch = Math.max(-0.4, Math.min(1.3, orbit.pitch + dy * 0.006));
     }
   };
-  const onUp = (e: PointerEvent) => {
-    const d = drag;
-    drag = null;
-    if (!d || d.moved || !fig) return;
+  const nearestBone = (e: MouseEvent): BoneName | null => {
+    if (!fig) return null;
     const rect = el.getBoundingClientRect();
     const px = e.clientX - rect.left, py = e.clientY - rect.top;
     const bind = bindOf();
@@ -144,20 +162,33 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
       const dd = Math.hypot(sx - px, sy - py);
       if (dd < bestD) { bestD = dd; best = name; }
     }
+    return best;
+  };
+  const onUp = (e: PointerEvent) => {
+    const d = drag;
+    drag = null;
+    if (!d || d.moved || e.button !== 0) return;
+    const best = nearestBone(e);
     if (best) onPick(best);
+  };
+  const onContext = (e: MouseEvent) => {
+    e.preventDefault();
+    const best = onContextPick ? nearestBone(e) : null;
+    if (best) onContextPick!(best);
   };
   const onWheel = (e: WheelEvent) => { e.preventDefault(); orbit.dist = Math.max(1.2, Math.min(9, orbit.dist * Math.exp(e.deltaY * 0.001))); };
   el.addEventListener("pointerdown", onDown);
   el.addEventListener("pointermove", onMove);
   el.addEventListener("pointerup", onUp);
   el.addEventListener("wheel", onWheel, { passive: false });
+  el.addEventListener("contextmenu", onContext);
 
   return () => {
     disposed = true;
     cancelAnimationFrame(raf);
     ro.disconnect();
     fig?.dispose();
-    for (const m of [floor, marker]) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
+    for (const m of [floor, marker, noseLine]) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
     grid.dispose();
     renderer.dispose();
     el.remove();

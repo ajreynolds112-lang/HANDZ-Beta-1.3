@@ -17,10 +17,12 @@ import {
 } from "../renderer";
 import { BONE_NAMES, type BoneName, type Region, type RigInstance, createRig, fighterAssetEpoch } from "./fighterRig";
 import { type PoseMemory, type PoseTargets, type RigDims, eyeState, newPoseMemory, newPoseTargets, solvePose } from "./fighterPose";
-import { getPoseOffsets, type PoseOffsets } from "./poseOffsets";
-import { PROFILE_VIEW_OPP_PX, activePunchProfile } from "./punchProfiles";
+import { getGuardOffsets, getNoseLine, getPoseOffsets, type PoseOffsets } from "./poseOffsets";
+import { PROFILE_VIEW_OPP_PX, activePunchProfile, type ActivePunchProfile } from "./punchProfiles";
+import { createInitialState } from "../engine";
 import { MAT_HEIGHT, toSceneX, toSceneYaw, toSceneZ } from "./worldMapping";
 import { type BodyTilt, type KdMemory, applyKnockdownPose, newKdMemory } from "./knockdownPose";
+import { maskedTintOf } from "./boxerBody";
 import { type RefereeMemory, buildRefereeClothes, newRefereeMemory, solveRefereePose } from "./referee3d";
 
 interface BoneBind {
@@ -51,6 +53,8 @@ function spacialTexture(frame: number): THREE.CanvasTexture | null {
 
 /** Screen-anchored starfield, like the 2D finish: sample by gl_FragCoord. */
 function setSpacial(mat: THREE.MeshStandardMaterial, on: boolean, tex: THREE.Texture | null): void {
+  const mt = maskedTintOf(mat);
+  if (mt) { mt.spacialOn.value = on ? 1 : 0; mt.spacialMap.value = on ? tex : null; return; }
   const was = mat.userData.spacial === true;
   if (on === was) {
     if (on && mat.userData.uniform) mat.userData.uniform.value = tex;
@@ -75,12 +79,17 @@ function setSpacial(mat: THREE.MeshStandardMaterial, on: boolean, tex: THREE.Tex
   mat.needsUpdate = true;
 }
 
-const LEFT_PUNCHES = new Set(["jab", "leftHook", "leftUppercut"]);
+/** Set a region's colour: textured gear tints through its mask, the textured skin through the rig. */
+function setRegionColor(rig: RigInstance, r: Region, css: string): void {
+  const mat = rig.materials[r];
+  const mt = maskedTintOf(mat);
+  if (mt) { mt.tint.value.set(css); mat.color.set("#ffffff"); return; }
+  if (r === "skin" && rig.skinTone) { rig.skinTone(css); return; }
+  mat.color.set(css);
+}
+
 const RED = new THREE.Color("#ff2222");
-const WHITE = new THREE.Color("#ffffff");
 const CHARGE = new THREE.Color("#4a8cff");
-const EMPOWERED = new THREE.Color("#ffb41e");
-const PB_BLUE = new THREE.Color("#96d2ff");
 const BLACK = new THREE.Color("#000000");
 
 export class Fighter3D {
@@ -103,13 +112,21 @@ export class Fighter3D {
   private refMem: RefereeMemory = newRefereeMemory();
   private shirt: THREE.Object3D | null = null;
   private colorKey = "";
-  private glow: THREE.Mesh[] = [];
-  private glowGeo = new THREE.SphereGeometry(0.13, 14, 10);
   private lastT = -1;
   private armLens: [number, number][] = [];
   private legLens: [number, number][] = [];
   /** Editor previews: arms keep their bind length (in fights they stretch to reach the real hit range). */
   noStretch = false;
+  /** Yaw the head so its nose line points at the opponent (off in Edit Poses, where the line is tuned). */
+  aimHead = true;
+  /** The opponent's model: its head centre is what the nose line aims at (else the opponent's position). */
+  aimAt: Fighter3D | null = null;
+  /** World head centre as of this fighter's last update (the nose line passes through it). */
+  readonly headCenter = new THREE.Vector3();
+  private headCenterValid = false;
+  /** Smoothed nose-line aim correction (rad, + = left). */
+  private aimYaw = 0;
+  private aimLive = false;
   /** This frame's arm stretch is off (editor preview, or a profiled punch playing as authored). */
   private stretchOff = false;
   /** Hand joint → glove centre, the part of the arm that never stretches. */
@@ -135,15 +152,6 @@ export class Fighter3D {
     this.root.add(this.rig.body);
     this.colorKey = "";
     this.captureBind();
-    this.glow = [];
-    for (const c of [this.rig.gloveCenter.left, this.rig.gloveCenter.right]) {
-      const m = new THREE.Mesh(this.glowGeo, new THREE.MeshBasicMaterial({
-        color: "#ffffff", transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false,
-      }));
-      m.visible = false;
-      c.add(m);
-      this.glow.push(m);
-    }
   }
 
   private captureBind(): void {
@@ -201,6 +209,7 @@ export class Fighter3D {
     const now = performance.now() / 1000;
     const dt = this.lastT < 0 ? 1 / 60 : now - this.lastT;
     this.lastT = now;
+    this.ensureGuardRef(this.mem.stanceBlend >= 0.5);
 
     this.root.position.set(toSceneX(f.x), MAT_HEIGHT, toSceneZ(f.z));
     this.root.rotation.set(0, toSceneYaw(f.facingAngle), 0);
@@ -220,10 +229,13 @@ export class Fighter3D {
     }
     if (sliding && !this.slideFrom) this.captureSlideFrom(prof!, opponent);
     if (!sliding) this.slideFrom = null;
-    // Sliding back: the live solve already heads home (its springs end at the
-    // guard when the punch does); it's blended in from the held Loop Start pose.
-    const solveF = sliding ? { ...f, isPunching: false, currentPunch: null } : (prof?.fighter ?? f);
-    solvePose(solveF, this.dims, this.mem, { opponent, dt, snapPunch: !!prof && !sliding }, this.pose);
+    // A profiled punch is animated from scratch: the solve holds the guard (no
+    // stock punch motion) and the profile's keyframes do all the moving.
+    // Sliding back blends that guard in from the held Loop Start pose.
+    // Auto motion on: the keyframes ride on the stock punch instead.
+    const solveF = !prof ? f : !prof.auto ? guardOnly(f) : sliding ? { ...f, isPunching: false, currentPunch: null } : prof.fighter;
+    const backArms = this.backSlipArms(f, solveF, opponent, prof, sliding, dt);
+    solvePose(solveF, this.dims, this.mem, { opponent, dt, snapPunch: !!prof && !sliding, hipHeight: prof && !sliding ? prof.height * prof.guardIn : 0 }, this.pose);
     if (this.poseHook) this.poseHook(this.pose, this.dims, dt);
     // Knockdown fall / canvas / get-up, layered over the standing solve.
     if (applyKnockdownPose(f, state, this.dims, this.kd, dt, epoch, this.pose, this.tilt)) {
@@ -234,12 +246,18 @@ export class Fighter3D {
       this.rig.body.position.set(0, 0, 0);
     }
     this.applyPose();
-    if (!f.isKnockedDown && !this.poseHook) this.applyPoseOffsets(getPoseOffsets(this.mem.stanceBlend >= 0.5 ? "southpaw" : "orthodox"), true);
-    if (prof && !sliding) this.applyPoseOffsets(prof.offsets, false);
+    if (!f.isKnockedDown && !this.poseHook) this.applyStanceOffsets(f, this.mem);
+    if (backArms) this.restoreArmLocals(backArms);
+    const locks = this.applyGuardLocks(f, prof, dt);
+    if (prof && !sliding) this.applyProfile(prof, locks);
     if (sliding) this.blendFromSlide(prof!.slide);
     this.preSlide = !!prof && !sliding;
+    this.applyHeadYaw(f, opponent, dt);
     this.applyLook(f, colors, state, frame);
-    if (f.isKnockedDown) for (const e of this.rig.eyes) e.scale.y = e.userData.baseScale.y * 0.15;
+    if (f.isKnockedDown) {
+      for (const e of this.rig.eyes) e.scale.y = e.userData.baseScale.y * 0.15;
+      this.rig.setEyes?.("closed");
+    }
   }
 
   /**
@@ -262,14 +280,79 @@ export class Fighter3D {
     const key = "ref|" + colors.skin;
     if (key !== this.colorKey) {
       this.colorKey = key;
-      M.skin.color.set(colors.skin);
-      M.glove.color.set(colors.skin);
-      M.tape.color.set(colors.skin);
-      for (const r of ["trunks", "stripe", "socks", "shoe", "laces", "sole"] as Region[]) M[r].color.set("#141416");
+      this.rig.setRefereeMode?.();
+      setRegionColor(this.rig, "skin", cssColorOf(colors.skin));
+      setRegionColor(this.rig, "glove", cssColorOf(colors.skin));
+      setRegionColor(this.rig, "tape", cssColorOf(colors.skin));
+      for (const r of ["trunks", "stripe", "socks", "shoe", "laces", "sole"] as Region[]) setRegionColor(this.rig, r, "#141416");
       for (const r of Object.keys(M) as Region[]) { M[r].emissive.copy(BLACK); setSpacial(M[r], false, null); }
     }
-    for (const g of this.glow) g.visible = false;
     this.rig.headgear.visible = false;
+  }
+
+  // ── nose line ──
+  private _nq = new THREE.Quaternion();
+  private _nq2 = new THREE.Quaternion();
+  private _ne = new THREE.Euler();
+  private _nd = new THREE.Vector3();
+  private static readonly UP = new THREE.Vector3(0, 1, 0);
+  private static readonly AIM_MAX = Math.PI / 3;
+
+  /**
+   * The nose line in world space: through the head centre, along the head's
+   * facing (bind corrected) turned by the Edit Poses nose-line rotation.
+   */
+  noseRay(origin: THREE.Vector3, dir: THREE.Vector3): void {
+    const head = this.rig.bones.Head;
+    const q = head.getWorldQuaternion(this._nq).multiply(this._nq2.copy(this.bind.Head.bodyQ).invert());
+    const fix = this.rig.bindFix?.Head;
+    if (fix) q.multiply(this._nq2.copy(fix).invert());
+    const r = getNoseLine(this.mem.stanceBlend >= 0.5), D = THREE.MathUtils.DEG2RAD;
+    q.multiply(this._nq2.setFromEuler(this._ne.set(r[0] * D, r[1] * D, r[2] * D, "YXZ")));
+    dir.set(1, 0, 0).applyQuaternion(q);
+    this.rig.headgear.getWorldPosition(origin);
+  }
+
+  /** Premultiply a bone's world rotation by a yaw about the world vertical. */
+  private yawBone(bone: THREE.Object3D, yaw: number): void {
+    const P = bone.parent!.getWorldQuaternion(this._nq);
+    const R = this._nq2.setFromAxisAngle(Fighter3D.UP, yaw);
+    // local' = P⁻¹·R·P·local
+    bone.quaternion.premultiply(R.premultiply(P.clone().invert()).multiply(P));
+  }
+
+  /**
+   * Standing: yaw the head (neck takes 40%) so the nose line's horizontal
+   * direction points at the opponent's head centre, at most 60° off the solved
+   * pose, never pitching. Then the hit turn (crit snap / hook) goes on top.
+   */
+  private applyHeadYaw(f: FighterState, opponent: FighterState | null, dt: number): void {
+    let yaw = 0;
+    if (f.isKnockedDown) { this.aimLive = false; this.aimYaw = 0; }
+    else {
+      let tx: number | null = null, tz = 0;
+      if (this.aimAt?.headCenterValid) { tx = this.aimAt.headCenter.x; tz = this.aimAt.headCenter.z; }
+      else if (opponent) { tx = toSceneX(opponent.x); tz = toSceneZ(opponent.z); }
+      if (this.aimHead && tx !== null) {
+        const c = this._x, d = this._nd;
+        this.noseRay(c, d);
+        let err = 0;
+        if (Math.hypot(d.x, d.z) > 0.05) {
+          const cur = Math.atan2(-d.z, d.x), want = Math.atan2(-(tz - c.z), tx - c.x);
+          err = Math.atan2(Math.sin(want - cur), Math.cos(want - cur));
+          err = Math.max(-Fighter3D.AIM_MAX, Math.min(Fighter3D.AIM_MAX, err));
+        }
+        this.aimYaw = this.aimLive ? this.aimYaw + (err - this.aimYaw) * (1 - Math.exp(-Math.max(0, dt) * 25)) : err;
+        this.aimLive = true;
+      } else { this.aimLive = false; this.aimYaw = 0; }
+      yaw = this.aimYaw + (this.pose.headTurnYaw || 0);
+    }
+    if (Math.abs(yaw) > 1e-5) {
+      this.yawBone(this.rig.bones.Neck, yaw * 0.4);
+      this.yawBone(this.rig.bones.Head, yaw * 0.6);
+    }
+    this.rig.headgear.getWorldPosition(this.headCenter);
+    this.headCenterValid = true;
   }
 
   /** World position of the head (for hit effects). One frame stale, which is fine for a spawn point. */
@@ -367,20 +450,59 @@ export class Fighter3D {
   private snapBones(): { q: THREE.Quaternion[]; hips: THREE.Vector3 } {
     return { q: BONE_NAMES.map(n => this.bind[n].bone.quaternion.clone()), hips: this.bind.Hips.bone.position.clone() };
   }
-  private captureSlideFrom(prof: { fighter: FighterState; offsets: PoseOffsets }, opponent: FighterState | null): void {
+  private captureSlideFrom(prof: ActivePunchProfile, opponent: FighterState | null): void {
     // Played straight into the slide: the bones still hold the last frame — exactly
     // the pose at Loop Start, springs and all. Jumped in (scrub): solve it fresh.
     if (!this.preSlide) {
       const scratch: PoseMemory = JSON.parse(JSON.stringify(this.mem));
-      solvePose(prof.fighter, this.dims, scratch, { opponent, dt: 1 }, this.pose);
+      solvePose(prof.auto ? prof.fighter : guardOnly(prof.fighter), this.dims, scratch, { opponent, dt: 1, snapPunch: !prof.auto, hipHeight: prof.height * prof.guardIn }, this.pose);
       this.rig.body.quaternion.identity();
       this.rig.body.position.set(0, 0, 0);
       this.applyPose();
-      this.applyPoseOffsets(getPoseOffsets(scratch.stanceBlend >= 0.5 ? "southpaw" : "orthodox"), true, scratch);
-      this.applyPoseOffsets(prof.offsets, false);
+      this.applyStanceOffsets(prof.fighter, scratch);
+      const locks = this.applyGuardLocks(prof.fighter, prof, 0, scratch, true);
+      this.applyProfile(prof, locks, scratch);
     }
     this.slideFrom = this.snapBones();
   }
+  /**
+   * The profile's keyframes on top of the guard the solve left on the bones.
+   * Keyframes are authored on the editor's normal guard, so (keyframes alone) the
+   * free arm joints are first moved from the fighter's current guard (full guard
+   * blends in by guardBlend) onto that normal guard, then the offsets go on: the
+   * punch looks as authored in either guard. The offsets are the Full Guard On
+   * and Off animations blended by guardBlend. Over the Full Guard Slide the whole
+   * pose eases from the current guard into that animation (shortest arc per joint).
+   */
+  private applyProfile(prof: ActivePunchProfile, locks: Partial<Record<BoneName, number>>, mem: PoseMemory = this.mem): void {
+    const w = Math.max(0, Math.min(1, prof.guardIn));
+    const from = w < 1 ? this.snapBones() : null;
+    const ref = this.guardRef;
+    const g = Math.max(0, Math.min(1, prof.fighter.guardBlend || 0));
+    if (!prof.auto && ref && g > 0) {
+      (["Left", "Right"] as const).forEach((s, side) => {
+        Fighter3D.ARM_CHAIN.forEach((j, n) => {
+          const name = `${s}${j}` as BoneName;
+          const free = 1 - (locks[name] ?? 0);
+          if (free <= 0) return;
+          // Live ≈ guard(g); live · guard(g)⁻¹ · guard(0) = the normal guard, keeping live detail.
+          this._oq.slerpQuaternions(ref.q[0][side][n], ref.q[1][side][n], g).invert().multiply(ref.q[0][side][n]);
+          this._ob.identity().slerp(this._oq, free);
+          this.bind[name].bone.quaternion.multiply(this._ob);
+        });
+      });
+    }
+    this.applyPoseOffsets(unlockedOffsets(prof.offsets, locks), false, mem);
+    if (from) {
+      BONE_NAMES.forEach((n, i) => {
+        const bone = this.bind[n].bone;
+        this._oq.copy(from.q[i]).slerp(bone.quaternion, w);
+        bone.quaternion.copy(this._oq);
+      });
+    }
+    this.bind.Hips.bone.updateMatrixWorld(true);
+  }
+
   /** Shortest-arc slerp per joint from the held pose to the live guard: no joint ever spins the long way. */
   private blendFromSlide(w: number): void {
     const A = this.slideFrom;
@@ -397,11 +519,142 @@ export class Fighter3D {
   private _ob = new THREE.Quaternion();
   private _oe = new THREE.Euler();
   /**
+   * The Edit Poses stance set (mirrored for a southpaw; its arms slid toward the
+   * full guard's own arm set by the guard blend), then the duck layer
+   * weighted by the (delayed) crouch depth. The duck layer holds legs and torso
+   * only; the arms keep their joint rotations and ride the torso.
+   */
+  private applyStanceOffsets(f: FighterState, mem: PoseMemory): void {
+    const southpaw = mem.stanceBlend >= 0.5;
+    this.applyPoseOffsets(getGuardOffsets(southpaw, f.guardBlend || 0), true, mem);
+    const dp = Math.max(0, Math.min(1, f.duckProgress || 0));
+    if (dp <= 0) return;
+    const duck = getPoseOffsets("duck", southpaw);
+    let any = false;
+    for (const k in duck) { any = true; break; }
+    if (!any) return;
+    this.applyPoseOffsets(duck, true, mem, dp);
+  }
+
+  private static readonly ARM_CHAIN = ["Shoulder", "Arm", "ForeArm", "Hand"] as const;
+  private backPose: PoseTargets = newPoseTargets();
+  /**
+   * A backward slip leans the chest but never changes the shoulders or the bend
+   * in the arms: the arms are solved as if there were no backward lean, and
+   * their local joint rotations (shoulder down) are kept, so they ride the
+   * leaning chest rigidly. A punching arm is left to aim at its target.
+   * Returns the local rotations per side (null = leave that arm), or null when
+   * there is no backward slip.
+   */
+  private backSlipArms(f: FighterState, solveF: FighterState, opponent: FighterState | null,
+    prof: { height: number } | null, sliding: boolean, dt: number): (THREE.Quaternion[] | null)[] | null {
+    if (f.isKnockedDown || this.poseHook || (f.slipLean || 0) <= 0.001) return null;
+    const sd = SLIP_BACK_DIR[f.slipLeanDir];
+    if (!sd) return null;
+    const c = Math.cos(f.facingAngle), sn = Math.sin(f.facingAngle);
+    if (sd.x * c + sd.z * sn >= 0) return null; // no backward component
+    const scratch: PoseMemory = JSON.parse(JSON.stringify(this.mem));
+    const keep = this.pose;
+    this.pose = this.backPose;
+    solvePose(solveF, this.dims, scratch, { opponent, dt, snapPunch: !!prof && !sliding, hipHeight: prof && !sliding ? prof.height : 0, dropBackSlip: true }, this.pose);
+    this.rig.body.quaternion.identity();
+    this.rig.body.position.set(0, 0, 0);
+    this.applyPose();
+    this.applyStanceOffsets(f, scratch);
+    this.pose = keep;
+    return (["Left", "Right"] as const).map((s, i) =>
+      scratch.armPunch[i] && scratch.armExt[i] > 0 ? null
+        : Fighter3D.ARM_CHAIN.map(j => this.bind[`${s}${j}` as BoneName].bone.quaternion.clone()));
+  }
+  private restoreArmLocals(held: (THREE.Quaternion[] | null)[]): void {
+    (["Left", "Right"] as const).forEach((s, i) => {
+      const q = held[i];
+      if (!q) return;
+      Fighter3D.ARM_CHAIN.forEach((j, k) => this.bind[`${s}${j}` as BoneName].bone.quaternion.copy(q[k]));
+    });
+    this.bind.Hips.bone.updateMatrixWorld(true);
+  }
+
+  // ── Full Guard Follow ──
+  /**
+   * The arm joints' local rotations (Shoulder → Hand, per side) exactly as the
+   * Edit Poses editor shows them: [normal guard, full guard]. Rebuilt when the
+   * stance set, the stance or the rig changes.
+   */
+  private guardRef: { key: string; offs: PoseOffsets; full: PoseOffsets; q: THREE.Quaternion[][][] } | null = null;
+  private guardPose: PoseTargets = newPoseTargets();
+  private lockW: Partial<Record<BoneName, number>> = {};
+  private ensureGuardRef(southpaw: boolean): void {
+    const offs = getPoseOffsets("stance", southpaw);
+    const full = getGuardOffsets(southpaw, 1);
+    const key = `${this.epoch}|${southpaw}`;
+    if (this.guardRef && this.guardRef.key === key && this.guardRef.offs === offs && this.guardRef.full === full) return;
+    const st = createInitialState();
+    const a = st.player, d = st.enemy;
+    a.x = 400; a.z = 300; a.facingAngle = 0;
+    d.x = a.x + PROFILE_VIEW_OPP_PX; d.z = 300; d.facingAngle = Math.PI;
+    a.boxingStance = (southpaw ? "southpaw" : "orthodox") as typeof a.boxingStance;
+    a.defenseState = "none"; a.duckProgress = 0; a.isPunching = false; a.currentPunch = null;
+    const keepPose = this.pose, keepStretch = this.stretchOff;
+    this.pose = this.guardPose;
+    this.stretchOff = true;
+    const q = [0, 1].map(g => {
+      a.guardBlend = g;
+      const mem = newPoseMemory();
+      solvePose(a, this.dims, mem, { opponent: d, dt: 1 }, this.pose);
+      this.rig.body.quaternion.identity();
+      this.rig.body.position.set(0, 0, 0);
+      this.applyPose();
+      this.applyPoseOffsets(g ? full : offs, true, mem);
+      return (["Left", "Right"] as const).map(s => Fighter3D.ARM_CHAIN.map(j => this.bind[`${s}${j}` as BoneName].bone.quaternion.clone()));
+    });
+    this.pose = keepPose;
+    this.stretchOff = keepStretch;
+    this.guardRef = { key, offs, full, q };
+  }
+  /**
+   * Hold joints at their Edit Poses guard rotation (full guard or normal guard,
+   * by the fighter's guard blend) while the body animates around them. A stock
+   * punch holds the whole non-punching arm; a profiled punch holds the joints
+   * its profile marks. Returns each held joint's weight (eased in and out).
+   */
+  private applyGuardLocks(f: FighterState, prof: { guardLock: BoneName[] } | null, dt: number, mem: PoseMemory = this.mem, snap = false): Partial<Record<BoneName, number>> {
+    const ref = this.guardRef;
+    const target = new Set<BoneName>();
+    if (!f.isKnockedDown && !this.poseHook && ref) {
+      if (prof) prof.guardLock.forEach(b => target.add(b));
+      else {
+        (["Left", "Right"] as const).forEach((s, i) => {
+          if (mem.armPunch[1 - i] && !mem.armPunch[i]) Fighter3D.ARM_CHAIN.forEach(j => target.add(`${s}${j}` as BoneName));
+        });
+      }
+    }
+    const g = Math.max(0, Math.min(1, f.guardBlend || 0));
+    const k = snap ? 1 : 1 - Math.exp(-Math.max(0, dt) * 20);
+    const out: Partial<Record<BoneName, number>> = {};
+    (["Left", "Right"] as const).forEach((s, side) => {
+      Fighter3D.ARM_CHAIN.forEach((j, n) => {
+        const name = `${s}${j}` as BoneName;
+        const want = target.has(name) ? 1 : 0;
+        let w = this.lockW[name] ?? 0;
+        w += (want - w) * k;
+        if (Math.abs(w - want) < 0.002) w = want;
+        if (!snap) this.lockW[name] = w;
+        if (w <= 0 || !ref) return;
+        out[name] = w;
+        this._oq.slerpQuaternions(ref.q[0][side][n], ref.q[1][side][n], g);
+        this.bind[name].bone.quaternion.slerp(this._oq, w);
+      });
+    });
+    this.bind.Hips.bone.updateMatrixWorld(true);
+    return out;
+  }
+  /**
    * Hand-edited joint rotations (Edit Poses), about the body axes, root → leaf
    * so a joint carries its children. With fadeWithPunch a punching arm's offsets
    * fade out with its extension (stance edits); punch profiles apply in full.
    */
-  private applyPoseOffsets(offs: PoseOffsets, fadeWithPunch: boolean, mem: PoseMemory = this.mem): void {
+  private applyPoseOffsets(offs: PoseOffsets, fadeWithPunch: boolean, mem: PoseMemory = this.mem, weight = 1): void {
     let any = false;
     for (const k in offs) { any = true; break; }
     if (!any) return;
@@ -411,7 +664,10 @@ export class Fighter3D {
       if (!r) continue;
       const armSide = name.startsWith("Left") && /Shoulder|Arm|Hand/.test(name) ? 0
         : name.startsWith("Right") && /Shoulder|Arm|Hand/.test(name) ? 1 : -1;
-      const w = fadeWithPunch && armSide >= 0 ? 1 - Math.min(1, mem.armExt[armSide] || 0) : 1;
+      // Also fades while this glove covers the face for the other hand's punch.
+      const other = armSide === 0 ? 1 : 0;
+      const cover = armSide >= 0 && mem.armPunch[other] ? mem.motCover?.[other] ?? 0 : 0;
+      const w = weight * (fadeWithPunch && armSide >= 0 ? 1 - Math.min(1, Math.max(mem.armExt[armSide as 0 | 1] || 0, cover)) : 1);
       if (w <= 0) continue;
       const bone = this.bind[name].bone;
       // B = the bone's current body-space orientation; local delta = B⁻¹·Q·B.
@@ -497,7 +753,7 @@ export class Fighter3D {
       for (const r of Object.keys(regionColor) as Region[]) {
         const col = regionColor[r];
         const spacial = r !== "skin" && isSpacial(col);
-        M[r].color.set(spacial ? "#ffffff" : cssColorOf(col));
+        setRegionColor(this.rig, r, spacial ? "#ffffff" : cssColorOf(col));
         setSpacial(M[r], spacial, tex);
       }
     } else if (tex) {
@@ -513,34 +769,8 @@ export class Fighter3D {
       else if (charge > 0) m.emissive.copy(CHARGE).multiplyScalar(0.6 * charge);
       else m.emissive.copy(BLACK);
     }
-    if (crit) M.glove.emissive.copy(RED).multiplyScalar(0.9);
-    else M.glove.emissive.copy(BLACK);
-
-    // Per-glove glow: telegraph pulse, charge, perfect block.
-    const pbPlayer = f.perfectBlockState === "active";
-    const pbAi = !pbPlayer && f.perfectBlockActive && (f.perfectBlockTimer ?? 0) > 0;
-    const telePunch = f.telegraphPhase !== "none" ? f.telegraphPunchType : null;
-    const chargedPunch = (f.isPunching && f.isCharging) ? f.currentPunch : (f.telegraphIsCharged ? telePunch : null);
-    this.glow.forEach((g, i) => {
-      const isLeft = i === 0;
-      const mat = g.material as THREE.MeshBasicMaterial;
-      let alpha = 0;
-      if (pbPlayer || pbAi) {
-        alpha = pbPlayer ? 0.55 : 0.14;
-        mat.color.copy(PB_BLUE);
-      }
-      if (chargedPunch && LEFT_PUNCHES.has(chargedPunch) === isLeft) {
-        alpha = Math.max(alpha, 0.5);
-        mat.color.copy(f.chargeEmpoweredTimer > 0 ? EMPOWERED : CHARGE);
-      } else if (telePunch && LEFT_PUNCHES.has(telePunch) === isLeft) {
-        const tp = f.telegraphDuration > 0 ? Math.min(1, f.telegraphTimer / f.telegraphDuration) : 1;
-        const pulse = 0.5 + 0.5 * Math.sin(f.telegraphTimer * (4 + tp * 8) * Math.PI * 2);
-        alpha = Math.max(alpha, 0.18 + 0.2 * pulse);
-        if (!(pbPlayer || pbAi)) mat.color.copy(WHITE);
-      }
-      mat.opacity = alpha;
-      g.visible = alpha > 0.01;
-    });
+    // Gloves never glow.
+    M.glove.emissive.copy(BLACK);
 
     // Eyes.
     const eyes = eyeState(f);
@@ -550,13 +780,35 @@ export class Fighter3D {
       if (eyes === "closed") e.scale.y *= 0.15;
       else if (eyes === "squint") e.scale.y *= 0.45;
     }
+    this.rig.setEyes?.(eyes);
 
     this.rig.headgear.visible = state.sparringMode === true;
   }
 
   dispose(): void {
     this.rig.dispose();
-    this.glowGeo.dispose();
-    for (const g of this.glow) (g.material as THREE.Material).dispose();
   }
+}
+
+/** The fighter as the pose solve should see it under a profiled punch: no stock punch or telegraph motion. */
+/** World slip directions (same table the pose solver leans along). */
+const SLIP_BACK_DIR: Record<string, { x: number; z: number }> = {
+  left: { x: -1, z: 0 }, right: { x: 1, z: 0 }, forward: { x: 0, z: -1 }, back: { x: 0, z: 1 },
+};
+
+/** Profile offsets minus what the guard-held joints give up (a fully held joint takes none). */
+function unlockedOffsets(offs: PoseOffsets, locks: Partial<Record<BoneName, number>>): PoseOffsets {
+  let any = false;
+  for (const k in locks) { any = true; break; }
+  if (!any) return offs;
+  const out: PoseOffsets = {};
+  for (const [b, r] of Object.entries(offs) as [BoneName, [number, number, number]][]) {
+    const keep = 1 - (locks[b] ?? 0);
+    if (keep > 0.001) out[b] = keep >= 1 ? r : [r[0] * keep, r[1] * keep, r[2] * keep];
+  }
+  return out;
+}
+
+function guardOnly(f: FighterState): FighterState {
+  return { ...f, isPunching: false, currentPunch: null, isFeinting: false, telegraphPhase: "none", telegraphPunchType: null };
 }

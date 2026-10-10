@@ -11,7 +11,6 @@ import uiBackUrl from "@assets/back_1781903482541.mp3";
 import uiForwardUrl from "@assets/forward_1781907559777.mp3";
 import uiStartUrl from "@assets/Start_1781903482542.mp3";
 import uiStatsUrl from "@assets/stats_1781907559778.mp3";
-import { MUSIC_TRACK_URLS, MUSIC_TRACK_NAMES } from "@/game/musicTracks";
 
 function encodeWAV(buffer: AudioBuffer): ArrayBuffer {
   const numChannels = buffer.numberOfChannels;
@@ -98,7 +97,6 @@ async function fetchAsBlob(url: string): Promise<ArrayBuffer> {
 export async function downloadAllSounds(onProgress?: (pct: number) => void): Promise<void> {
   const zip = new JSZip();
   const sfxFolder = zip.folder("HANDZ_Sounds/SFX")!;
-  const musicFolder = zip.folder("HANDZ_Sounds/Music")!;
 
   const sampledFiles: { name: string; url: string }[] = [
     { name: "bell.mp3", url: bellUrl },
@@ -114,11 +112,6 @@ export async function downloadAllSounds(onProgress?: (pct: number) => void): Pro
     { name: "ui_start.mp3", url: uiStartUrl },
     { name: "ui_stats.mp3", url: uiStatsUrl },
   ];
-
-  const musicFiles: { name: string; url: string }[] = MUSIC_TRACK_NAMES.map((name, i) => ({
-    name: `${name}.mp3`,
-    url: MUSIC_TRACK_URLS[i],
-  }));
 
   const synthSounds: { name: string; duration: number; build: (ctx: OfflineAudioContext) => void }[] = [
     {
@@ -297,7 +290,7 @@ export async function downloadAllSounds(onProgress?: (pct: number) => void): Pro
     },
   ];
 
-  const total = sampledFiles.length + musicFiles.length + synthSounds.length;
+  const total = sampledFiles.length + synthSounds.length;
   let done = 0;
 
   const tick = () => {
@@ -308,12 +301,6 @@ export async function downloadAllSounds(onProgress?: (pct: number) => void): Pro
   for (const sf of sampledFiles) {
     const data = await fetchAsBlob(sf.url);
     sfxFolder.file(sf.name, data);
-    tick();
-  }
-
-  for (const mf of musicFiles) {
-    const data = await fetchAsBlob(mf.url);
-    musicFolder.file(mf.name, data);
     tick();
   }
 

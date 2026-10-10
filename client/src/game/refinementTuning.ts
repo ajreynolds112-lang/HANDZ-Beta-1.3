@@ -87,6 +87,9 @@ export const REFINEMENT_TUNING_SPEC: Record<RefinementKey, RefRow[]> = {
     { kind: "num", field: "tier2Punches", label: "Tier 2 punches", value: 4, step: 1 },
     { kind: "num", field: "tier3Level", label: "Tier 3 level", value: 100, step: 1 },
     { kind: "num", field: "tier3Punches", label: "Tier 3 punches", value: 3, step: 1 },
+    { kind: "curve", field: "autoSlipChance", label: "Auto-slip chance", l1: 0.0025, l100: 0.25 },
+    { kind: "num", field: "autoSlipResetWindow", label: "Auto-slip window after Reset (s)", value: 20, step: 1 },
+    { kind: "num", field: "autoSlipMinStamina", label: "Auto-slip min stamina share", value: 0.5 },
   ],
   guardMaster: [
     { kind: "curve", field: "blockMult", label: "Block effectiveness", l1: 0.01, l100: 1.00 },
@@ -99,7 +102,7 @@ export const REFINEMENT_TUNING_SPEC: Record<RefinementKey, RefRow[]> = {
   punchRolling: [
     { kind: "curve", field: "damageTaken", label: "Incoming damage cut", l1: 0.05, l100: 0.80 },
     { kind: "curve", field: "repunchBoost", label: "Opponent repunch penalty", l1: 0.05, l100: 0.80 },
-    { kind: "curve", field: "bigShotNegate", label: "Big Shot shrug-off", l1: 0.10, l100: 0.20 },
+    { kind: "curve", field: "bigShotNegate", label: "Rocker Shot roll-with", l1: 0.10, l100: 0.20 },
   ],
   fastTwitch: [
     { kind: "curve", field: "telegraph", label: "Telegraph speed added (on top of Speed stat)", l1: 0.15, l100: 1.00 },

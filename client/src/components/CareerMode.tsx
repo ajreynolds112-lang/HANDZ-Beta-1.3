@@ -2,16 +2,13 @@ import { Button } from "@/components/ui/button";
 import { SPARRING_DURATIONS, getSparringRewardConfig, SPARRING_TIER_LABELS, nextSparringTier, loadSparringDuration, saveSparringDuration, type SparringDuration } from "@/game/sparringRewards";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronLeft, ChevronRight, Dumbbell, Target, Trophy, Users, Swords, Pencil, Save, Check, Settings, Lock, Unlock, Download, Upload, Music, ListMusic, Play, Pause, Hammer, RotateCcw, MessageSquare, Copy, ClipboardPaste, Zap } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronLeft, ChevronRight, Dumbbell, Target, Trophy, Users, Swords, Pencil, Save, Check, Settings, Lock, Unlock, Download, Upload, Hammer, RotateCcw, MessageSquare, Copy, ClipboardPaste, Zap, Palette, PaintBucket } from "lucide-react";
 import PunchProfileAssignCard from "@/components/PunchProfileAssignCard";
-import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SPARRING_MODE_COSTS, grandfatherSparringUnlocks, type SparringMode } from "@/game/sparringModes";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { MUSIC_TRACK_NAMES } from "@/game/musicTracks";
-import { musicEngine } from "@/game/sound";
-import type { Fighter, CareerStats, SkillPoints, GearColors, TrainingBonuses, CareerRosterState, RosterFighterState, SkillRefinement } from "@shared/schema";
+import type { Fighter, CareerStats, SkillPoints, GearColors, SavedOutfit, TrainingBonuses, CareerRosterState, RosterFighterState, SkillRefinement } from "@shared/schema";
 import { DEFAULT_CAREER_STATS, DEFAULT_GEAR_COLORS, DEFAULT_TRAINING_BONUSES, DEFAULT_SKILL_REFINEMENT, statPointCap, perStatCap, maxActiveRefinementsFor, refinementSlotsForRank, refinementSlotsUnlocked, REFINEMENT_SLOT_RANK_UNLOCKS } from "@shared/schema";
 import { migrateStatCaps, updateFighter } from "@/lib/localSaves";
 import { claimDailyReward } from "@/lib/dailyReward";
@@ -28,9 +25,12 @@ import { withSavedInventory } from "@/lib/itemInventory";
 import { SPACIAL_COLOR, SPACIAL_GEAR_KEYS, SPACIAL_PRICE_PER_GEAR_FORCE, applySpacialGear, cssColorOf, isSpacial, spacialOwnedOf, spacialSelectionOf } from "@/game/spacialColor";
 import { DEFAULT_RING_COLORS, RING_COLOR_KEYS, RING_COLOR_LABELS, RING_SPACIAL_PRICE_FORCE, ringColorsOf, type RingColorKey, type RingColors } from "@/game/ringColors";
 import RingOnlyBackground from "@/components/RingOnlyBackground";
+import { gymLookOf } from "@/game/gymLook";
+import { useCloudSaves } from "@/lib/cloudSaves";
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import LoadingScreen from "@/components/LoadingScreen";
 import { useChunkedLoader } from "@/lib/useChunkedLoader";
+import { preload3dAssets } from "@/game/three/preload3d";
 import { Archetype, ARCHETYPE_STATS, AIDifficulty, AI_DIFFICULTY_LABELS, FighterColors, SKIN_COLOR_PRESETS, COLOR_PRESETS } from "@/game/types";
 import { xpToNextLevel } from "@/game/engine";
 import { listedDrilledActions, normalizeDrilledActions, describeDrilledAction, drilledTierLabel, drilledNextTierAt, drilledUpkeepOf } from "@/game/drilledActions";
@@ -77,6 +77,8 @@ import FighterStanceCanvas, { playerBoxingStance } from "@/components/FighterSta
 import { BoxingGloveIcon } from "@/components/BoxingGloveIcon";
 import NeuralNetworkView from "@/components/NeuralNetworkView";
 import * as localSaves from "@/lib/localSaves";
+import { exportColors, importColors } from "@/lib/colorsFile";
+import OutfitSlots, { outfitSlotsOf } from "@/components/OutfitSlots";
 
 export type TrainingType = "weightLifting" | "heavyBag" | "sparring";
 
@@ -97,6 +99,8 @@ interface CareerModeProps {
   onDeleteFighter: (id: string) => void;
   onBack: () => void;
   onAllocateStats: (fighterId: string, skillPoints: SkillPoints, spent: number) => void;
+  /** Unscored 60-second heavy bag session, available any week. */
+  onStartFreeBag?: (fighter: Fighter) => void;
   onStartTraining: (fighter: Fighter, type: TrainingType, sparringDifficulty?: AIDifficulty, importedPartnerId?: number, sparringDuration?: SparringDuration) => void;
   onEndWeek?: () => void;
   onSimulateWeek?: (fighter: Fighter) => void;
@@ -116,10 +120,6 @@ interface CareerModeProps {
   onToggleCareerRefStoppage: (enabled: boolean) => void;
   careerTowelStoppageEnabled: boolean;
   onToggleCareerTowelStoppage: (enabled: boolean) => void;
-  careerFightMusicEnabled: boolean;
-  onToggleCareerFightMusic: (enabled: boolean) => void;
-  careerFightMusicTrack: number;
-  onSelectCareerFightMusic: (idx: number) => void;
   onTutorial?: (name: string, colors: FighterColors) => void;
   onUnlockRefinement?: (fighterId: string, track: "offense" | "defense" | "fightIq") => void;
   onAllocateRefinement?: (fighterId: string, refinement: SkillRefinement, forceCost?: number, diamondCost?: number, shardCost?: number) => void;
@@ -265,14 +265,16 @@ const REF_EFFECT_DESC: Record<RefField, (lvl: number) => string> = {
   slippery: (lvl) => {
     const slipSpeed = `+${fmtPct(refCurve("slippery", "slipSpeed", lvl))}% slip speed`;
     const threshold = slipperyRepunchThreshold(lvl);
-    return threshold ? `${slipSpeed}, opponent gets repunch penalty after ${threshold} punches within ${refNum("slippery", "proximityPx")}px` : slipSpeed;
+    const base = threshold ? `${slipSpeed}, opponent gasses quicker after ${threshold} punches in range` : slipSpeed;
+    const auto = Math.round(refCurve("slippery", "autoSlipChance", lvl) * 10000) / 100;
+    return `${base}, ${auto}% auto-slip chance`;
   },
   guardMaster: (lvl) => {
     const base = `+${fmtPct(refCurve("guardMaster", "blockMult", lvl))}% block effectiveness`;
     return lvl >= refNum("guardMaster", "pbIgnoresVulnLevel") ? `${base}, perfect block works during rhythm vulnerability` : base;
   },
   duckRecovery: (lvl) => `${fmtPct(refCurve("duckRecovery", "regen", lvl))}% stamina regen speed while ducking`,
-  punchRolling: (lvl) => `incoming punches deal ${fmtPct(1 - refCurve("punchRolling", "damageTaken", lvl))}% damage, opponent's repunch penalty is +${fmtPct(refCurve("punchRolling", "repunchBoost", lvl))}% effective, ${fmtPct(refCurve("punchRolling", "bigShotNegate", lvl))}% chance to shrug off a Big Shot (takes normal damage instead)`,
+  punchRolling: (lvl) => `incoming punches deal ${fmtPct(1 - refCurve("punchRolling", "damageTaken", lvl))}% damage, opponent's repunch penalty is +${fmtPct(refCurve("punchRolling", "repunchBoost", lvl))}% effective, ${fmtPct(refCurve("punchRolling", "bigShotNegate", lvl))}% chance to roll with a Rocker Shot (no max stamina loss)`,
   fastTwitch: (lvl) => {
     const telegraph = refCurve("fastTwitch", "telegraph", lvl);
     const moveSpeed = Math.min(100, Math.max(0, lvl)) * refNum("fastTwitch", "movePerLevel");
@@ -868,9 +870,10 @@ export function RefinementView({ fighter, onAllocate, onUnlock, onBack, onSetAct
 }
 
 export default function CareerMode({
-  fighters, onSelectFighter, onCreateFighter, onDeleteFighter, onBack, onAllocateStats, onStartTraining, onEndWeek, onSimulateWeek, onSweepTraining, onStartNightmare, onStartDoghouse, onSelectOpponent, onInitRoster, onDailyReward, onUpdateColors, isLoading, initialFighter, careerRefStoppageEnabled, onToggleCareerRefStoppage, careerTowelStoppageEnabled, onToggleCareerTowelStoppage, careerFightMusicEnabled, onToggleCareerFightMusic, careerFightMusicTrack, onSelectCareerFightMusic, onTutorial, onUnlockRefinement, onAllocateRefinement, onForceSpend, onShardSpend, onDiamondSpend, onFighterRefresh, showExpBar, onToggleShowExpBar, showFightItemsHud, onToggleShowFightItemsHud
-}: CareerModeProps & { initialFighter?: Fighter | null }) {
-  const [view, setView] = useState<CareerView>(initialFighter ? "gym" : "slots");
+  fighters, onSelectFighter, onCreateFighter, onDeleteFighter, onBack, onAllocateStats, onStartTraining, onStartFreeBag, onEndWeek, onSimulateWeek, onSweepTraining, onStartNightmare, onStartDoghouse, onSelectOpponent, onInitRoster, onDailyReward, onUpdateColors, isLoading, initialFighter, careerRefStoppageEnabled, onToggleCareerRefStoppage, careerTowelStoppageEnabled, onToggleCareerTowelStoppage, onTutorial, onUnlockRefinement, onAllocateRefinement, onForceSpend, onShardSpend, onDiamondSpend, onFighterRefresh, showExpBar, onToggleShowExpBar, showFightItemsHud, onToggleShowFightItemsHud,
+  startInCreate,
+}: CareerModeProps & { initialFighter?: Fighter | null; startInCreate?: boolean }) {
+  const [view, setView] = useState<CareerView>(initialFighter ? "gym" : startInCreate && fighters.length === 0 ? "create" : "slots");
   const [selectedFighter, setSelectedFighter] = useState<Fighter | null>(initialFighter ?? null);
   const [rebuildOpen, setRebuildOpen] = useState(false);
   const [rebuildOriginalData, setRebuildOriginalData] = useState<{ skillPoints: SkillPoints; availableStatPoints: number } | null>(null);
@@ -963,10 +966,6 @@ export default function CareerMode({
   const [pendingOpponentId, setPendingOpponentId] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Fight-song picker: preview state. While the picker is open the menu shuffle is
-  // paused; on close the shuffle restarts with the last-previewed song (if any).
-  const [songPickerOpen, setSongPickerOpen] = useState(false);
-  const [previewingSongIdx, setPreviewingSongIdx] = useState<number | null>(null);
   const [negotiateConfirmWeek, setNegotiateConfirmWeek] = useState<number | null>(null);
   const [negotiateResult, setNegotiateResult] = useState<'success' | 'fail' | null>(null);
   const [negotiateUnlockNotice, setNegotiateUnlockNotice] = useState(false);
@@ -975,23 +974,6 @@ export default function CareerMode({
   // Force was already spent to guarantee the NEXT negotiation attempt — the week the
   // player picks will succeed with 100% chance.
   const [guaranteePending, setGuaranteePending] = useState(false);
-  const lastPreviewedSongRef = useRef<number | null>(null);
-  const songPickerOpenRef = useRef(false);
-  useEffect(() => { songPickerOpenRef.current = songPickerOpen; }, [songPickerOpen]);
-
-  // Safety net: if the picker is unmounted while still open (without Radix firing
-  // a close), stop any preview and hand the menu music back to the shuffle.
-  useEffect(() => {
-    return () => {
-      if (!songPickerOpenRef.current) return;
-      if (lastPreviewedSongRef.current != null) {
-        musicEngine.restartShuffleFrom(lastPreviewedSongRef.current);
-      } else {
-        musicEngine.resume();
-      }
-    };
-  }, []);
-
   useEffect(() => {
     if (view !== "hub" || !selectedFighter) { setHubTip(null); return; }
     const rs = selectedFighter.careerRosterState as CareerRosterState | null;
@@ -1029,34 +1011,6 @@ export default function CareerMode({
       setSimulateTips([]);
     }
   }, [simulateConfirmOpen]);
-
-  const handleSongPickerOpenChange = (open: boolean) => {
-    setSongPickerOpen(open);
-    if (open) {
-      lastPreviewedSongRef.current = null;
-      setPreviewingSongIdx(null);
-      musicEngine.pause();
-    } else {
-      setPreviewingSongIdx(null);
-      if (lastPreviewedSongRef.current != null) {
-        musicEngine.restartShuffleFrom(lastPreviewedSongRef.current);
-      } else {
-        musicEngine.resume();
-      }
-      lastPreviewedSongRef.current = null;
-    }
-  };
-
-  const handleToggleSongPreview = (idx: number) => {
-    if (previewingSongIdx === idx) {
-      musicEngine.previewStop();
-      setPreviewingSongIdx(null);
-    } else {
-      musicEngine.previewPlay(idx);
-      setPreviewingSongIdx(idx);
-      lastPreviewedSongRef.current = idx;
-    }
-  };
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [pinFlow, setPinFlow] = useState<PinFlowMode | null>(null);
@@ -1143,9 +1097,39 @@ export default function CareerMode({
 
 
 
+  const colorsInputRef = useRef<HTMLInputElement>(null);
+  const colorsTargetRef = useRef<string | null>(null);
+  const handleDownloadColors = (f: Fighter) => {
+    const blob = new Blob([JSON.stringify(exportColors(f), null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `handz_colors_${(f.firstName || f.name).replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const handleColorsFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const id = colorsTargetRef.current;
+    e.target.value = "";
+    if (!file || !id) return;
+    setImportError(null);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const updated = importColors(id, JSON.parse(ev.target?.result as string));
+        onFighterRefresh?.(updated);
+      } catch (err: any) {
+        setImportError(err.message || "Failed to upload colours");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const [dragOver, setDragOver] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
+  const cloudSaves = useCloudSaves();
 
   const handleImportSave = (file: File) => {
     setImportError(null);
@@ -1164,6 +1148,10 @@ export default function CareerMode({
 
   // Importing while a save already exists prompts an overwrite confirmation.
   const requestImportSave = (file: File) => {
+    if (cloudSaves.status !== "guest") {
+      window.dispatchEvent(new CustomEvent("handz-cloud-import", { detail: file }));
+      return;
+    }
     if (fighters.length > 0) {
       setPendingImportFile(file);
     } else {
@@ -1304,6 +1292,7 @@ export default function CareerMode({
               initialized = { ...rosterState, playerRank };
             },
           },
+          { label: "Loading the gym", weight: 2, run: () => preload3dAssets() },
           {
             label: "Opening the gym",
             run: () => {
@@ -1414,6 +1403,7 @@ export default function CareerMode({
             }
           },
         },
+        { label: "Loading the gym", weight: 2, run: () => preload3dAssets() },
         {
           label: "Opening the gym",
           run: () => {
@@ -1553,6 +1543,18 @@ export default function CareerMode({
         setTimeout(() => setPinSuccess(""), 4000);
       }
     }
+  };
+
+  /** Leaving the office (Fight Planner) rebuilds the 3D gym behind a short loading screen. */
+  const exitOffice = () => {
+    void runLoader({
+      title: "Back To The Gym",
+      minDurationMs: 600,
+      phases: [
+        { label: "Leaving the office", run: () => preload3dAssets() },
+        { label: "Opening the gym", run: () => setView("gym") },
+      ],
+    });
   };
 
   const handleFight = (opponentId: number) => {
@@ -1799,6 +1801,8 @@ export default function CareerMode({
         onStartSparring={() => setView("sparringSelect")}
         onStartWeightLifting={() => { onStartTraining(selectedFighter, "weightLifting"); }}
         onStartBagWork={() => { onStartTraining(selectedFighter, "heavyBag"); }}
+        onStartFreeBag={onStartFreeBag ? () => onStartFreeBag(selectedFighter) : undefined}
+        onFightNow={gymIsFightWeek && gymRs?.selectedOpponentId != null ? () => handleFight(gymRs.selectedOpponentId as number) : undefined}
         sweepStatus={(() => {
           const inCamp = gymRs?.selectedOpponentId != null && (gymRs?.prepWeeksRemaining ?? 0) > 0;
           if (!inCamp) return "notCamp" as const;
@@ -2121,6 +2125,11 @@ export default function CareerMode({
           onInitRoster(rosterEditFighter.id, updatedState);
         }}
         onBack={() => { setRosterEditFighter(null); setView("slots"); }}
+        careerFighterId={rosterEditFighter.id}
+        onDiamondsInjected={(f) => {
+          setRosterEditFighter(prev => (prev && prev.id === f.id ? { ...prev, ...f } : prev));
+          onFighterRefresh?.(f);
+        }}
         onRosterRegenerated={() => {
           // Roster Generation just rewrote every stored save. Re-read this one
           // and push it through onInitRoster so the parent (and the fighter
@@ -2149,6 +2158,14 @@ export default function CareerMode({
           setView("gym");
         }}
         onBack={() => setView("gym")}
+        onSaveOutfits={(outfits) => {
+          const updated = updateFighter(selectedFighter.id, { outfits });
+          if (!updated) return;
+          // Only the slots change: swapping the whole record in would re-run the
+          // editor's purchase-follow effect and drop its unsaved Spacial ticks.
+          setSelectedFighter(prev => prev ? { ...prev, outfits: updated.outfits } : prev);
+          onFighterRefresh?.(updated);
+        }}
         onBuySpacialPart={(partKey) => {
           // Price the purchase off the persisted balance: Force moves in the
           // gym and the Locker while this screen is open.
@@ -2353,7 +2370,7 @@ export default function CareerMode({
     return (
       <div className="flex flex-col items-center gap-3 p-4 max-w-2xl mx-auto">
         <div className="flex items-center gap-3 w-full">
-          <Button variant="ghost" size="icon" onClick={() => setView("gym")} data-testid="button-back-hub">
+          <Button variant="ghost" size="icon" onClick={exitOffice} data-testid="button-back-hub">
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <h2 className="text-xl font-black italic tracking-wide uppercase flex-1 text-yellow-500" style={{ textShadow: "1px 1px 0 rgba(0,0,0,0.6)" }} data-testid="text-hub-title">Fight Planner</h2>
@@ -2610,85 +2627,6 @@ export default function CareerMode({
             </Button>
           </Card>
         )}
-        <Card className="p-3 w-full max-w-sm bg-[#634b3b]">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Music className={`w-4 h-4 ${selectedFighter.wins >= 5 ? "text-muted-foreground" : "text-muted-foreground/50"}`} />
-                <div>
-                  <p className={`text-sm font-semibold ${selectedFighter.wins < 5 ? "text-muted-foreground" : ""}`}>Fight Music</p>
-                  <p className="text-[10px] text-muted-foreground">Dynamic music during your fights</p>
-                </div>
-              </div>
-              {selectedFighter.wins >= 5 ? (
-                <Switch
-                  checked={careerFightMusicEnabled}
-                  onCheckedChange={onToggleCareerFightMusic}
-                  data-testid="switch-career-fight-music"
-                />
-              ) : (
-                <div className="flex items-center gap-1.5 text-muted-foreground/60">
-                  <Lock className="w-3.5 h-3.5" />
-                  <span className="text-[10px]">Unlocked after 5 wins</span>
-                </div>
-              )}
-            </div>
-            {selectedFighter.wins < 5 && (
-              <p className="text-[10px] text-muted-foreground/60 mt-1.5">{selectedFighter.wins}/5 wins</p>
-            )}
-            {selectedFighter.wins >= 5 && careerFightMusicEnabled && (
-              <div className="mt-3 pt-3 border-t flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[10px] uppercase text-muted-foreground">Song</p>
-                  <p className="text-sm font-semibold truncate" data-testid="text-selected-fight-song">
-                    {MUSIC_TRACK_NAMES[careerFightMusicTrack] ?? MUSIC_TRACK_NAMES[0]}
-                  </p>
-                </div>
-                <Dialog open={songPickerOpen} onOpenChange={handleSongPickerOpenChange}>
-                  <DialogTrigger asChild>
-                    <Button variant="secondary" size="sm" className="gap-1 shrink-0" data-testid="button-choose-fight-song">
-                      <ListMusic className="w-4 h-4" /> Choose
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-sm">
-                    <DialogHeader>
-                      <DialogTitle>Choose Fight Song</DialogTitle>
-                      <DialogDescription>Tap the play button to preview a song, or tap a name to pick it for your fights. Your menu music pauses while you listen.</DialogDescription>
-                    </DialogHeader>
-                    <div className="max-h-[60vh] overflow-y-auto -mx-1 px-1 flex flex-col gap-1">
-                      {MUSIC_TRACK_NAMES.map((name, idx) => (
-                        <div
-                          key={idx}
-                          className={`flex items-center gap-1 rounded-md pr-1 transition-colors ${idx === careerFightMusicTrack ? "bg-primary/10" : "hover:bg-muted"}`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => handleToggleSongPreview(idx)}
-                            className="shrink-0 p-2 rounded-md text-muted-foreground hover:text-foreground"
-                            aria-label={previewingSongIdx === idx ? `Pause preview of ${name}` : `Preview ${name}`}
-                            data-testid={`button-preview-song-${idx}`}
-                          >
-                            {previewingSongIdx === idx ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onSelectCareerFightMusic(idx)}
-                            className={`flex flex-1 items-center justify-between gap-2 py-2 pr-2 text-left text-sm ${idx === careerFightMusicTrack ? "font-semibold" : ""}`}
-                            data-testid={`button-fight-song-${idx}`}
-                          >
-                            <span className="truncate">{name}</span>
-                            {idx === careerFightMusicTrack && <Check className="w-4 h-4 text-primary shrink-0" />}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <DialogClose asChild>
-                      <Button variant="secondary" size="sm" className="w-full" data-testid="button-fight-song-done">Done</Button>
-                    </DialogClose>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            )}
-          </Card>
         {isFightWeek && (
           <p className="text-sm font-semibold text-yellow-500 w-full max-w-sm text-center" data-testid="text-fight-week">TIME TO FIGHT</p>
         )}
@@ -3342,6 +3280,26 @@ export default function CareerMode({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
+                    onClick={e => { e.stopPropagation(); handleDownloadColors(f); }}
+                    title="Download Colors"
+                    data-testid={`button-download-colors-slot-${i}`}
+                  >
+                    <Palette className="w-4 h-4 text-muted-foreground" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={e => { e.stopPropagation(); colorsTargetRef.current = f.id; colorsInputRef.current?.click(); }}
+                    title="Upload Colors"
+                    data-testid={`button-upload-colors-slot-${i}`}
+                  >
+                    <PaintBucket className="w-4 h-4 text-muted-foreground" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
                     onClick={e => { e.stopPropagation(); handleDeleteSlot(f.id); }}
                     data-testid={`button-delete-slot-${i}`}
                   >
@@ -3385,6 +3343,7 @@ export default function CareerMode({
                     <Upload className="w-3 h-3 mr-1" /> Upload Save
                   </Button>
                 )}
+                <input ref={colorsInputRef} type="file" accept=".json" className="hidden" onChange={handleColorsFileSelect} data-testid="input-upload-colors" />
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -4690,10 +4649,12 @@ export function AllocateStats({ fighter, onAllocate, onBack, allowedStats, fixed
 /** Compact price tag for the per-piece buy buttons, where the full figure won't fit. */
 const SPACIAL_PART_PRICE_LABEL = `${Math.round(SPACIAL_PRICE_PER_GEAR_FORCE / 1_000_000)}M`;
 
-function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart }: {
+function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart, onSaveOutfits }: {
   fighter: Fighter;
   onSave: (skinColor: string, gearColors: GearColors, spacialParts: string[]) => void;
   onBack: () => void;
+  /** Persist the outfit slots straight away (independent of Save Colors). */
+  onSaveOutfits: (outfits: (SavedOutfit | null)[]) => void;
   /** Buy the finish for a single gear piece. Only called when the balance covers it. */
   onBuySpacialPart: (partKey: string) => void;
 }) {
@@ -4734,6 +4695,27 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart }: {
     if (bought === true) setSpacialParts([...SPACIAL_GEAR_KEYS]);
     else if (Array.isArray(bought) && bought.length) setSpacialParts([...bought]);
   }, [fighter.spacialColors, fighter.spacialParts]);
+
+  const currentGear = (): GearColors => ({
+    gloves, gloveTape, trunks, shoes, headgear, socks,
+    laces: laces ?? undefined,
+    soles: soles ?? undefined,
+    waistStripe: waistStripe ?? undefined,
+  });
+  const loadOutfit = (o: SavedOutfit) => {
+    const g = o.gearColors;
+    setGloves(g.gloves || DEFAULT_GEAR_COLORS.gloves);
+    setGloveTape(g.gloveTape || DEFAULT_GEAR_COLORS.gloveTape);
+    setTrunks(g.trunks || DEFAULT_GEAR_COLORS.trunks);
+    setShoes(g.shoes || DEFAULT_GEAR_COLORS.shoes);
+    setHeadgear(g.headgear || DEFAULT_GEAR_COLORS.headgear || "#2244aa");
+    setSocks(g.socks || DEFAULT_GEAR_COLORS.socks || "#f0f0f0");
+    setLaces(g.laces ?? null);
+    setSoles(g.soles ?? null);
+    setWaistStripe(g.waistStripe ?? null);
+    // A piece sold off since the outfit was saved can't be worn.
+    setSpacialParts(o.spacialParts.filter(k => ownedParts.includes(k)));
+  };
 
   const previewColors: FighterColors = applySpacialGear({
     gloves, gloveTape, trunks, shoes, skin: skinColor, headgear, socks,
@@ -4800,6 +4782,12 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart }: {
             <h2 className="text-yellow-400 font-black italic uppercase text-xl leading-tight" style={{ textShadow: "1px 1px 0 rgba(0,0,0,0.7)" }}>Edit Colors</h2>
             <p className="text-white/50 text-[11px] font-mono">{fighter.name}</p>
           </div>
+          <OutfitSlots
+            outfits={outfitSlotsOf(fighter.outfits)}
+            current={() => ({ gearColors: currentGear(), spacialParts: spacialParts.filter(k => ownedParts.includes(k)) })}
+            onChange={onSaveOutfits}
+            onLoad={loadOutfit}
+          />
         </div>
 
         <div className="bg-[#1a1a1a] border border-white/15 rounded-lg p-4 space-y-3">
@@ -4837,12 +4825,7 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart }: {
         </div>
 
         <Button
-          onClick={() => onSave(skinColor, {
-            gloves, gloveTape, trunks, shoes, headgear, socks,
-            laces: laces ?? undefined,
-            soles: soles ?? undefined,
-            waistStripe: waistStripe ?? undefined,
-          }, spacialParts.filter(k => ownedParts.includes(k)))}
+          onClick={() => onSave(skinColor, currentGear(), spacialParts.filter(k => ownedParts.includes(k)))}
           className="w-full gap-2 bg-[#634b3b] hover:bg-[#7a5c4a] text-white font-bold"
           data-testid="button-save-colors"
         >
@@ -4973,7 +4956,7 @@ function EditRingColors({ fighter, onSave, onBack, onBuyRingSpacial }: {
       <div className="flex-1 flex items-center justify-center overflow-hidden p-4">
         <div className="bg-[#1a1a1a] border border-white/15 rounded-xl p-3 w-full max-w-[640px]">
           <div className="relative w-full rounded-lg overflow-hidden" style={{ aspectRatio: "4 / 3" }}>
-            <RingOnlyBackground colors={colors} />
+            <RingOnlyBackground colors={colors} ringName={gymLookOf(fighter).name} />
           </div>
           <p className="text-[10px] text-white/35 mt-2 text-center">Live preview</p>
         </div>
@@ -5023,6 +5006,8 @@ export function RosterEditView({
   onAutosave,
   onBack,
   onRosterRegenerated,
+  careerFighterId,
+  onDiamondsInjected,
 }: {
   rosterState: CareerRosterState;
   fighterName?: string;
@@ -5035,6 +5020,9 @@ export function RosterEditView({
    * holding (and later re-saving) the pre-edit numbers.
    */
   onRosterRegenerated?: () => RosterFighterState[] | null;
+  /** The career being edited; enables the Neural screen's Career Injects. */
+  careerFighterId?: string | null;
+  onDiamondsInjected?: (fighter: Fighter) => void;
 }) {
   const [editedRoster, setEditedRoster] = useState<RosterFighterState[]>(
     () => rosterState.roster.map(f => ({ ...f }))
@@ -5526,6 +5514,8 @@ export function RosterEditView({
     return (
       <NeuralNetworkView
         onBack={() => setShowNeural(false)}
+        careerFighterId={careerFighterId}
+        onDiamondsInjected={onDiamondsInjected}
         onRosterRegenerated={() => {
           const fresh = onRosterRegenerated?.();
           if (fresh) setEditedRoster(fresh.map(f => ({ ...f })));

@@ -50,6 +50,20 @@ export interface TrainingBonuses {
   lastSweepWeek?: number;
 }
 
+/**
+ * A named gear colour combo saved in the career colour editor. Skin is not part
+ * of an outfit. `spacialParts` is the pieces wearing the Spacial finish when it
+ * was saved; loading drops any piece the career no longer owns.
+ */
+export interface SavedOutfit {
+  name: string;
+  gearColors: GearColors;
+  spacialParts: string[];
+}
+
+/** Outfit slots per career fighter. */
+export const OUTFIT_SLOT_COUNT = 5;
+
 export const DEFAULT_GEAR_COLORS: GearColors = {
   gloves: "#cc2222",
   gloveTape: "#eeeeee",
@@ -429,6 +443,27 @@ export interface CareerRosterState {
    */
   punchEndurance?: number;
   /**
+   * Auto slip chance earned by slipping in the gym, in percentage points
+   * (0.004 = +0.004%). Only grows; added straight onto the bout's auto slip
+   * chance. Missing on older careers = 0.
+   */
+  autoSlipTrainedPct?: number;
+  /**
+   * Lifetime slips counted toward slip training (hand slips within 80px in
+   * sparring and the Doghouse, banked win or lose). Only grows.
+   */
+  slipsLandedTotal?: number;
+  /**
+   * Highest Defensive Mastery 10% tier already paid in diamonds (0-10). Only
+   * grows, so a tier lost to training decay is never paid twice.
+   */
+  defensiveMasteryPaidTier?: number;
+  /**
+   * Defensive Mastery percentage points earned from perfect blocks in gym
+   * sparring and the Doghouse, added on top of the three shares. Only grows.
+   */
+  defensiveMasteryBonusPct?: number;
+  /**
    * Week the next Punch Endurance decay is due — `lastSparWeek` plus the grace
    * period, then one step forward per point taken, so a sparring session
    * restarts the clock simply by overtaking it. A fight week slides it forward
@@ -452,6 +487,13 @@ export interface CareerRosterState {
    * same reason its sparring counterpart does.
    */
   punchEnduranceLossRiseWeek?: number;
+  /**
+   * Pure Power meter, 0-100 (%). +20 per Weight Lifting session; after the
+   * grace period off the weights it sheds 20 a week. Absent = 0.
+   */
+  purePower?: number;
+  /** Week the next Pure Power drop is due — `lastWLWeek` plus the grace, then one step per drop. */
+  purePowerDecayWeek?: number;
   /**
    * The Punch Endurance pair the player has already had on screen. When either
    * of these differs from the live value, the gym meter flashes that number
@@ -613,6 +655,10 @@ export const fighters = pgTable("fighters", {
   ringColors: jsonb("ring_colors").$type<Record<string, string>>(),
   /** Spacial finish for the ring — a single permanent purchase. */
   ringSpacialUnlocked: boolean("ring_spacial_unlocked").notNull().default(false),
+  /** Career gym customisation (wall paint, name, theme, bag colours). Absent = stock gym. */
+  gymLook: jsonb("gym_look").$type<Record<string, string>>(),
+  /** Saved outfit slots (OUTFIT_SLOT_COUNT long, null = empty). Absent = all empty. */
+  outfits: jsonb("outfits").$type<(SavedOutfit | null)[]>(),
   diamonds: integer("diamonds").default(0),
   shards: integer("shards").default(0),
   /** Levels bought with diamonds. Drives the level-up price, so XP levels never raise it. */
@@ -633,6 +679,14 @@ export const fighters = pgTable("fighters", {
 export const insertFighterSchema = createInsertSchema(fighters).omit({ id: true, createdAt: true });
 export type InsertFighter = z.infer<typeof insertFighterSchema>;
 export type Fighter = typeof fighters.$inferSelect;
+
+/** One private portable career bundle per verified account. */
+export const careerCloudSaves = pgTable("career_cloud_saves", {
+  userId: text("user_id").primaryKey(),
+  save: jsonb("save"),
+  revision: integer("revision").notNull().default(1),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const fightResults = pgTable("fight_results", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

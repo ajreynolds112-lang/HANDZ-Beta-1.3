@@ -8,9 +8,10 @@
  * talks to Tripo. Positions and click boxes live in gymLayout.ts.
  */
 import * as THREE from "three";
-import { type PropPlacement, PropSlot, coloredPart, mergeParts } from "./props3d";
-import { GYM_BAG_HANG, GYM_OFFICE, GYM_ROOM, GYM_SPOTS, GYM_ZONE_BOXES, TROPHY_CASE, type GymZone3D } from "./gymLayout";
+import { type PropPlacement, PropSlot, coloredPart, getFittedPropParts, mergeParts } from "./props3d";
+import { GYM_BAG_HANG, GYM_GLOVES, GYM_OFFICE, GYM_ROOM, GYM_SPOTS, GYM_ZONE_BOXES, TROPHY_CASE, type GymZone3D } from "./gymLayout";
 import { MAT_HEIGHT, RING_HALF_X, RING_HALF_Z } from "./worldMapping";
+import { GYM_LOOK_DEFAULTS, type GymLook, gymLookKey } from "../gymLook";
 
 /** What fills the trophy cases and whether the crate is open (career state). */
 export interface GymDressing {
@@ -19,6 +20,8 @@ export interface GymDressing {
   bTrophies: number;
   bMedals: number;
   crateUnlocked: boolean;
+  /** Which wall glove pairs have turned gold (original, then the two behind the ring). */
+  goldGloves?: [boolean, boolean, boolean];
 }
 
 // The home screen writes this; sparring bouts read the last value, like the
@@ -26,6 +29,181 @@ export interface GymDressing {
 let currentDressing: GymDressing = { aTrophies: 0, aMedals: 0, bTrophies: 0, bMedals: 0, crateUnlocked: false };
 export function setGymDressing(d: GymDressing): void { currentDressing = { ...d }; }
 export function getGymDressing(): GymDressing { return currentDressing; }
+
+// Career gym customisation, written by the home screen and read by every gym
+// render (home and sparring), same as the dressing snapshot.
+let currentLook: GymLook = {};
+export function setGymLook(l: GymLook): void {
+  currentLook = { ...l };
+  bagUniforms.uBagOn.value = l.bagPrimary || l.bagSecondary ? 1 : 0;
+  bagUniforms.uBagPrimary.value.set(l.bagPrimary ?? GYM_LOOK_DEFAULTS.bagPrimary);
+  bagUniforms.uBagSecondary.value.set(l.bagSecondary ?? GYM_LOOK_DEFAULTS.bagSecondary);
+  for (const [id, u] of Object.entries(propUniforms)) {
+    const [ka, kb] = PROP_TINT_KEYS[id];
+    u.uOn.value.set(l[ka] ? 1 : 0, kb && l[kb] ? 1 : 0);
+    u.uA.value.set(l[ka] ?? GYM_LOOK_DEFAULTS[ka]);
+    if (kb) u.uB.value.set(l[kb] ?? GYM_LOOK_DEFAULTS[kb]);
+  }
+}
+
+/**
+ * Recolouring the baked Tripo textures of the lockers, door, wooden bench and
+ * bench press. Each keeps the texture's shading: the painted region (blue
+ * locker steel, red bench-press frame, all bench wood, door wood) takes the
+ * chosen colour scaled by the texel's brightness against that region's
+ * typical value; glass, brass, white and black parts stay as baked. The door
+ * leaf and its frame are told apart by their texture-atlas islands.
+ */
+type TintKey = "lockers" | "door" | "doorFrame" | "woodBench" | "benchPress";
+const PROP_TINT_KEYS: Record<string, [TintKey, TintKey?]> = {
+  gym_lockers: ["lockers"],
+  gym_door: ["door", "doorFrame"],
+  gym_wood_bench: ["woodBench"],
+  gym_bench_press: ["benchPress"],
+};
+const propUniforms: Record<string, { uOn: { value: THREE.Vector2 }; uA: { value: THREE.Color }; uB: { value: THREE.Color } }> =
+  Object.fromEntries(Object.keys(PROP_TINT_KEYS).map(id => [id, {
+    uOn: { value: new THREE.Vector2(0, 0) },
+    uA: { value: new THREE.Color(GYM_LOOK_DEFAULTS[PROP_TINT_KEYS[id][0]]) },
+    uB: { value: new THREE.Color(GYM_LOOK_DEFAULTS[PROP_TINT_KEYS[id][1] ?? PROP_TINT_KEYS[id][0]]) },
+  }]));
+const PROP_TINT_GLSL: Record<string, string> = {
+  gym_lockers: `
+    float w = smoothstep(0.12, 0.3, bc.b - max(bc.r, bc.g));
+    bc = mix(bc, uTintA * clamp(bc.b / 0.7, 0.25, 1.5), w * uTintOn.x);`,
+  gym_bench_press: `
+    float w = smoothstep(0.15, 0.35, bc.r - max(bc.g, bc.b));
+    bc = mix(bc, uTintA * clamp(bc.r / 0.7, 0.25, 1.5), w * uTintOn.x);`,
+  gym_wood_bench: `
+    float l = dot(bc, vec3(0.2126, 0.7152, 0.0722));
+    bc = mix(bc, uTintA * clamp(l / 0.21, 0.3, 1.8), uTintOn.x);`,
+  gym_door: `
+    float l = dot(bc, vec3(0.2126, 0.7152, 0.0722));
+    float glass = smoothstep(0.0, 0.06, bc.b - bc.r);
+    float brass = smoothstep(0.6, 0.72, bc.g / max(bc.r, 0.001)) * smoothstep(0.25, 0.4, bc.r);
+    float wood = (1.0 - glass) * (1.0 - brass);
+    vec2 uv = vMapUv;
+    float leaf = (uv.x > 0.47 && uv.x < 0.765 && uv.y > 0.36) || (uv.x > 0.39 && uv.y < 0.345) ? 1.0 : 0.0;
+    vec3 tint = mix(uTintB, uTintA, leaf);
+    float on = mix(uTintOn.y, uTintOn.x, leaf);
+    bc = mix(bc, tint * clamp(l / 0.21, 0.3, 1.8), wood * on);`,
+};
+function patchPropMaterial(mat: THREE.Material, id: string): void {
+  if (mat.userData.tintPatched) return;
+  const u = propUniforms[id];
+  if (!u) return;
+  mat.userData.tintPatched = true;
+  mat.onBeforeCompile = shader => {
+    shader.uniforms.uTintOn = u.uOn;
+    shader.uniforms.uTintA = u.uA;
+    shader.uniforms.uTintB = u.uB;
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform vec2 uTintOn;\nuniform vec3 uTintA;\nuniform vec3 uTintB;")
+      .replace("#include <color_fragment>", `#include <color_fragment>
+      if (uTintOn.x + uTintOn.y > 0.5) {
+        vec3 bc = diffuseColor.rgb;${PROP_TINT_GLSL[id]}
+        diffuseColor.rgb = bc;
+      }`);
+  };
+  mat.customProgramCacheKey = () => `gym-tint-${id}`;
+  mat.needsUpdate = true;
+}
+
+/**
+ * Wall glove pair: red leather recoloured to `tint` (null keeps it), and when
+ * `gold` is on, every glove surface (not the wooden board or hooks) turns
+ * polished gold.
+ */
+function patchGloveMaterial(mat: THREE.MeshStandardMaterial, tint: string | null, gold: { value: number }): void {
+  const uTint = { value: new THREE.Color(tint ?? "#ffffff") };
+  const uTintOn = { value: tint ? 1 : 0 };
+  mat.onBeforeCompile = shader => {
+    Object.assign(shader.uniforms, { uGloveTint: uTint, uGloveTintOn: uTintOn, uGloveGold: gold });
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform vec3 uGloveTint;\nuniform float uGloveTintOn;\nuniform float uGloveGold;")
+      .replace("#include <color_fragment>", `#include <color_fragment>
+      vec3 gc = diffuseColor.rgb;
+      // Board and hooks are orange-brown wood; everything else is glove.
+      float gWood = smoothstep(0.35, 0.5, gc.g / max(gc.r, 0.001)) * smoothstep(0.08, 0.18, gc.r - gc.b);
+      float gGlove = 1.0 - gWood;
+      float gRed = smoothstep(0.12, 0.3, gc.r - max(gc.g, gc.b));
+      gc = mix(gc, uGloveTint * clamp(gc.r / 0.6, 0.3, 1.5), gRed * uGloveTintOn);
+      float gLum = dot(gc, vec3(0.2126, 0.7152, 0.0722));
+      gc = mix(gc, vec3(1.0, 0.78, 0.32) * clamp(0.8 + gLum * 1.2, 0.8, 1.5), gGlove * uGloveGold);
+      diffuseColor.rgb = gc;`)
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\n      roughnessFactor = mix(roughnessFactor, 0.35, gGlove * uGloveGold);")
+      .replace("#include <metalnessmap_fragment>", "#include <metalnessmap_fragment>\n      metalnessFactor = mix(metalnessFactor, 0.55, gGlove * uGloveGold);")
+      // No environment map in the gym, so a touch of self-glow keeps the metal from going black.
+      .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\n      totalEmissiveRadiance += vec3(0.32, 0.22, 0.05) * gGlove * uGloveGold;");
+  };
+  mat.customProgramCacheKey = () => "gym-wall-gloves";
+  mat.needsUpdate = true;
+}
+
+/** Patch a gym prop group's GLB materials for live recolouring (idempotent). */
+export function patchGymPropColors(id: string, root: THREE.Object3D): void {
+  if (id === "gym_hanging_bag") {
+    root.traverse(o => { const m = (o as THREE.Mesh).material; if (m) for (const mat of Array.isArray(m) ? m : [m]) patchBagMaterial(mat); });
+    return;
+  }
+  if (!propUniforms[id]) return;
+  root.traverse(o => { const m = (o as THREE.Mesh).material; if (m) for (const mat of Array.isArray(m) ? m : [m]) patchPropMaterial(mat, id); });
+}
+
+/** The current career gym look (training minigames dress to match it). */
+export function getGymLook(): GymLook { return currentLook; }
+
+/** Brick-wall material for a wall `len` × `height` metres, in the current look. */
+export function makeGymWallMaterial(len: number, height: number): THREE.MeshStandardMaterial {
+  const t = canvasTexture(512, 512, (c, w, h) => drawWall(c, w, h, currentLook));
+  t.wrapS = THREE.RepeatWrapping;
+  // Same brick size as the gym's walls (one texture height per GYM_ROOM.wallH).
+  t.repeat.set(len / (6 * height / GYM_ROOM.wallH), 1);
+  return new THREE.MeshStandardMaterial({ map: t, roughness: 0.92 });
+}
+
+/** Rubber-mat colour, shared by the gym and the training scenes. */
+export function gymMatColor(): string { return currentLook.mats ?? GYM_LOOK_DEFAULTS.mats; }
+
+/** The career gym's custom name, if renamed (printed on the gym ring's apron). */
+export function getGymRingName(): string | undefined { return currentLook.name; }
+
+/**
+ * The hanging-bag GLB is one baked texture (red leather, black tape, grey
+ * metal). Recolouring keeps its shading: red texels take the primary colour,
+ * dark low-saturation texels (the tape) take the secondary, grey metal stays.
+ * Uniforms are module-level so a material shared through the GLB cache is
+ * patched once and follows every scene.
+ */
+const bagUniforms = {
+  uBagOn: { value: 0 },
+  uBagPrimary: { value: new THREE.Color(GYM_LOOK_DEFAULTS.bagPrimary) },
+  uBagSecondary: { value: new THREE.Color(GYM_LOOK_DEFAULTS.bagSecondary) },
+};
+function patchBagMaterial(mat: THREE.Material): void {
+  if (mat.userData.bagPatched) return;
+  mat.userData.bagPatched = true;
+  mat.onBeforeCompile = shader => {
+    Object.assign(shader.uniforms, bagUniforms);
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform float uBagOn;\nuniform vec3 uBagPrimary;\nuniform vec3 uBagSecondary;")
+      .replace("#include <color_fragment>", `#include <color_fragment>
+      if (uBagOn > 0.5) {
+        vec3 bc = diffuseColor.rgb;
+        float mx = max(bc.r, max(bc.g, bc.b));
+        float redW = smoothstep(0.04, 0.14, bc.r - max(bc.g, bc.b));
+        float darkW = (1.0 - redW) * (1.0 - smoothstep(0.05, 0.11, mx));
+        // Shade relative to the texture's typical value for each region.
+        vec3 prim = uBagPrimary * clamp(bc.r / 0.28, 0.25, 1.5);
+        vec3 sec = uBagSecondary * clamp(mx / 0.035, 0.35, 1.6);
+        bc = mix(bc, sec, darkW);
+        bc = mix(bc, prim, redW);
+        diffuseColor.rgb = bc;
+      }`);
+  };
+  mat.customProgramCacheKey = () => "gym-bag-recolor";
+  mat.needsUpdate = true;
+}
 
 const TROPHIES_PER_ROW = 10;
 const MEDALS_PER_ROW = 14;
@@ -64,9 +242,50 @@ export class GymEnvironment3D {
     this.setNight(false);
   }
 
+  // -- customisation ---------------------------------------------------------
+
+  private wallCanvas: HTMLCanvasElement | null = null;
+  private bannerCanvas: HTMLCanvasElement | null = null;
+  private signCanvas: HTMLCanvasElement | null = null;
+  /** Every texture sampling a redrawable canvas (wall clones share one canvas). */
+  private lookTextures: THREE.Texture[] = [];
+  private lookKey = gymLookKey({});
+
+  private trackLook(t: THREE.CanvasTexture, which: "banner" | "sign"): THREE.CanvasTexture {
+    if (which === "banner") this.bannerCanvas = t.image as HTMLCanvasElement;
+    else this.signCanvas = t.image as HTMLCanvasElement;
+    this.lookTextures.push(t);
+    return t;
+  }
+
+  private applyLook(l: GymLook): void {
+    for (const id of ["gym_hanging_bag", ...Object.keys(PROP_TINT_KEYS)]) {
+      const slot = this.props.get(id);
+      if (slot?.hasModel) patchGymPropColors(id, slot.group);
+    }
+    this.matMat.color.set(l.mats ?? GYM_LOOK_DEFAULTS.mats);
+    this.officeMat.color.set(l.office ?? GYM_LOOK_DEFAULTS.office);
+    this.trophyWoodMat.color.set(l.trophyCases ?? GYM_LOOK_DEFAULTS.trophyCases);
+    const key = gymLookKey(l);
+    if (key === this.lookKey) return;
+    this.lookKey = key;
+    const redraw = (c: HTMLCanvasElement | null, draw: (ctx: CanvasRenderingContext2D, w: number, h: number, l: GymLook) => void) => {
+      if (c) draw(c.getContext("2d")!, c.width, c.height, l);
+    };
+    redraw(this.wallCanvas, drawWall);
+    redraw(this.bannerCanvas, drawBanner);
+    redraw(this.signCanvas, drawOfficeSign);
+    for (const t of this.lookTextures) t.needsUpdate = true;
+  }
+
   // -- room ----------------------------------------------------------------
 
   private homeOnly = new THREE.Group();
+  private matMat = new THREE.MeshStandardMaterial({ color: GYM_LOOK_DEFAULTS.mats, roughness: 0.95 });
+  /** The office booth's frame and lower panels. */
+  private officeMat = new THREE.MeshStandardMaterial({ color: GYM_LOOK_DEFAULTS.office, roughness: 0.5, metalness: 0.4 });
+  /** Trophy cases' outer wood (plinth, top, sides). */
+  private trophyWoodMat = new THREE.MeshStandardMaterial({ color: GYM_LOOK_DEFAULTS.trophyCases, roughness: 0.6 });
 
   private buildRoom(): void {
     const R = GYM_ROOM;
@@ -82,7 +301,7 @@ export class GymEnvironment3D {
     this.group.add(floor);
 
     // Black rubber training mats under the bags and the weights corner.
-    const matMat = new THREE.MeshStandardMaterial({ color: "#1d1d20", roughness: 0.95 });
+    const matMat = this.matMat;
     const mats: [number, number, number, number][] = [[-11, -6.8, 7.2, 3.0], [-8.7, -2.0, 4.6, 3.2]];
     for (const [x, z, mw, md] of mats) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(mw, 0.03, md), matMat);
@@ -94,11 +313,14 @@ export class GymEnvironment3D {
     this.disposables.push(matMat);
 
     // Exposed-brick warehouse walls.
-    const wallTex = canvasTexture(512, 512, drawWall);
+    const wallTex = canvasTexture(512, 512, (c, w, h) => drawWall(c, w, h, {}));
     wallTex.wrapS = THREE.RepeatWrapping;
+    this.wallCanvas = wallTex.image as HTMLCanvasElement;
+    this.lookTextures.push(wallTex);
     const wallMat = (len: number) => {
       const t = wallTex.clone();
       t.needsUpdate = true;
+      this.lookTextures.push(t);
       t.repeat.set(len / 6, 1);
       this.disposables.push(t);
       return new THREE.MeshStandardMaterial({ map: t, roughness: 0.92 });
@@ -164,8 +386,10 @@ export class GymEnvironment3D {
 
     // Banner high on the side wall, posters lower down, a clock over the door.
     const banner = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.1),
-      new THREE.MeshStandardMaterial({ map: canvasTexture(1024, 188, drawBanner), roughness: 0.8 }));
-    banner.position.set(-9.5, 3.6, R.minZ + 0.03);
+      new THREE.MeshStandardMaterial({ map: this.trackLook(canvasTexture(1024, 188, (c, w, h) => drawBanner(c, w, h, {})), "banner"), roughness: 0.8 }));
+    // Kept clear of the windows (bottom edge y=3.9): the old y=3.6 overlapped their
+    // lower frames on the same wall plane and z-fought.
+    banner.position.set(-9.5, 3.2, R.minZ + 0.05);
     this.group.add(banner);
     [[-14.2, 2.4, "MAIN EVENT"], [-1.2, 2.4, "FIGHT NIGHT"], [2.2, 2.4, "TITLE BOUT"]].forEach(([x, y, title]) => {
       const p = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.5),
@@ -210,7 +434,7 @@ export class GymEnvironment3D {
   /** Glass-walled office booth on the far wall (desk, chair and monitor inside). */
   private buildOffice(): void {
     const O = GYM_OFFICE;
-    const frame = new THREE.MeshStandardMaterial({ color: "#2b2b30", roughness: 0.5, metalness: 0.4 });
+    const frame = this.officeMat;
     const glass = new THREE.MeshPhysicalMaterial({ color: "#bfe0ff", transparent: true, opacity: 0.16, roughness: 0.05, depthWrite: false });
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
       const m = new THREE.Mesh(geo, mat);
@@ -231,7 +455,7 @@ export class GymEnvironment3D {
     add(new THREE.BoxGeometry(t, O.h, t), frame, O.x1, O.h / 2, (O.z0 + O.z1) / 2);
     add(new THREE.BoxGeometry(dx + t, t * 1.5, dz + t), frame, O.x0 + dx / 2, O.h, (O.z0 + O.z1) / 2);
     // "OFFICE" plate on the booth's roof edge.
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.32), new THREE.MeshBasicMaterial({ map: canvasTexture(280, 64, drawOfficeSign) }));
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.32), new THREE.MeshBasicMaterial({ map: this.trackLook(canvasTexture(280, 64, (c, w, h) => drawOfficeSign(c, w, h, {})), "sign") }));
     sign.position.set(O.x1 + 0.05, O.h + 0.25, (O.z0 + O.z1) / 2);
     sign.rotation.y = Math.PI / 2;
     this.group.add(sign);
@@ -277,7 +501,7 @@ export class GymEnvironment3D {
     this.addSlot("gym_office_chair", [at(S.chair)], standInChair());
     this.addSlot("gym_door", [at(S.door)], standInDoor(), false);
     this.addSlot("gym_water_crate", [at(S.waterCrate)], standInWaterCrate());
-    this.addSlot("gym_glove_rack", [at(S.gloveRack, 1.1)], standInGloveRack(), false);
+    this.buildGloves();
 
     // The desk monitor's night glow: a thin screen + light just above the desktop.
     const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.3), this.monitorMat);
@@ -299,7 +523,7 @@ export class GymEnvironment3D {
 
   private buildTrophyCases(): void {
     const T = TROPHY_CASE;
-    const wood = new THREE.MeshStandardMaterial({ color: "#5a3a22", roughness: 0.6 });
+    const wood = this.trophyWoodMat;
     const back = new THREE.MeshStandardMaterial({ color: "#2a1a12", roughness: 0.9 });
     const shelfMat = new THREE.MeshPhysicalMaterial({ color: "#d8f0ff", transparent: true, opacity: 0.35, roughness: 0.1 });
     const glass = new THREE.MeshPhysicalMaterial({ color: "#cfe8ff", transparent: true, opacity: 0.12, roughness: 0.05, depthWrite: false });
@@ -356,7 +580,43 @@ export class GymEnvironment3D {
     this.medalSlot.setShown(mShown);
     this.crateLocked.visible = !d.crateUnlocked;
     this.crateOpen.visible = d.crateUnlocked;
+    this.gloveGold.forEach((u, i) => { u.value = d.goldGloves?.[i] ? 1 : 0; });
   }
+
+  // -- wall gloves -------------------------------------------------------------
+
+  /** Per pair: gold switch (uniform shared with that pair's own material). */
+  private gloveGold: { value: number }[] = [];
+
+  /** Three glove pairs, each with its own material so it can be recoloured / turned gold alone. */
+  private buildGloves(): void {
+    const S = GYM_SPOTS;
+    const pairs: { spot: { x: number; z: number; rotY: number }; y: number; tint: string | null }[] = [
+      { spot: S.gloveRack, y: GYM_GLOVES.y, tint: null },
+      { spot: S.gloveRack2, y: GYM_GLOVES.ringY, tint: "#1f5fd6" },
+      { spot: S.gloveRack3, y: GYM_GLOVES.ringY, tint: "#ececec" },
+    ];
+    const slots = pairs.map(p => {
+      const slot = new PropSlot("gym_glove_rack", [{ x: p.spot.x, y: p.y, z: p.spot.z, rotY: p.spot.rotY, scale: GYM_GLOVES.scale }], standInGloveRack(), false);
+      this.group.add(slot.group);
+      this.gloveSlots.push(slot);
+      const gold = { value: 0 };
+      this.gloveGold.push(gold);
+      return { slot, gold, tint: p.tint };
+    });
+    void getFittedPropParts("gym_glove_rack").then(parts => {
+      if (!parts || this.gloveSlots.length === 0) return;
+      for (const { slot, gold, tint } of slots) {
+        slot.useModel(parts.map(part => {
+          const m = (part.material as THREE.MeshStandardMaterial).clone();
+          patchGloveMaterial(m, tint, gold);
+          this.disposables.push(m);
+          return { geometry: part.geometry.clone(), material: m };
+        }));
+      }
+    });
+  }
+  private gloveSlots: PropSlot[] = [];
 
   // -- equipment crate -------------------------------------------------------
 
@@ -402,13 +662,18 @@ export class GymEnvironment3D {
   // -- lights ----------------------------------------------------------------
 
   private buildLights(): void {
-    // Daylight slanting in through the side-wall windows.
-    this.key.position.set(-4, 16, -14);
-    this.key.target.position.set(-6, 0, 2);
+    // Shadow-casting key from (almost) straight overhead, like the ceiling
+    // lamps: the high side-wall windows can't throw light onto the floor
+    // this far into the room, so a slanted "window" key cast impossible
+    // long shadows. A slight tilt keeps shadows just off each object's base.
+    this.key.position.set(-2.6, 24, -0.6);
+    this.key.target.position.set(-3, 0, 0.4);
     this.key.castShadow = true;
     this.key.shadow.mapSize.set(2048, 2048);
     const sc = this.key.shadow.camera;
-    sc.left = -20; sc.right = 20; sc.top = 16; sc.bottom = -16; sc.near = 2; sc.far = 50;
+    // Square, so it covers the whole floor (x -15.5..10, z -8.6..9.5) whichever
+    // way the near-vertical shadow camera's up axis ends up pointing.
+    sc.left = -14; sc.right = 14; sc.top = 14; sc.bottom = -14; sc.near = 2; sc.far = 40;
     this.key.shadow.bias = -0.0006;
     this.lights.add(this.hemi, this.key, this.key.target);
     for (const [x, z] of LAMP_SPOTS) {
@@ -492,6 +757,7 @@ export class GymEnvironment3D {
   /** Per frame: dressing from the last home-screen snapshot, hover highlight. */
   update(opts: { night: boolean; hovered?: GymZone3D | null; home?: boolean }): void {
     this.applyDressing(currentDressing);
+    this.applyLook(currentLook);
     this.setHome(opts.home === true);
     this.setNight(opts.night);
     const t = performance.now() / 1000;
@@ -509,6 +775,8 @@ export class GymEnvironment3D {
 
   dispose(): void {
     this.props.forEach(p => p.dispose());
+    this.gloveSlots.forEach(p => p.dispose());
+    this.gloveSlots = [];
     for (const d of this.disposables) d.dispose();
     this.glowTex.dispose();
     this.group.traverse(o => {
@@ -565,26 +833,37 @@ function drawPlanks(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   }
 }
 
-function drawWall(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-  // Exposed red-brown brick above a dark painted dado and skirting.
-  ctx.fillStyle = "#5e3326";
+function drawWall(ctx: CanvasRenderingContext2D, w: number, h: number, look: GymLook): void {
+  // Exposed red-brown brick above a dark painted dado and skirting. A repaint
+  // keeps the same brick pattern, varied around the chosen colour.
+  const paint = look.wall ? hexToHsl(look.wall) : null;
+  ctx.fillStyle = paint ? `hsl(${paint.h}, ${paint.s * 0.8}%, ${paint.l * 0.62}%)` : "#5e3326";
   ctx.fillRect(0, 0, w, h);
   let seed = 11;
   const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const rows = 22, bh = h / rows, bw = w / 6;
   for (let r = 0; r < rows; r++) {
     for (let x = (r % 2) * -bw / 2; x < w; x += bw) {
-      const l = 26 + rnd() * 12;
-      ctx.fillStyle = `hsl(${12 + rnd() * 10}, ${38 + rnd() * 14}%, ${l}%)`;
+      const a = rnd(), b = rnd(), c = rnd();
+      ctx.fillStyle = paint
+        ? `hsl(${paint.h - 5 + b * 10}, ${Math.max(0, Math.min(100, paint.s - 7 + c * 14))}%, ${Math.max(3, Math.min(95, paint.l * (0.86 + a * 0.4)))}%)`
+        : `hsl(${12 + b * 10}, ${38 + c * 14}%, ${26 + a * 12}%)`;
       ctx.fillRect(x + 2, r * bh + 2, bw - 4, bh - 4);
     }
   }
-  ctx.fillStyle = "#1f2422";
+  ctx.fillStyle = look.themeDark ?? "#1f2422";
   ctx.fillRect(0, h * 0.8, w, h * 0.2);
-  ctx.fillStyle = "#b8902f";
+  ctx.fillStyle = look.themeAccent ?? "#b8902f";
   ctx.fillRect(0, h * 0.8, w, h * 0.008);
   ctx.fillStyle = "#121414";
   ctx.fillRect(0, h * 0.96, w, h * 0.04);
+}
+
+function hexToHsl(hex: string): { h: number; s: number; l: number } {
+  const c = new THREE.Color(hex);
+  const o = { h: 0, s: 0, l: 0 };
+  c.getHSL(o, THREE.SRGBColorSpace);
+  return { h: o.h * 360, s: o.s * 100, l: o.l * 100 };
 }
 
 function drawWindow(ctx: CanvasRenderingContext2D, w: number, h: number): void {
@@ -606,25 +885,36 @@ function drawExit(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   ctx.fillText("EXIT", w / 2, h / 2 + 2);
 }
 
-function drawOfficeSign(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-  ctx.fillStyle = "#15151a"; ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = "#deb345";
+function drawOfficeSign(ctx: CanvasRenderingContext2D, w: number, h: number, look: GymLook): void {
+  ctx.fillStyle = look.themeDark ?? "#15151a"; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = look.themeText ?? GYM_LOOK_DEFAULTS.themeText;
   ctx.font = `800 ${Math.round(h * 0.62)}px 'Oxanium', sans-serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText("OFFICE", w / 2, h / 2 + 2);
 }
 
-function drawBanner(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-  ctx.fillStyle = "#16161c";
+function drawBanner(ctx: CanvasRenderingContext2D, w: number, h: number, look: GymLook): void {
+  const dark = look.themeDark ?? GYM_LOOK_DEFAULTS.themeDark;
+  const accent = look.themeAccent ?? GYM_LOOK_DEFAULTS.themeAccent;
+  ctx.fillStyle = dark;
   ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = "#deb345";
+  ctx.strokeStyle = accent;
   ctx.lineWidth = 8;
   ctx.strokeRect(10, 10, w - 20, h - 20);
-  ctx.fillStyle = "#deb345";
-  ctx.font = `900 ${Math.round(h * 0.5)}px 'Oxanium', sans-serif`;
+  ctx.fillStyle = look.themeText ?? GYM_LOOK_DEFAULTS.themeText;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("HANDZ BOXING GYM", w / 2, h / 2 + 4);
+  // Long names shrink to fit inside the border.
+  const text = look.name ?? GYM_LOOK_DEFAULTS.name;
+  const maxW = w - 80;
+  let size = Math.round(h * 0.5);
+  ctx.font = `900 ${size}px 'Oxanium', sans-serif`;
+  const tw = ctx.measureText(text).width;
+  if (tw > maxW) {
+    size = Math.max(10, Math.floor(size * maxW / tw));
+    ctx.font = `900 ${size}px 'Oxanium', sans-serif`;
+  }
+  ctx.fillText(text, w / 2, h / 2 + 4);
 }
 
 function drawPoster(ctx: CanvasRenderingContext2D, title: string): void {

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 72" role="img" aria-labelledby="title">
+  <title id="title">HANDZ</title>
+  <g fill="none" stroke="#d9a441" stroke-width="3">
+    <path d="M16 22h32v28H16z" rx="4"/>
+    <path d="M22 22v28m20-28v28M16 31h32M16 41h32" opacity=".85"/>
+    <path d="M8 18h48v36H8z" stroke-width="1" opacity=".4"/>
+  </g>
+  <text x="68" y="49" fill="#f2eee5" font-family="Oxanium, sans-serif" font-size="37" font-weight="800" letter-spacing="2">HANDZ</text>
+  <path d="M69 58h176" stroke="#d9a441" stroke-width="2" opacity=".8"/>
+</svg>

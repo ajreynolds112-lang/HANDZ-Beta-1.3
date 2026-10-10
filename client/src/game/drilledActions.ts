@@ -25,7 +25,8 @@
  */
 
 import { PUNCH_CONFIGS } from "./types";
-import { parseActionToken, PATTERN_LENGTH, type ParsedAction } from "./aiPatterns";
+import { parseActionToken, PATTERN_LENGTH, punchActionToken, type ParsedAction } from "./aiPatterns";
+import type { BoxingStance, PunchType } from "./types";
 
 // ===== CONFIG =================================================================
 //
@@ -763,4 +764,38 @@ export function noteDrilledThrow(
   next[idx] = { ...hit, wt: nextSparred, wu: nextUsed };
   ds.entries = next;
   ds.dirty = true;
+}
+
+/** Southpaw remaps the punch keys to the mirror punch (W↔E, Q↔R, S↔D). */
+const SOUTHPAW_KEY_MIRROR: Record<PunchType, PunchType> = {
+  jab: "cross", cross: "jab",
+  leftHook: "rightHook", rightHook: "leftHook",
+  leftUppercut: "rightUppercut", rightUppercut: "leftUppercut",
+} as Record<PunchType, PunchType>;
+
+/**
+ * Credit a free heavy-bag session. `keyPunches` are the punches in key order as
+ * the bag (fixed orthodox key map) read them; a southpaw's same keys throw the
+ * mirror punch in a bout, so they are mirrored here to match fight tokens.
+ *
+ * Same resolve rule as a bout: three links make a string, the window then
+ * clears. Every bag punch makes contact, so each string is one throw AND one
+ * success, gym scope. Returns null when nothing moved.
+ */
+export function creditBagSession(
+  entries: DrilledActionEntry[] | undefined | null,
+  keyPunches: { type: PunchType; head: boolean }[],
+  stance: BoxingStance,
+  cfg: DrilledActionConfig = DRILLED_ACTION_CONFIG,
+): DrilledActionEntry[] | null {
+  const ds = createDrilledFightState(entries ?? [], true, cfg);
+  for (let i = 0; i + DRILLED_LENGTH <= keyPunches.length; i += DRILLED_LENGTH) {
+    const acts = keyPunches.slice(i, i + DRILLED_LENGTH).map(k => {
+      const punch = stance === "southpaw" ? (SOUTHPAW_KEY_MIRROR[k.type] ?? k.type) : k.type;
+      return punchActionToken(punch, k.head, stance);
+    });
+    noteDrilledThrow(ds, acts, cfg);
+    applyDrilledSuccess(ds, acts, cfg);
+  }
+  return ds.dirty ? ds.entries : null;
 }

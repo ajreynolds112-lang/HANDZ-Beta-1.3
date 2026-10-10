@@ -8,6 +8,7 @@
  *  - consumable rank-exclusivity on grant
  *  - "already active" vs synergy stacking on activation
  */
+import { requestCloudSave } from "./uiChrome";
 import type { CareerRosterState, Fighter, ItemInventory, SkillRefinement } from "@shared/schema";
 import { DEFAULT_ITEM_INVENTORY, DEFAULT_SKILL_REFINEMENT } from "@shared/schema";
 import * as localSaves from "@/lib/localSaves";
@@ -282,6 +283,8 @@ export function careerBestRank(
  * only ever won off an opponent wearing one (claimOpponentKeepsakes).
  */
 export function grantItem(fighterId: string, itemId: string, playerRank?: number | null): ItemOpResult {
+  // Rewards are worth an immediate cloud save (coalesced by the provider).
+  requestCloudSave();
   const def = getItemDefinition(itemId);
   if (!def) return { ok: false, message: "Unknown item" };
   const fighter = localSaves.getFighter(fighterId);

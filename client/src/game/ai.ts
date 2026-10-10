@@ -7,11 +7,11 @@ import {
   AdaptiveMemory, TimingSlot, ObservedPattern, RingZone, BehaviorProfile,
   WhiffSnapshot, AiDecisionStats, SlipDir, NeuralBaseline,
 } from "./types";
-import { aiRNG, isFeintEngaged, isPerfectBlockRhythmPaused, isRhythmVulnerable, getPunchReachPx, getBurstPunchExcess, accrueRingMileage, startSlip, isLeadArmPunch, tryReset, aiResetAllowed, AI_SLIP_HOLD, stripMoveTowardOpponent } from "./engine";
+import { aiRNG, isFeintEngaged, isPerfectBlockRhythmPaused, isRhythmVulnerable, getPunchReachPx, getBurstPunchExcess, accrueRingMileage, advanceWalkCycle, STEP_BIG_M, STEP_PACE, startSlip, isLeadArmPunch, tryReset, aiResetAllowed, AI_SLIP_HOLD, stripMoveTowardOpponent, SLIP_COUNTER_SLOW_MULT } from "./engine";
 import { SITUATION_DB, matchSituation, getDifficultyMultiplier, type SituationMatchResult } from "./situationDB";
 import { levelScale, pointCoef, getScaling } from "@/lib/scalingConfig";
 import { getNeuralOverrides, getRcConfig, getAiRangeConfig, getAiPatternConfig } from "@/components/NeuralNetworkView";
-import { isTrainingRosterId, deriveNeuralState } from "./aiFundamentals";
+import { isTrainingRosterId, deriveNeuralState, basicsPunchClass, BASICS_INSIDE_PX } from "./aiFundamentals";
 import { SituationTracker } from "./fundamentalStates";
 import { getChampionFundamentals, bestFundamentalFor } from "./championStates";
 import { generateOffenseProfile, generateFallbackOffenseProfile } from "./offenseProfile";
@@ -191,6 +191,8 @@ const TOO_CLOSE_RANGE_PX = AI_BLOCK_PX * 0.5;
 // Flat outward shift on the AI's preferred engagement distance lives on the
 // Neural Network screen, under AI Punch Distance.
 const OVERLAP_HARD_MIN_DIST_PX = AI_BLOCK_PX * 0.15;
+/** Scale on the AI's whole preferred standing range (every phase, after all learning). */
+const AI_STAND_RANGE_MULT = 1.16;
 
 const EASY_HEAD_CONDITION_THRESHOLD = 0.80;
 const MEDIUM_HEAD_CONDITION_THRESHOLD = 0.55;
@@ -638,6 +640,18 @@ interface NeuralKnobs {
   executionIntensity?: number;
   rhythmSwayAdapt?: number;
   perfectBlockIntent?: number;
+  basicsSlipStraight?: number;
+  basicsRollHook?: number;
+  basicsGuardUppercut?: number;
+  basicsGuardBody?: number;
+  basicsHeadOffLine?: number;
+  basicsReturnJab?: number;
+  basicsFireBack?: number;
+  basicsSlipRip?: number;
+  basicsDoubleHook?: number;
+  basicsBodyHead?: number;
+  basicsInsideWork?: number;
+  basicsLevelMix?: number;
 }
 
 /**
@@ -693,6 +707,25 @@ function applyNeuralState(
   // difficulty still counts for something. Held inside the same band every
   // brain's adaptive chance lives in, so a seed can be a heavy blocker but never
   // an automatic one.
+  // Basics answers: only a fundamentals seed emits them, so every other brain
+  // keeps the fixed-odds reflex pick exactly as it was.
+  const bk = ns as NeuralKnobs | null | undefined;
+  brain.basics = bk?.basicsSlipStraight !== undefined
+    ? {
+      slipStraight: clamp01(bk.basicsSlipStraight),
+      rollHook: clamp01(bk.basicsRollHook ?? 0.4),
+      guardUppercut: clamp01(bk.basicsGuardUppercut ?? 0.6),
+      guardBody: clamp01(bk.basicsGuardBody ?? 0.55),
+      headOffLine: clamp01(bk.basicsHeadOffLine ?? 0.45),
+      returnJab: clamp01(bk.basicsReturnJab ?? 0),
+      fireBack: clamp01(bk.basicsFireBack ?? 0),
+      slipRip: clamp01(bk.basicsSlipRip ?? 0),
+      doubleHook: clamp01(bk.basicsDoubleHook ?? 0),
+      bodyHead: clamp01(bk.basicsBodyHead ?? 0),
+      insideWork: clamp01(bk.basicsInsideWork ?? 0),
+      levelMix: clamp01(bk.basicsLevelMix ?? 0),
+    }
+    : null;
   brain.perfectBlockIntent01 = ns?.perfectBlockIntent !== undefined
     ? clamp01(ns.perfectBlockIntent)
     : base.perfectBlockIntent01;
@@ -1651,7 +1684,7 @@ function getIdealRangeForPhase(brain: AiBrainState): number {
   // blend above it would be washed out by up to 55%.
   ideal += getAiRangeConfig().standDistanceOffsetPx;
 
-  return clamp(ideal, blocksToPixels(0.35), blocksToPixels(2.25));
+  return clamp(ideal, blocksToPixels(0.35), blocksToPixels(2.25)) * AI_STAND_RANGE_MULT;
 }
 
 function updateEngageCycle(brain: AiBrainState, dt: number): void {
@@ -2895,6 +2928,12 @@ function applyMovement(brain: AiBrainState, enemy: FighterState, player: Fighter
   if (enemy.limbContactPinned && !inBaseDefStep) {
     [moveX, moveZ] = stripMoveTowardOpponent(enemy, player, moveX, moveZ);
   }
+  // Legs touching: no movement toward the opponent, the step-out's return leg
+  // included (it is abandoned rather than left owing ground it can't walk).
+  if (enemy.legContact) {
+    if (brain.baseDefStepPhase === 2) cancelAiBaseDefenseStep(brain);
+    [moveX, moveZ] = stripMoveTowardOpponent(enemy, player, moveX, moveZ);
+  }
   if (player.feintTouchingOpponent && !inBaseDefStep) {
     const toPlayerX = player.x - enemy.x;
     const toPlayerZ = player.z - enemy.z;
@@ -2926,6 +2965,7 @@ function applyMovement(brain: AiBrainState, enemy: FighterState, player: Fighter
 
   let speed = enemy.moveSpeed;
   speed *= enemy.moveSlowMult;
+  if ((enemy.slipSlowTimer ?? 0) > 0) speed *= SLIP_COUNTER_SLOW_MULT();
   if (enemy.telegraphSlowTimer > 0) speed *= 0.5;
   if (state.fatigueEnabled) {
     speed *= Math.max(0.5, 1 - Math.floor(enemy.punchesThrown / 50) * 0.0025);
@@ -2952,7 +2992,7 @@ function applyMovement(brain: AiBrainState, enemy: FighterState, player: Fighter
   // would overshoot is trimmed to the pixels left in it, so the return lands on
   // the ground the step started from rather than past it.
   if ((brain.baseDefStepPhase ?? 0) > 0 && speed > 0) {
-    const stepTickPx = Math.sqrt(moveX * moveX + moveZ * moveZ) * speed * dt;
+    const stepTickPx = Math.sqrt(moveX * moveX + moveZ * moveZ) * speed * STEP_PACE * dt;
     const owedPx = brain.baseDefStepRemainingPx ?? 0;
     if (stepTickPx > owedPx) {
       const trim = owedPx / stepTickPx;
@@ -2963,14 +3003,18 @@ function applyMovement(brain: AiBrainState, enemy: FighterState, player: Fighter
 
   const preStepX = enemy.x;
   const preStepZ = enemy.z;
-  enemy.x += moveX * speed * dt;
-  enemy.z += moveZ * speed * dt;
+  // Same walking pace as the player's steps, so both corners' feet keep one tempo.
+  enemy.x += moveX * speed * STEP_PACE * dt;
+  enemy.z += moveZ * speed * STEP_PACE * dt;
   // Ring mileage, same rule as the player's: charged only for footwork the AI
   // actually produced. The early return above already rejects "not really
   // moving", a stun freeze zeroes `speed`, and the touching-opponent projection
   // can cancel the direction outright.
   const walkMag = Math.sqrt(moveX * moveX + moveZ * moveZ);
-  if (speed > 0 && walkMag > 0.01) accrueRingMileage(enemy, dt);
+  if (speed > 0 && walkMag > 0.01) {
+    accrueRingMileage(enemy, dt);
+    advanceWalkCycle(enemy, walkMag * speed * STEP_PACE * dt, STEP_BIG_M);
+  }
   clampToDiamondAI(enemy, ringLeft, ringRight, ringTop, ringBottom);
 
   // The out-and-back is charged for ground actually covered, measured after the
@@ -3093,16 +3137,36 @@ function triggerPerfectReaction(brain: AiBrainState, enemy: FighterState, player
     wDuck *= 0.1;
     wBlock += 0.3;
   }
-  const adjustedSum = wDuck + wStepOut + wBlock;
+  // Basics seed: the answer depends on what is coming (slip the straight, roll
+  // under the hook, guard the uppercut, elbows for the body), at odds the seed
+  // learned in training. The draw itself stays a single rng call.
+  let wSlip = 0;
+  const bx = brain.basics;
+  const cls = bx ? basicsPunchClass(player) : null;
+  if (bx && cls) {
+    const rest = (k: number) => 1 - k;
+    if (cls === "straight") { wSlip = bx.slipStraight; wDuck = rest(bx.slipStraight) * 0.3; wBlock = rest(bx.slipStraight) * 0.7; }
+    else if (cls === "hook") { wDuck = bx.rollHook; wBlock = rest(bx.rollHook) * 0.8; wSlip = 0; }
+    else if (cls === "uppercut") { wBlock = bx.guardUppercut; wDuck = rest(bx.guardUppercut) * 0.5; }
+    else { wBlock = bx.guardBody; wDuck = 0; wSlip = 0; }
+    wStepOut = assaulting ? 0 : (cls === "uppercut" ? bx.guardUppercut * 0.4 : 0.15);
+  }
+  const adjustedSum = wSlip + wDuck + wStepOut + wBlock;
 
   let r = rng.next01() * adjustedSum;
+  if (r < wSlip) {
+    startSlip(enemy, rng.next01() < 0.5 ? "left" : "right");
+    if (enemy.slipActive) enemy.slipHoldTimer = AI_SLIP_HOLD;
+    return;
+  }
+  r -= wSlip;
   if (r < wDuck) {
     brain.forcedDuck = true;
   } else if (r < wDuck + wStepOut) {
     brain.stepOutDesiredMove = -dirToPlayer;
   } else {
     brain.forcedGuard = true;
-    const likelyBody = player.currentPunch === "leftUppercut" || player.currentPunch === "rightUppercut";
+    const likelyBody = cls ? cls === "body" : (player.currentPunch === "leftUppercut" || player.currentPunch === "rightUppercut");
     const dirRoll = rng.next01();
     if (dirRoll < 0.6) {
       if (likelyBody) { brain.forcedLow = true; brain.forcedHigh = false; }
@@ -3394,6 +3458,54 @@ function armAiBaseDefenseStep(brain: AiBrainState, px: number = AI_BASE_DEFENSE_
   brain.baseDefStepOutZ = 0;
   brain.baseDefStepTimer = AI_BASE_DEFENSE_STEP_TIMEOUT;
   brain.baseDefStepTurn = turnRad;
+}
+
+/** Share of the AI's defensive duck decisions that become another defensive move instead. */
+const AI_DUCK_REROUTE_CHANCE = 0.6;
+/** Seconds after a veto during which a re-asked duck is vetoed without a roll. */
+const AI_DUCK_VETO_LOCK = 1.0;
+
+/**
+ * Cuts the AI's defensive ducks by 60%. The AI writes a duck from many places,
+ * so this runs once around its tick: a duck that starts this tick (and isn't
+ * the crouch for a body shot it is throwing) is one decision, rolled once. A
+ * refused decision becomes a slip or a step-out, guard up, and stays refused
+ * for as long as the AI keeps asking for that duck.
+ */
+export function gateAiDuckDecision(state: GameState, isPlayerAI: boolean, wasDucking: boolean, afterAiTick = true): void {
+  const brain = isPlayerAI ? state.playerAiBrain : state.aiBrain;
+  if (!brain) return;
+  const f = isPlayerAI ? state.player : state.enemy;
+  const prevDuck = brain.duckGatePrevDuck ?? wasDucking;
+  brain.duckGatePrevDuck = f.defenseState === "duck";
+  // The veto lasts while the AI keeps asking for the duck: only an AI tick that
+  // ends without one closes it (the late pass sees the guard the veto set).
+  if (f.defenseState !== "duck") { if (afterAiTick) brain.duckVetoRun = false; return; }
+  if (prevDuck || f.isKnockedDown) return;
+  // Dropping to throw to the body is offence, not a duck decision.
+  if (f.isPunching || f.telegraphPhase !== "none") return;
+  if (!brain.duckVetoRun) {
+    // Straight after a veto the same threat is usually still coming, so the
+    // re-asked duck goes the other way too rather than getting a fresh roll.
+    const sinceVeto = state.fightElapsedTime - (brain.duckVetoAt ?? -Infinity);
+    const locked = sinceVeto >= 0 && sinceVeto < AI_DUCK_VETO_LOCK;
+    if (!locked && !rng.chance(AI_DUCK_REROUTE_CHANCE)) return;
+    if (!locked) brain.duckVetoAt = state.fightElapsedTime;
+    brain.duckVetoRun = true;
+    const canSlip = !f.slipActive && f.slipDisabledTimer <= 0;
+    const canStep = !isAiStringAssault(brain) && !((brain.baseDefStepPhase ?? 0) > 0);
+    const slipFirst = rng.next01() < 0.5;
+    if (canSlip && (slipFirst || !canStep)) {
+      const r = rng.next01();
+      startSlip(f, r < 0.4 ? "back" : r < 0.7 ? "left" : "right");
+      if (f.slipActive) f.slipHoldTimer = AI_SLIP_HOLD;
+    } else if (canStep) {
+      armAiBaseDefenseStep(brain);
+    }
+  }
+  brain.forcedDuck = false;
+  f.defenseState = f.stunBlockDisableTimer > 0 ? "none" : "fullGuard";
+  brain.duckGatePrevDuck = false;
 }
 
 /**
@@ -4097,6 +4209,84 @@ function drainPatternCounterPunch(
   }
 }
 
+/**
+ * Basics, fight scenarios (seed brains only). Each answer is rolled once, on
+ * the edge that opens it, then queued with a short expiry and thrown through
+ * the ordinary handshake (reach, gas veto and every refusal still apply):
+ *  - caught a straight -> jab straight back; caught anything else -> power back
+ *  - slipped/ducked a straight clean -> rip a body hook
+ *  - own hook blocked -> the same hook again
+ *  - own body punch landed -> hook or cross upstairs
+ * Never overwrites a pattern-read counter already queued.
+ */
+function updateBasicsScenarios(
+  state: GameState,
+  brain: AiBrainState,
+  enemy: FighterState,
+  player: FighterState,
+  attemptPunchFn: (fighter: FighterState, punchType: PunchType, isFeint?: boolean, isCharged?: boolean) => boolean,
+): void {
+  const bx = brain.basics;
+  if (!bx) return;
+  const rs = state.roundStats;
+  const byMe = (enemy.isPlayer ? rs?.playerPunchesBlocked : rs?.enemyPunchesBlocked) ?? 0;
+  const byOpp = (enemy.isPlayer ? rs?.enemyPunchesBlocked : rs?.playerPunchesBlocked) ?? 0;
+  const bp = brain.basicsPrev ?? (brain.basicsPrev = {
+    oppPunching: false, oppCls: null, evaded: false, hitTaken: false,
+    blockedByMe: byMe, blockedByOpp: byOpp, landed: enemy.punchesLanded, oppLanded: player.punchesLanded,
+    ownHook: null, ownBody: false,
+  });
+  const queue = (punches: PunchType[], body: boolean, sec: number) => {
+    if (brain.basicsQueue || (brain.patternPunchQueue?.length ?? 0) > 0) return;
+    brain.basicsQueue = { punches, body, until: brain.gameTime + sec };
+  };
+
+  // The incoming punch: its class, and whether it was evaded clean.
+  if (player.isPunching) {
+    const c = basicsPunchClass(player);
+    if (!bp.oppPunching) { bp.evaded = false; bp.hitTaken = false; }
+    if (c) bp.oppCls = c;
+    if (enemy.slipActive || enemy.defenseState === "duck") bp.evaded = true;
+  }
+  if (player.punchesLanded > bp.oppLanded) bp.hitTaken = true;
+  // Own punch in flight: which hook, which level.
+  if (enemy.isPunching) {
+    const cp = enemy.currentPunch;
+    bp.ownHook = cp === "leftHook" || cp === "rightHook" ? cp : null;
+    bp.ownBody = !enemy.punchAimsHead;
+  }
+
+  if (byMe > bp.blockedByMe && bp.oppCls) {
+    if (bp.oppCls === "straight") { if (rng.chance(bx.returnJab)) queue(["jab"], false, 0.5); }
+    else if (rng.chance(bx.fireBack)) queue(["cross", "leftHook"], false, 0.6);
+  }
+  if (bp.oppPunching && !player.isPunching && bp.oppCls === "straight" && bp.evaded && !bp.hitTaken
+    && rng.chance(bx.slipRip)) queue(["leftHook", "rightHook"], true, 0.6);
+  if (byOpp > bp.blockedByOpp && bp.ownHook && rng.chance(bx.doubleHook)) queue([bp.ownHook as PunchType], false, 0.5);
+  if (enemy.punchesLanded > bp.landed && bp.ownBody && rng.chance(bx.bodyHead)) queue(["rightHook", "cross"], false, 0.6);
+
+  if (!player.isPunching) bp.oppCls = null;
+  bp.oppPunching = player.isPunching;
+  bp.blockedByMe = byMe; bp.blockedByOpp = byOpp;
+  bp.landed = enemy.punchesLanded; bp.oppLanded = player.punchesLanded;
+
+  const q = brain.basicsQueue;
+  if (!q) return;
+  if (brain.gameTime > q.until) { brain.basicsQueue = null; return; }
+  if (enemy.isPunching || enemy.isKnockedDown) return;
+  const prevDef = enemy.defenseState, prevDuck = enemy.duckTimer, prevAim = enemy.punchAimsHead;
+  enemy.punchAimsHead = !q.body;
+  if (q.body) { enemy.defenseState = "duck"; enemy.duckTimer = 0.15; }
+  for (const pt of q.punches) {
+    if (attemptPunchFn(enemy, pt as PunchType, false, false)) {
+      recordAiThrow(brain, enemy, q.body);
+      brain.basicsQueue = null;
+      return;
+    }
+  }
+  enemy.defenseState = prevDef; enemy.duckTimer = prevDuck; enemy.punchAimsHead = prevAim;
+}
+
 /** Bell or knockdown: a combination cannot span the break and neither can the
  *  answer to one. What has been learned survives; the half-seen chunk does not. */
 export function resetAiPatternRound(brain: AiBrainState): void {
@@ -4107,6 +4297,7 @@ export function resetAiPatternRound(brain: AiBrainState): void {
   mem.prevDuck = false;
   brain.patternPunchQueue = [];
   brain.patternPunchUntil = 0;
+  brain.basicsQueue = null;
   brain.patternDuckHoldUntilRetract = false;
   brain.patternDuckHoldPunchId = -1;
   brain.patternDuckHoldUntil = 0;
@@ -4293,7 +4484,17 @@ function wantBodyWork(brain: AiBrainState, dist: number, playerDucked: boolean):
   const pBody_TacticalFinal = lerp(pBody_Tactical, pBody_Directional, w);
 
   const pBody_Final = lerp(pBody_TacticalFinal, duckAwareBodyChance, 0.80);
-  return rng.next01() < clamp01(pBody_Final);
+  let body = rng.next01() < clamp01(pBody_Final);
+  // Basics seed only (other brains draw nothing more): inside, the work is to
+  // the body; and the same level three times running gets switched.
+  const bx = brain.basics;
+  if (!bx) return body;
+  if (!body && dist < BASICS_INSIDE_PX && rng.chance(bx.insideWork)) body = true;
+  const lv = brain.basicsLevels ?? (brain.basicsLevels = []);
+  if (lv.length >= 2 && lv[0] === body && lv[1] === body && rng.chance(bx.levelMix)) body = !body;
+  lv.push(body);
+  if (lv.length > 2) lv.shift();
+  return body;
 }
 
 function getAdaptiveHeadProbability(brain: AiBrainState): number {
@@ -5973,6 +6174,23 @@ export function updateAI(state: GameState, dt: number, attemptPunchFn: (fighter:
     isAiStringAssault(brain) &&
     !brain.survivalModeActive &&
     !player.chargeArmed;
+
+  // Basics, head off the centre line: on the tick its punching stops with the
+  // combo/string finished and the opponent in range, a seed slips to a side.
+  // Edge-triggered (one roll per finished punch), so it can't saturate at 60Hz;
+  // non-seed brains never roll, keeping their rng order intact.
+  if (brain.basics) {
+    const punchingNow = enemy.isPunching;
+    if (brain.basicsWasPunching && !punchingNow && !brain.comboActive && !isAiStringAssault(brain)
+      && !enemy.slipActive && enemy.defenseState !== "duck"
+      && getDistancePx(enemy, player) <= brain.attackRangeMax + blocksToPixels(0.25)
+      && rng.chance(brain.basics.headOffLine)) {
+      startSlip(enemy, rng.next01() < 0.5 ? "left" : "right");
+      if (enemy.slipActive) enemy.slipHoldTimer = AI_SLIP_HOLD;
+    }
+    brain.basicsWasPunching = punchingNow;
+    updateBasicsScenarios(state, brain, enemy, player, attemptPunchFn);
+  }
 
   if (!_assaultOwnsTick) {
     // Defensive timing gets first refusal: it is a read, where the two below are

@@ -31,12 +31,18 @@ import { soundEngine } from "./sound";
 import {
   FUNDAMENTALS, type Fundamental, type FundamentalSeed, type FundStat,
   emptyStats, makeFounder, evolveNextGeneration, rankSeeds, deriveNeuralState,
-  paramId, TRAINING_ROSTER_BASE,
+  paramId, TRAINING_ROSTER_BASE, basicsPunchClass, BASICS_INSIDE_PX, type BasicsPunchClass,
 } from "./aiFundamentals";
+import { getPunchReachPx } from "./engine";
 import {
   SituationTracker, recordState, emptyStore,
   type Situation, type FundamentalStateStore,
 } from "./fundamentalStates";
+import {
+  learnFundamental, sampleReplacements, judgeGate, pushLeague, emptyLearner,
+  evidenceScore, fieldRate, GATE_BOUTS_PER_CYCLE,
+  type LearnerState, type GateTally, type GateDecision,
+} from "./fundamentalLearning";
 
 export { TRAINING_ROSTER_BASE, isTrainingRosterId } from "./aiFundamentals";
 
@@ -214,6 +220,8 @@ interface CornerObs {
   ctPrev: string | null; ctGap: number;
   // 36
   erWindow: number; erResolved: boolean; erArmed: boolean;
+  // 74-94 Basics
+  bs: BasicsObs;
   /** Rolling situation windows for this corner. */
   tracker: SituationTracker;
   /** Situations this corner executed the fundamental under test in. */
@@ -228,8 +236,52 @@ export interface FightObserver {
   fundKey: string;
 }
 
+/** Observer state for the Basics layer (74-94). Kept in one record so the
+ *  layer reads as a unit; every threshold below is a fixed constant. */
+interface BasicsObs {
+  wasPunching: boolean;
+  ownWindow: number; ownHit: boolean;
+  jabWindow: number;
+  crossWindow: number; hookThrown: boolean;
+  afterWindow: number; afterMoved: boolean; afterHit: boolean;
+  inCls: BasicsPunchClass | null; inHit: boolean; inSlip: boolean; inDuck: boolean;
+  evadeWindow: number;
+  cutWindow: number;
+  // 85-94
+  blockedByMe: number; blockedByOpp: number;
+  catchWindow: number; catchKind: "jab" | "power";
+  ripWindow: number;
+  dhWindow: number; dhHit: boolean;
+  exitWindow: number; exitHit: boolean;
+  ropeWindow: number; ropeHits: number;
+  circleWindow: number; circleLat: number; circleBack: number; prevX: number; prevZ: number; prevRd: number; prevOppZ: number;
+  upWindow: number;
+  levels: boolean[]; levelCount: number;
+}
+
+const newBasicsObs = (): BasicsObs => ({
+  wasPunching: false, ownWindow: 0, ownHit: false, jabWindow: 0, crossWindow: 0, hookThrown: false,
+  afterWindow: 0, afterMoved: false, afterHit: false,
+  inCls: null, inHit: false, inSlip: false, inDuck: false, evadeWindow: 0, cutWindow: 0,
+  blockedByMe: -1, blockedByOpp: -1, catchWindow: 0, catchKind: "jab", ripWindow: 0,
+  dhWindow: 0, dhHit: false, exitWindow: 0, exitHit: false, ropeWindow: 0, ropeHits: 0,
+  circleWindow: 0, circleLat: 0, circleBack: 0, prevX: 0, prevZ: 0, prevRd: 0, prevOppZ: 0, upWindow: 0, levels: [], levelCount: 0,
+});
+
+/** Per-tick facts the corner can't read off the two fighters: punches each
+ *  side blocked this round, and the ring's half-width. */
+interface CornerCtx { byMe: number; byOpp: number; cx: number; cz: number; halfW: number; halfH: number }
+const ctxFor = (state: GameState, self: FighterState): CornerCtx => {
+  const rs = state.roundStats;
+  const pb = rs?.playerPunchesBlocked ?? 0, eb = rs?.enemyPunchesBlocked ?? 0;
+  return { byMe: self.isPlayer ? pb : eb, byOpp: self.isPlayer ? eb : pb,
+    cx: (state.ringLeft + state.ringRight) / 2, cz: (state.ringTop + state.ringBottom) / 2,
+    halfW: (state.ringRight - state.ringLeft) / 2, halfH: (state.ringBottom - state.ringTop) / 2 };
+};
+
 function newCorner(): CornerObs {
   return {
+    bs: newBasicsObs(),
     stats: emptyStats(),
     tracker: new SituationTracker(),
     hits: [],
@@ -320,11 +372,11 @@ const MAX_BOUT_SITUATIONS = 60;
  */
 function captureCorner(
   obs: FightObserver, o: CornerObs,
-  self: FighterState, opp: FighterState, dt: number, cx: number,
+  self: FighterState, opp: FighterState, dt: number, cx: number, ctx: CornerCtx,
 ) {
   o.tracker.update(dt, self, opp);
   const before = o.stats[obs.fundKey]?.successes ?? 0;
-  observeCorner(o, self, opp, dt, obs.elapsed, cx);
+  observeCorner(o, self, opp, dt, obs.elapsed, cx, ctx);
   const after = o.stats[obs.fundKey]?.successes ?? 0;
   if (after > before && o.hits.length < MAX_BOUT_SITUATIONS) o.hits.push(o.tracker.read(self, opp));
 }
@@ -347,7 +399,7 @@ const isStraight = (f: FighterState) => f.currentPunch === "jab" || f.currentPun
  * Score one tick for one corner. Thresholds here are constants on purpose — see
  * the note at the top of the file.
  */
-function observeCorner(o: CornerObs, self: FighterState, opp: FighterState, dt: number, elapsed: number, ringCx: number) {
+function observeCorner(o: CornerObs, self: FighterState, opp: FighterState, dt: number, elapsed: number, ringCx: number, ctx: CornerCtx) {
   const threw = self.punchesThrown - o.prevThrown;
   const landed = self.punchesLanded - o.prevLanded;
   const tookHit = opp.punchesLanded - o.prevOppLanded > 0;
@@ -1312,6 +1364,186 @@ function observeCorner(o: CornerObs, self: FighterState, opp: FighterState, dt: 
     o.erWindow = tick(o.erWindow);
   }
 
+  // ------------------------------------------------------ Basics (74 - 94)
+  // Beginner technique. Own-punch tests key off the punch-start edge; the four
+  // defensive tests grade each incoming punch once, when it finishes.
+  {
+    const bs = o.bs ?? (o.bs = newBasicsObs());
+    const myStart = self.isPunching && !bs.wasPunching;
+    const myEnd = !self.isPunching && bs.wasPunching;
+    const p = self.currentPunch;
+    const isHook = (x: string | null) => x === "leftHook" || x === "rightHook";
+
+    // 75 Hands Back Home: resolve the previous punch's recovery before a new one opens.
+    if (bs.ownWindow > 0) {
+      if (tookHit) bs.ownHit = true;
+      bs.ownWindow = tick(bs.ownWindow);
+      if ((bs.ownWindow <= 0 || myStart) && !bs.ownHit) o.stats.basics_hands_home.successes++;
+      if (myStart) bs.ownWindow = 0;
+    }
+    if (myStart && p) {
+      // 74 Punch From Balance: thrown with the target inside the punch's reach,
+      // short of full stretch (the last 10% is where the lean over the knee is).
+      const d2 = Math.hypot(self.x - opp.x, self.z - opp.z);
+      bump(o, "basics_balanced_range", true, d2 <= getPunchReachPx(self, p) * 0.9);
+      bump(o, "basics_hands_home", true, false);
+      bs.ownWindow = 0.6; bs.ownHit = false;
+      // 76 The 1-2.
+      if (p === "cross" && bs.jabWindow > 0) { o.stats.basics_one_two.successes++; bs.jabWindow = 0; }
+      if (p === "jab") { bump(o, "basics_one_two", true, false); bs.jabWindow = 0.45; }
+      // 77 Hook off the right hand.
+      if (isHook(p) && bs.crossWindow > 0) bs.hookThrown = true;
+      if (p === "cross") { bump(o, "basics_hook_off_straight", true, false); bs.crossWindow = 0.7; bs.hookThrown = false; }
+      // 78: a punch starting soon after the last one ended was mid-combo, not the end.
+      if (bs.afterWindow > 0.3) bs.afterWindow = 0;
+    }
+    if (bs.crossWindow > 0) {
+      if (bs.hookThrown && landed > 0 && isHook(p)) { o.stats.basics_hook_off_straight.successes++; bs.crossWindow = 0; }
+      bs.crossWindow = tick(bs.crossWindow);
+    }
+    bs.jabWindow = tick(bs.jabWindow);
+
+    // 78 Head Off the Centre Line: after the last punch, in range, move the head.
+    if (myEnd && dist < 130) { bs.afterWindow = 0.6; bs.afterMoved = false; bs.afterHit = false; }
+    if (bs.afterWindow > 0) {
+      if (evading(self)) bs.afterMoved = true;
+      if (tookHit) bs.afterHit = true;
+      bs.afterWindow = tick(bs.afterWindow);
+      if (bs.afterWindow <= 0) bump(o, "basics_head_off_line", true, bs.afterMoved && !bs.afterHit);
+    }
+
+    const rd = Math.hypot(self.x - opp.x, (self.z ?? 0) - (opp.z ?? 0));
+    // The gap closing because the opponent walked in, not because this corner did.
+    const myStep = Math.hypot(self.x - bs.prevX, (self.z ?? 0) - bs.prevZ);
+    const oppStep = Math.hypot(opp.x - o.prevOppX, (opp.z ?? 0) - bs.prevOppZ);
+    const advancingMe = myStep > oppStep && rd < bs.prevRd;
+
+    // 85/86 Caught a punch with the guard: what comes back, and how fast.
+    if (bs.blockedByMe < 0 || ctx.byMe < bs.blockedByMe) bs.blockedByMe = ctx.byMe;
+    if (bs.blockedByOpp < 0 || ctx.byOpp < bs.blockedByOpp) bs.blockedByOpp = ctx.byOpp;
+    const caught = ctx.byMe > bs.blockedByMe;
+    const gotBlocked = ctx.byOpp > bs.blockedByOpp;
+    bs.blockedByMe = ctx.byMe; bs.blockedByOpp = ctx.byOpp;
+    const inNow = basicsPunchClass(opp) ?? bs.inCls;
+    if (caught && inNow && bs.catchWindow <= 0) {
+      bs.catchKind = inNow === "straight" ? "jab" : "power";
+      bump(o, bs.catchKind === "jab" ? "basics_catch_return_jab" : "basics_catch_hook_fire_back", true, false);
+      bs.catchWindow = bs.catchKind === "jab" ? 0.5 : 0.6;
+    } else if (bs.catchWindow > 0) {
+      if (myStart && p) {
+        if (bs.catchKind === "jab" && p === "jab") { o.stats.basics_catch_return_jab.successes++; bs.catchWindow = 0; }
+        else if (bs.catchKind === "power" && p !== "jab") { o.stats.basics_catch_hook_fire_back.successes++; bs.catchWindow = 0; }
+      }
+      bs.catchWindow = tick(bs.catchWindow);
+    }
+
+    // 88 Double Up the Hook: own hook blocked, the same again without eating one.
+    if (gotBlocked && isHook(p) && bs.dhWindow <= 0) { bump(o, "basics_double_hook", true, false); bs.dhWindow = 0.7; bs.dhHit = false; }
+    else if (bs.dhWindow > 0) {
+      if (tookHit) bs.dhHit = true;
+      if (myStart && isHook(p) && !bs.dhHit) { o.stats.basics_double_hook.successes++; bs.dhWindow = 0; }
+      bs.dhWindow = tick(bs.dhWindow);
+    }
+
+    // 79-82 The incoming punch, graded by kind when it finishes.
+    if (opp.isPunching && !o.prevOppPunching && dist < 150) {
+      bs.inCls = basicsPunchClass(opp); bs.inHit = false; bs.inSlip = false; bs.inDuck = false;
+    }
+    if (bs.inCls) {
+      if (tookHit) bs.inHit = true;
+      if (self.slipActive) bs.inSlip = true;
+      if (self.defenseState === "duck" || self.duckTimer > 0) bs.inDuck = true;
+      if (!opp.isPunching) {
+        const ok = !bs.inHit;
+        if (bs.inCls === "straight") bump(o, "basics_slip_straight", true, ok && (bs.inSlip || bs.inDuck));
+        else if (bs.inCls === "hook") bump(o, "basics_roll_hook", true, ok && bs.inDuck);
+        else if (bs.inCls === "uppercut") bump(o, "basics_guard_uppercut", true, ok && !bs.inDuck);
+        else bump(o, "basics_elbows_body", true, ok);
+        // 83 Tight Defence, Quick Counter: an evasion that worked opens the counter.
+        if (ok && (bs.inSlip || bs.inDuck)) { bump(o, "basics_tight_counter", true, false); bs.evadeWindow = 0.8; }
+        // 87 Slip and Rip: a straight slipped clean opens the body shot.
+        if (ok && bs.inCls === "straight" && (bs.inSlip || bs.inDuck)) { bump(o, "basics_slip_and_rip", true, false); bs.ripWindow = 0.8; }
+        bs.inCls = null;
+      }
+    }
+    if (bs.evadeWindow > 0) {
+      if (landed > 0) { o.stats.basics_tight_counter.successes++; bs.evadeWindow = 0; }
+      bs.evadeWindow = tick(bs.evadeWindow);
+    }
+
+    // 84 Body Hook Cut-Off: the opponent leaves at close range.
+    const oppLeaving = dist < 120 && dist > o.prevDist + 0.3 && Math.abs(oppDx) > Math.abs(self.x - o.prevX);
+    if (oppLeaving && bs.cutWindow <= 0) { bump(o, "basics_cutoff_body_hook", true, false); bs.cutWindow = 1.0; }
+    if (bs.cutWindow > 0) {
+      if (landed > 0 && isHook(p) && !self.punchAimsHead) { o.stats.basics_cutoff_body_hook.successes++; bs.cutWindow = 0; }
+      bs.cutWindow = tick(bs.cutWindow);
+    }
+
+    // 85-94 measure range in the ring plane (x and z), not x alone.
+    // 87 resolve: a body punch lands off the slip.
+    if (bs.ripWindow > 0) {
+      if (landed > 0 && !self.punchAimsHead) { o.stats.basics_slip_and_rip.successes++; bs.ripWindow = 0; }
+      bs.ripWindow = tick(bs.ripWindow);
+    }
+
+    // 89 Jab and Get Out: a jab landed from mid range, then out of their reach.
+    if (bs.exitWindow > 0) {
+      if (tookHit) bs.exitHit = true;
+      if (!bs.exitHit && rd > getPunchReachPx(opp, "jab")) { o.stats.basics_jab_and_exit.successes++; bs.exitWindow = 0; }
+      bs.exitWindow = tick(bs.exitWindow);
+    } else if (landed > 0 && p === "jab") {
+      bump(o, "basics_jab_and_exit", true, false); bs.exitWindow = 0.6; bs.exitHit = false;
+    }
+
+    // 90 Inside Work and 94 Mix Head and Body, graded per punch thrown.
+    if (myStart && p) {
+      const body = !self.punchAimsHead;
+      if (rd < BASICS_INSIDE_PX) bump(o, "basics_inside_work", true, body || p === "leftUppercut" || p === "rightUppercut");
+      bs.levels.push(body); if (bs.levels.length > 4) bs.levels.shift();
+      bs.levelCount++;
+      if (bs.levelCount % 4 === 0) bump(o, "basics_mix_levels", true, bs.levels.includes(true) && bs.levels.includes(false));
+    }
+
+    // 91 Off the Ropes. The ring is a diamond in x/z; 1 is the ropes.
+    const ropeNorm = (f: FighterState) =>
+      Math.abs(f.x - ctx.cx) / ctx.halfW + Math.abs((f.z ?? ctx.cz) - ctx.cz) / ctx.halfH;
+    const myRope = ropeNorm(self);
+    const onRopes = myRope > 0.8 && ropeNorm(opp) < myRope && rd < 130;
+    if (bs.ropeWindow > 0) {
+      if (tookHit) bs.ropeHits++;
+      if (myRope < 0.68 && bs.ropeHits < 2) { o.stats.basics_off_the_ropes.successes++; bs.ropeWindow = 0; }
+      else bs.ropeWindow = tick(bs.ropeWindow);
+    } else if (onRopes) {
+      bump(o, "basics_off_the_ropes", true, false); bs.ropeWindow = 1.5; bs.ropeHits = 0;
+    }
+
+    // 92 Circle, Don't Back Up Straight: own movement split into straight away
+    // from the opponent and across them, while being walked down.
+    const sz = self.z ?? 0;
+    if (bs.circleWindow > 0) {
+      const mx = self.x - bs.prevX, mz = sz - bs.prevZ;
+      const ax = self.x - opp.x, az = sz - (opp.z ?? 0);
+      const al = Math.hypot(ax, az) || 1;
+      const along = (mx * ax + mz * az) / al;
+      bs.circleLat += Math.abs((mx * -az + mz * ax) / al);
+      if (along > 0) bs.circleBack += along;
+      bs.circleWindow = tick(bs.circleWindow);
+      if (bs.circleWindow <= 0) bump(o, "basics_circle_off", true, bs.circleLat > bs.circleBack);
+    } else if (rd >= BASICS_INSIDE_PX && rd < 160 && rd < bs.prevRd - 0.2 && !advancingMe) {
+      bs.circleWindow = 0.6; bs.circleLat = 0; bs.circleBack = 0;
+    }
+    bs.prevX = self.x; bs.prevZ = sz; bs.prevRd = rd; bs.prevOppZ = opp.z ?? 0;
+
+    // 93 Downstairs, Then Upstairs.
+    if (bs.upWindow > 0) {
+      if (landed > 0 && self.punchAimsHead) { o.stats.basics_body_then_head.successes++; bs.upWindow = 0; }
+      bs.upWindow = tick(bs.upWindow);
+    } else if (landed > 0 && !self.punchAimsHead) {
+      bump(o, "basics_body_then_head", true, false); bs.upWindow = 1.0;
+    }
+    bs.wasPunching = self.isPunching;
+  }
+
   o.prevOppPunching = opp.isPunching;
   o.prevThrown = self.punchesThrown;
   o.prevLanded = self.punchesLanded;
@@ -1326,8 +1558,8 @@ function observeCorner(o: CornerObs, self: FighterState, opp: FighterState, dt: 
 export function observeTick(obs: FightObserver, state: GameState, dt: number) {
   obs.elapsed += dt;
   const cx = (state.ringLeft + state.ringRight) / 2;
-  captureCorner(obs, obs.a, state.player, state.enemy, dt, cx);
-  captureCorner(obs, obs.b, state.enemy, state.player, dt, cx);
+  captureCorner(obs, obs.a, state.player, state.enemy, dt, cx, ctxFor(state, state.player));
+  captureCorner(obs, obs.b, state.enemy, state.player, dt, cx, ctxFor(state, state.enemy));
 }
 
 /**
@@ -1338,7 +1570,7 @@ export function observeTick(obs: FightObserver, state: GameState, dt: number) {
 export function observeAiTick(obs: FightObserver, state: GameState, dt: number) {
   obs.elapsed += dt;
   captureCorner(obs, obs.b, state.enemy, state.player, dt,
-    (state.ringLeft + state.ringRight) / 2);
+    (state.ringLeft + state.ringRight) / 2, ctxFor(state, state.enemy));
 }
 
 /**
@@ -1393,7 +1625,38 @@ export function stepBout(bout: Bout, maxTicks: number): number {
 
 // ------------------------------------------------------------------ the run
 
+/**
+ * One fixture. Non-negative values index the population; negative values are
+ * the fixed corners of the learning layer: frozen past champions (the league)
+ * and the two sides of the champion gate.
+ */
 export interface Pairing { a: number; b: number; }
+
+/** League opponent k (0 = newest frozen champion). */
+export const LEAGUE_SLOT = (k: number) => -1 - k;
+export const CHAMP_SLOT = -100;
+export const LAST_GOOD_SLOT = -101;
+/** Seed ids (and so roster ids) for the fixed corners; well clear of the
+ *  population's 0..n-1. */
+const LEAGUE_SEED_ID = 500;
+const CHAMP_SEED_ID = 600;
+const LAST_GOOD_SEED_ID = 601;
+
+function pseudoSeed(id: number, name: string, params: Record<string, number>): FundamentalSeed {
+  return { id, name, gen: 0, params, stats: {}, lifetime: {}, wins: 0, losses: 0, bouts: 0, parents: null, salvaged: [] };
+}
+
+/** The fighter a fixture slot stands for, or null if the slot no longer exists. */
+export function cornerFor(run: TrainingRun, slot: number): FundamentalSeed | null {
+  if (slot >= 0) return run.population[slot] ?? null;
+  if (slot === CHAMP_SLOT) return pseudoSeed(CHAMP_SEED_ID, "Champion", run.champion.params);
+  if (slot === LAST_GOOD_SLOT) {
+    return run.lastGood ? pseudoSeed(LAST_GOOD_SEED_ID, "Last passed champion", run.lastGood.params) : null;
+  }
+  const k = -1 - slot;
+  const p = run.league?.[k];
+  return p ? pseudoSeed(LEAGUE_SEED_ID + k, `League ${k + 1}`, p) : null;
+}
 
 export interface GenerationRecord {
   gen: number;
@@ -1403,6 +1666,9 @@ export interface GenerationRecord {
   replaced: number[];
   standings: { id: number; name: string; wins: number; bouts: number; rate: number }[];
   salvage: Record<number, string[]>;
+  /** The champion gate's verdict at this cut; absent when there was nothing to
+   *  judge against yet. */
+  gate?: GateDecision;
 }
 
 /**
@@ -1439,6 +1705,12 @@ export interface FundCycleRecord {
   attempts: number;
   /** Remembered situations written for this fundamental. */
   situations: number;
+  /** Whether the learner moved the champion's block, and by how much at most
+   *  (share of a parameter's range). */
+  stepped?: boolean;
+  stepSize?: number;
+  /** This fundamental's search width after the step. */
+  sigma?: number;
 }
 
 export interface TrainingRun {
@@ -1471,6 +1743,28 @@ export interface TrainingRun {
   championStates: FundamentalStateStore;
   /** Seed id -> what it learned about the fundamental under test this cycle. */
   cycleStores: Record<number, FundamentalStateStore>;
+  /**
+   * Fundamental keys the sweep visits, in FUNDAMENTALS order. Absent or empty
+   * means all of them. The generation closes at the end of this list, so a
+   * short list loops on just those fundamentals.
+   */
+  selected?: string[];
+  /** Adam moments, step counts and search widths of the learning layer. */
+  learner?: LearnerState;
+  /** Frozen champions that passed their gate, newest first. Every seed boxes
+   *  each of them once per cycle, so the population is measured against a
+   *  field it is not co-evolving with. */
+  league?: Record<string, number>[];
+  /** The last champion that passed its gate, with its situation memory: what
+   *  a failed generation is rolled back to. Null until the first generation
+   *  closes. */
+  lastGood?: { params: Record<string, number>; states: FundamentalStateStore } | null;
+  /** Champion-vs-last-passed results, accumulated until the gate can decide. */
+  gate?: GateTally;
+  /** Seed id -> its record against the league this generation. */
+  leagueTally?: Record<number, { wins: number; bouts: number }>;
+  /** The most recent gate decision, for display. */
+  lastGate?: (GateDecision & { gen: number }) | null;
 }
 
 export interface RunConfig {
@@ -1510,14 +1804,42 @@ function shuffle<T>(xs: T[], rand: () => number): T[] {
  * Shuffled so the standings fill evenly as the cycle runs instead of one seed
  * completing all of its bouts first.
  */
-function buildSchedule(size: number, meetings: number, rand: () => number): Pairing[] {
+function buildSchedule(run: TrainingRun, rand: () => number): Pairing[] {
+  const size = run.population.length;
   const out: Pairing[] = [];
   for (let i = 0; i < size; i++) {
     for (let j = i + 1; j < size; j++) {
-      for (let m = 0; m < meetings; m++) out.push({ a: i, b: j });
+      for (let m = 0; m < run.meetingsPerFundamental; m++) out.push({ a: i, b: j });
     }
   }
+  // Corner sides are drawn, not fixed: the two corners are not built the same
+  // way, and a fixed side would make it part of what is being measured.
+  const sided = (a: number, b: number): Pairing => (rand() < 0.5 ? { a, b } : { a: b, b: a });
+  // League: every seed meets every frozen champion once, so the field is equal.
+  const league = run.league?.length ?? 0;
+  for (let i = 0; i < size; i++) {
+    for (let k = 0; k < league; k++) out.push(sided(i, LEAGUE_SLOT(k)));
+  }
+  // Gate: the champion as it stands against the last one that passed.
+  if (run.lastGood) {
+    for (let g = 0; g < GATE_BOUTS_PER_CYCLE; g++) out.push(sided(CHAMP_SLOT, LAST_GOOD_SLOT));
+  }
   return shuffle(out, rand);
+}
+
+/** The fixture count a cycle opened now would have; the restore path checks a
+ *  saved schedule against it. */
+export function expectedScheduleLength(run: TrainingRun): number {
+  const size = run.population.length;
+  return ((size * (size - 1)) / 2) * run.meetingsPerFundamental
+    + size * (run.league?.length ?? 0)
+    + (run.lastGood ? GATE_BOUTS_PER_CYCLE : 0);
+}
+
+/** True if both slots of a saved fixture still name a fighter. */
+export function pairingValid(run: TrainingRun, p: Pairing | null | undefined): boolean {
+  if (!p || !Number.isInteger(p.a) || !Number.isInteger(p.b) || p.a === p.b) return false;
+  return cornerFor(run, p.a) !== null && cornerFor(run, p.b) !== null;
 }
 
 /** The fundamental currently under test. */
@@ -1543,7 +1865,7 @@ function snapshotCycle(run: TrainingRun) {
  * rather than left pointing at the one createRun happened to build.
  */
 export function startCycle(run: TrainingRun, rand: () => number) {
-  run.schedule = buildSchedule(run.population.length, run.meetingsPerFundamental, rand);
+  run.schedule = buildSchedule(run, rand);
   run.cursor = 0;
   run.completed = 0;
   run.cycleStores = {};
@@ -1570,6 +1892,12 @@ export function createRun(cfg: RunConfig, rand: () => number): TrainingRun {
     cycleLog: [],
     championStates: emptyStore(),
     cycleStores: {},
+    learner: emptyLearner(),
+    league: [],
+    lastGood: null,
+    gate: { wins: 0, losses: 0, bouts: 0 },
+    leagueTally: {},
+    lastGate: null,
   };
   startCycle(run, rand);
   return run;
@@ -1580,6 +1908,38 @@ export const cycleSize = (run: TrainingRun) => run.schedule.length;
 
 /** Fundamentals in a full sweep. */
 export const SWEEP_LENGTH = FUNDAMENTALS.length;
+
+/** FUNDAMENTALS indices the sweep visits, in order (all when nothing's picked). */
+export function sweepIndices(run: TrainingRun): number[] {
+  const pick = new Set(run.selected ?? []);
+  const out = FUNDAMENTALS.map((f, i) => (pick.has(f.key) ? i : -1)).filter(i => i >= 0);
+  return out.length > 0 ? out : FUNDAMENTALS.map((_, i) => i);
+}
+
+/** Where the sweep is: 0-based position of the fundamental under test within
+ *  the selected list (the next selected one if it was just deselected), and the
+ *  list's length. */
+export function sweepPosition(run: TrainingRun): { pos: number; len: number } {
+  const idx = sweepIndices(run);
+  const at = idx.findIndex(i => i >= run.fundIndex);
+  return { pos: at < 0 ? idx.length - 1 : at, len: idx.length };
+}
+
+/**
+ * Change which fundamentals the sweep visits. Unknown keys are dropped. If
+ * nothing has been played in the open cycle and it is no longer selected, the
+ * cycle is reopened on the first selected fundamental at or after it;
+ * otherwise the open cycle finishes and the change applies from the next one.
+ */
+export function setSweepSelection(run: TrainingRun, keys: string[], rand: () => number) {
+  const known = new Set(FUNDAMENTALS.map(f => f.key));
+  run.selected = keys.filter(k => known.has(k));
+  const idx = sweepIndices(run);
+  if (run.completed === 0 && run.cursor === 0 && !idx.includes(run.fundIndex)) {
+    run.fundIndex = idx.find(i => i > run.fundIndex) ?? idx[0];
+    startCycle(run, rand);
+  }
+}
 
 function addStats(dst: Record<string, FundStat>, src: Record<string, FundStat>) {
   for (const f of FUNDAMENTALS) {
@@ -1626,9 +1986,40 @@ function keepSituations(run: TrainingRun, seed: FundamentalSeed, hits: Situation
 }
 
 function foldResult(run: TrainingRun, bout: Bout) {
-  const a = run.population.find(s => s.id === bout.seedA);
-  const b = run.population.find(s => s.id === bout.seedB);
-  if (!a || !b) return;
+  const a = run.population.find(s => s.id === bout.seedA) ?? null;
+  const b = run.population.find(s => s.id === bout.seedB) ?? null;
+
+  if (!a && !b) {
+    // Gate bout: neither corner is a seed, so nothing is credited to anyone.
+    // Read from the current champion's side, whichever corner it took.
+    const champIs = bout.seedA === CHAMP_SEED_ID ? 0 : bout.seedB === CHAMP_SEED_ID ? 1 : -1;
+    if (champIs < 0) return;
+    const g = (run.gate ??= { wins: 0, losses: 0, bouts: 0 });
+    g.bouts++;
+    if (bout.winner === champIs) g.wins++;
+    else if (bout.winner === (1 - champIs)) g.losses++;
+    run.completed++;
+    return;
+  }
+
+  if (!a || !b) {
+    // League bout: one seed against a frozen champion. The seed's record and
+    // evidence land as usual; the frozen corner is held out and learns nothing.
+    // Every seed gets the same league fixtures, so the column stays comparable.
+    const seed = (a ?? b)!;
+    const side = a ? 0 : 1;
+    seed.bouts++;
+    if (bout.winner === side) seed.wins++;
+    else seed.losses++;
+    const lt = ((run.leagueTally ??= {})[seed.id] ??= { wins: 0, bouts: 0 });
+    lt.bouts++;
+    if (bout.winner === side) lt.wins++;
+    run.completed++;
+    const obs = side === 0 ? bout.obs.a : bout.obs.b;
+    creditSeed(seed, obs.stats);
+    keepSituations(run, seed, obs.hits);
+    return;
+  }
 
   // The record is per bout and lands immediately. It ranks the standings and it
   // decides the cut at the end of the sweep — but it has no say in whose
@@ -1663,7 +2054,9 @@ export function runHeadless(run: TrainingRun, budgetMs: number, ticksPerSlice = 
   const deadline = performance.now() + budgetMs;
   while (performance.now() < deadline && run.cursor < run.schedule.length) {
     const pair = run.schedule[run.cursor++];
-    const bout = createBout(run.population[pair.a], run.population[pair.b], run.level, currentFundamental(run).key);
+    const ca = cornerFor(run, pair.a), cb = cornerFor(run, pair.b);
+    if (!ca || !cb) { run.completed++; continue; } // a slot that no longer exists
+    const bout = createBout(ca, cb, run.level, currentFundamental(run).key);
     while (!bout.done) {
       stepBout(bout, ticksPerSlice);
       if (!bout.done && performance.now() >= deadline + 40) break; // never wedge a frame
@@ -1700,8 +2093,9 @@ export function cycleStat(run: TrainingRun, seed: FundamentalSeed): CycleStat {
  * fundamental to whoever is strongest overall and the sweep would stop
  * measuring anything. The seed that does this best takes this.
  *
- * Ties break on attempts — the same rate over more repetitions is the better
- * evidenced claim.
+ * Rates are read as evidence: each is shrunk toward the field's pooled rate by
+ * how few attempts it rests on, so 1 from 1 cannot outrank 40 from 50. Ties
+ * still break on attempts.
  *
  * Nobody takes a fundamental that never came up. Passing on parameters that
  * were never exercised would be noise dressed as a result, so the champion
@@ -1711,13 +2105,17 @@ export function cycleWinner(run: TrainingRun):
   { seed: FundamentalSeed; stat: CycleStat } | null {
   let best: FundamentalSeed | null = null;
   let bestStat: CycleStat | null = null;
-  for (const s of run.population) {
-    const st = cycleStat(run, s);
+  let bestScore = -1;
+  const stats = run.population.map(s => cycleStat(run, s));
+  const field = fieldRate(stats.filter(st => st.attempts > 0));
+  for (let i = 0; i < run.population.length; i++) {
+    const st = stats[i];
     if (st.attempts <= 0) continue;
+    const score = evidenceScore(st.successes, st.attempts, field);
     if (!bestStat
-      || st.rate > bestStat.rate
-      || (st.rate === bestStat.rate && st.attempts > bestStat.attempts)) {
-      best = s; bestStat = st;
+      || score > bestScore
+      || (score === bestScore && st.attempts > bestStat.attempts)) {
+      best = run.population[i]; bestStat = st; bestScore = score;
     }
   }
   return best && bestStat ? { seed: best, stat: bestStat } : null;
@@ -1726,9 +2124,12 @@ export function cycleWinner(run: TrainingRun):
 /**
  * Close the fundamental under test and open the next one.
  *
- * The winner's parameters for *that fundamental only* are copied into the
- * champion. Everything else in it is left where it is, so the champion is the
- * running assembly of every fundamental's winner rather than any one seed.
+ * The champion's block for *that fundamental only* takes one learning step
+ * (fundamentalLearning.ts): an evidence-ranked, baseline-subtracted direction
+ * across every seed that had a chance, through Adam and a trust region. Every
+ * seed's result moves it, not just the winner's, and no single cycle can
+ * overwrite the block in one jump. Everything else in the champion is left
+ * where it is.
  *
  * The situations the winner executed it in are copied across with them, as that
  * fundamental's entry in the champion's memory. They are replaced rather than
@@ -1742,19 +2143,21 @@ export function advanceFundamental(run: TrainingRun, rand: () => number): FundCy
   const f = currentFundamental(run);
   const won = cycleWinner(run);
 
+  const learner = (run.learner ??= emptyLearner());
+  const learned = learnFundamental(
+    f,
+    run.population.map(seed => { const st = cycleStat(run, seed); return { seed, attempts: st.attempts, successes: st.successes }; }),
+    run.champion,
+    learner,
+  );
+
   if (won) {
-    const params: Record<string, number> = {};
-    for (const pr of f.params) {
-      const id = paramId(f.key, pr.key);
-      params[id] = won.seed.params[id];
-      run.champion.params[id] = won.seed.params[id];
-    }
     if (!run.championStates) run.championStates = emptyStore();
     // An empty cycle leaves the previous memory alone. Nobody having executed
     // the fundamental is not evidence that what was remembered has stopped
     // applying, and an empty list would switch it off in ordinary play.
-    const learned = run.cycleStores[won.seed.id]?.[f.key];
-    if (learned && learned.length > 0) run.championStates[f.key] = learned;
+    const remembered = run.cycleStores[won.seed.id]?.[f.key];
+    if (remembered && remembered.length > 0) run.championStates[f.key] = remembered;
   }
 
   const record: FundCycleRecord = {
@@ -1767,27 +2170,67 @@ export function advanceFundamental(run: TrainingRun, rand: () => number): FundCy
     rate: won?.stat.rate ?? 0,
     attempts: won?.stat.attempts ?? 0,
     situations: run.championStates?.[f.key]?.length ?? 0,
+    stepped: learned.stepped,
+    stepSize: learned.stepSize,
+    sigma: learned.sigma,
   };
   run.cycleLog.push(record);
   if (run.cycleLog.length > CYCLE_LOG_LIMIT) {
     run.cycleLog.splice(0, run.cycleLog.length - CYCLE_LOG_LIMIT);
   }
 
-  if (run.fundIndex + 1 >= FUNDAMENTALS.length) advanceGeneration(run, rand);
+  const next = sweepIndices(run).find(i => i > run.fundIndex);
+  if (next === undefined) advanceGeneration(run, rand);
   else {
-    run.fundIndex++;
+    run.fundIndex = next;
     startCycle(run, rand);
   }
   return record;
 }
 
 /**
- * Close the generation: record standings, keep the top half, replace the bottom
- * half with fresh seeds, and restart the sweep at the first fundamental.
+ * Close the generation.
+ *
+ * 1. The gate. The champion has boxed the last champion that passed all
+ *    generation; if it clearly lost (below GATE_ROLLBACK_BELOW over at least
+ *    GATE_MIN_BOUTS), the whole generation's learning is rolled back. A pass
+ *    makes it the new last-passed champion and enters it into the league. Too
+ *    few bouts carries the tally on undecided.
+ * 2. The cut: the top half is kept whole. The emptied slots are refilled by
+ *    the search distribution — one explorer from the whole space, the rest
+ *    mirrored pairs around the champion at each fundamental's learned width —
+ *    with salvaged blocks laid on top.
  */
 export function advanceGeneration(run: TrainingRun, rand: () => number): GenerationRecord {
   const ranked = rankSeeds(run.population);
-  const { next, survivors, replaced, salvageLog } = evolveNextGeneration(run.population, run.gen + 1, rand);
+  const learner = (run.learner ??= emptyLearner());
+
+  let gate: GateDecision | undefined;
+  const snapshot = () => ({ params: { ...run.champion.params }, states: { ...(run.championStates ?? emptyStore()) } });
+  if (!run.lastGood) {
+    // Nothing to judge against yet: the first champion passes by default.
+    run.lastGood = snapshot();
+    run.league = pushLeague(run.league ?? [], run.champion.params);
+    run.gate = { wins: 0, losses: 0, bouts: 0 };
+  } else {
+    gate = judgeGate(run.gate ?? { wins: 0, losses: 0, bouts: 0 });
+    if (gate.decided) {
+      if (gate.rolledBack) {
+        run.champion.params = { ...run.lastGood.params };
+        run.championStates = { ...run.lastGood.states };
+      } else {
+        run.lastGood = snapshot();
+        run.league = pushLeague(run.league ?? [], run.champion.params);
+      }
+      run.gate = { wins: 0, losses: 0, bouts: 0 };
+      run.lastGate = { ...gate, gen: run.gen };
+    }
+  }
+
+  const { next, survivors, replaced, salvageLog } = evolveNextGeneration(
+    run.population, run.gen + 1, rand,
+    (slots, gen) => sampleReplacements(slots, gen, run.champion, learner, rand),
+  );
 
   const record: GenerationRecord = {
     gen: run.gen,
@@ -1798,12 +2241,14 @@ export function advanceGeneration(run: TrainingRun, rand: () => number): Generat
       rate: s.bouts > 0 ? s.wins / s.bouts : 0,
     })),
     salvage: salvageLog,
+    gate,
   };
 
   run.history.push(record);
   run.population = next;
+  run.leagueTally = {};
   run.gen++;
-  run.fundIndex = 0;
+  run.fundIndex = sweepIndices(run)[0];
   startCycle(run, rand);
   return record;
 }
@@ -1812,5 +2257,17 @@ export function advanceGeneration(run: TrainingRun, rand: () => number): Generat
 export function neuralOverridesFor(pop: FundamentalSeed[]): Record<number, Record<string, number>> {
   const out: Record<number, Record<string, number>> = {};
   for (const s of pop) out[seedRosterId(s.id)] = deriveNeuralState(s);
+  return out;
+}
+
+/** The population plus the learning layer's fixed corners (league, champion,
+ *  last passed champion). Republish whenever the champion moves. */
+export function neuralOverridesForRun(run: TrainingRun): Record<number, Record<string, number>> {
+  const out = neuralOverridesFor(run.population);
+  const slots = [CHAMP_SLOT, LAST_GOOD_SLOT, ...(run.league ?? []).map((_, k) => LEAGUE_SLOT(k))];
+  for (const slot of slots) {
+    const c = cornerFor(run, slot);
+    if (c) out[seedRosterId(c.id)] = deriveNeuralState(c);
+  }
   return out;
 }

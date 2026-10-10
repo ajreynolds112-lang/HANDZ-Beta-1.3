@@ -3,8 +3,12 @@ import { Trophy, Settings, Volume2, VolumeX, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { BoxingGloveIcon } from "@/components/BoxingGloveIcon";
-import { soundEngine, musicEngine } from "@/game/sound";
+import { soundEngine } from "@/game/sound";
 import { isDirectionalPerfectBlockEnabled } from "@/components/NeuralNetworkView";
+import {
+  getVisualSettings, setVisualSettings, resetVisualSettings, RENDER_SCALE_OPTIONS,
+  type VisualSettings, type RenderScale,
+} from "@/game/visualSettings";
 
 interface MainMenuProps {
   onQuickFight: () => void;
@@ -21,15 +25,13 @@ export default function MainMenu({ onQuickFight, onCareer, onEditRoster, onTutor
   const [showSettings, setShowSettings] = useState(false);
   const [, forceUpdate] = useState(0);
 
-  const handleVolumeChange = (key: "master" | "sfx" | "crowd" | "ui" | "music", value: number) => {
+  const handleVolumeChange = (key: "master" | "sfx" | "crowd" | "ui", value: number) => {
     soundEngine.updateSetting(key, value);
-    if (key === "master" || key === "music") musicEngine.refreshVolume();
     forceUpdate(v => v + 1);
   };
 
   const handleToggleMute = () => {
     soundEngine.toggleMute();
-    musicEngine.refreshVolume();
     forceUpdate(v => v + 1);
   };
 
@@ -105,28 +107,32 @@ export default function MainMenu({ onQuickFight, onCareer, onEditRoster, onTutor
 
 function SoundSettings({ onClose, onVolumeChange, onToggleMute }: {
   onClose: () => void;
-  onVolumeChange: (key: "master" | "sfx" | "crowd" | "ui" | "music", value: number) => void;
+  onVolumeChange: (key: "master" | "sfx" | "crowd" | "ui", value: number) => void;
   onToggleMute: () => void;
 }) {
   const volumes = soundEngine.getVolumes();
   const muted = soundEngine.isMuted();
-  const [tab, setTab] = useState<"sound" | "controls">("sound");
-  const categories: { label: string; key: "master" | "sfx" | "crowd" | "ui" | "music" }[] = [
+  const [tab, setTab] = useState<"sound" | "graphics" | "controls">("sound");
+  const categories: { label: string; key: "master" | "sfx" | "crowd" | "ui" }[] = [
     { label: "Master", key: "master" },
-    { label: "Music", key: "music" },
-    { label: "SFX", key: "sfx" },
+      { label: "SFX", key: "sfx" },
     { label: "Crowd", key: "crowd" },
     { label: "UI", key: "ui" },
   ];
 
   return (
-    <Card className="absolute top-14 right-4 p-4 w-72 z-50" data-testid="panel-sound-settings">
+    <Card className="absolute top-14 right-4 p-4 w-72 z-50 max-h-[calc(100vh-4.5rem)] overflow-y-auto" data-testid="panel-sound-settings">
       <div className="flex gap-2 mb-3">
         <button
           onClick={() => setTab("sound")}
           className={`flex-1 text-xs py-1 rounded font-semibold transition-colors ${tab === "sound" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
           data-testid="tab-sound"
         >Sound</button>
+        <button
+          onClick={() => setTab("graphics")}
+          className={`flex-1 text-xs py-1 rounded font-semibold transition-colors ${tab === "graphics" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+          data-testid="tab-graphics"
+        >Graphics</button>
         <button
           onClick={() => setTab("controls")}
           className={`flex-1 text-xs py-1 rounded font-semibold transition-colors ${tab === "controls" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
@@ -163,6 +169,8 @@ function SoundSettings({ onClose, onVolumeChange, onToggleMute }: {
         </>
       )}
 
+      {tab === "graphics" && <GraphicsSettings />}
+
       {tab === "controls" && (
         <>
           <h3 className="text-sm font-semibold text-muted-foreground mb-3">CONTROLS</h3>
@@ -179,11 +187,8 @@ function SoundSettings({ onClose, onVolumeChange, onToggleMute }: {
             <ControlRow label="Feint" value="F, then Punch" />
             <ControlRow label="Full Guard" value="Space x2" />
             <ControlRow label="Block Up/Down" value="Space+Arrow" />
-            <ControlRow label="Rhythm Up" value="Tab+Right" />
-            <ControlRow label="Rhythm Down" value="Tab+Left" />
             <ControlRow label="Charge Punch" value="A, then Punch" />
             <ControlRow label="Slip" value="C + Arrow" />
-            <ControlRow label="Stance Cycle" value="Tab + C" />
             {isDirectionalPerfectBlockEnabled() ? (
               <>
                 <ControlRow label="Perfect Block (head)" value="V" />
@@ -209,6 +214,71 @@ function ControlRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-2">
       <span className="text-muted-foreground">{label}</span>
       <span className="font-mono">{value}</span>
+    </div>
+  );
+}
+
+type SliderKey = Exclude<keyof VisualSettings, "enabled" | "renderScale">;
+
+const GRAPHICS_SLIDERS: { key: SliderKey; label: string; min: number; max: number; step: number; fmt: (v: number) => string }[] = [
+  { key: "sharpness", label: "Sharpening", min: 0, max: 100, step: 1, fmt: v => `${v}` },
+  { key: "detail", label: "Detail", min: 0, max: 100, step: 1, fmt: v => `${v}` },
+  { key: "exposure", label: "Exposure", min: -2, max: 2, step: 0.05, fmt: v => `${v > 0 ? "+" : ""}${v.toFixed(2)}` },
+  { key: "contrast", label: "Contrast", min: -100, max: 100, step: 1, fmt: v => `${v > 0 ? "+" : ""}${v}` },
+  { key: "saturation", label: "Saturation", min: -100, max: 100, step: 1, fmt: v => `${v > 0 ? "+" : ""}${v}` },
+  { key: "temperature", label: "Temperature", min: -100, max: 100, step: 1, fmt: v => `${v > 0 ? "+" : ""}${v}` },
+  { key: "grain", label: "Film Grain", min: 0, max: 100, step: 1, fmt: v => `${v}` },
+  { key: "grainSize", label: "Grain Size", min: 0.5, max: 4, step: 0.1, fmt: v => v.toFixed(1) },
+];
+
+/** Visual Enhancer controls. Changes apply to the live 3D view immediately. */
+function GraphicsSettings() {
+  const [vs, setVs] = useState<VisualSettings>(getVisualSettings());
+  const update = (patch: Partial<VisualSettings>) => setVs(setVisualSettings(patch));
+  return (
+    <div data-testid="panel-graphics-settings">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-muted-foreground">VISUAL ENHANCER</h3>
+        <button
+          onClick={() => update({ enabled: !vs.enabled })}
+          className={`text-[10px] font-bold px-2 py-0.5 rounded ${vs.enabled ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+          data-testid="toggle-visual-enhancer"
+        >{vs.enabled ? "ON" : "OFF"}</button>
+      </div>
+      <div className={vs.enabled ? "" : "opacity-40 pointer-events-none"}>
+        <div className="mb-3">
+          <div className="text-xs text-muted-foreground mb-1">Render Resolution</div>
+          <select
+            value={vs.renderScale}
+            onChange={e => update({ renderScale: Number(e.target.value) as RenderScale })}
+            className="w-full text-xs bg-muted rounded px-2 py-1"
+            data-testid="select-render-scale"
+          >
+            {RENDER_SCALE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+        {GRAPHICS_SLIDERS.map(sl => (
+          <div key={sl.key} className="mb-3">
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="text-muted-foreground">{sl.label}</span>
+              <span className="font-mono">{sl.fmt(vs[sl.key])}</span>
+            </div>
+            <input
+              type="range"
+              min={sl.min}
+              max={sl.max}
+              step={sl.step}
+              value={vs[sl.key]}
+              onChange={e => update({ [sl.key]: parseFloat(e.target.value) } as Partial<VisualSettings>)}
+              className="w-full h-1.5 accent-primary cursor-pointer"
+              data-testid={`slider-gfx-${sl.key}`}
+            />
+          </div>
+        ))}
+      </div>
+      <Button variant="outline" size="sm" onClick={() => setVs(resetVisualSettings())} className="w-full text-xs" data-testid="button-reset-graphics">
+        Reset to Defaults
+      </Button>
     </div>
   );
 }

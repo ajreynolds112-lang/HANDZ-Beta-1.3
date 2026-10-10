@@ -12,11 +12,17 @@ import { isEquipmentCrateUnlocked, pendingEquipmentUnlocks } from "@/game/equipm
 import { equipmentCareerWins } from "@/lib/equipmentUpgrades";
 import RefinementProgressMeter from "@/components/RefinementProgressMeter";
 import PunchEnduranceMeter from "@/components/PunchEnduranceMeter";
+import DefensiveMasteryMeter from "@/components/DefensiveMasteryMeter";
+import PurePowerMeter from "@/components/PurePowerMeter";
 import DailyRewardBadge from "@/components/DailyRewardBadge";
 import * as localSaves from "@/lib/localSaves";
 import { createInitialState, startFight, updateGame } from "@/game/engine";
+import { useEnterKey, ENTER_PRIORITY } from "@/hooks/useEnterKey";
 import { FightScene3D } from "@/game/three/FightScene3D";
-import { setGymDressing } from "@/game/three/gym3d";
+import { setGymDressing, setGymLook } from "@/game/three/gym3d";
+import EditGymPanel from "@/components/EditGymPanel";
+import { GYM_RENAME_FORCE, type GymLook, gymLookOf } from "@/game/gymLook";
+import { ChevronLeft } from "lucide-react";
 import { GYM_PLAYER_PX, gymZoneAnchor, pickGymZone, projectGymPoint } from "@/game/three/gymLayout";
 import { ringColorsOf } from "@/game/ringColors";
 import type { GameState, FighterColors } from "@/game/types";
@@ -28,6 +34,10 @@ const CH = 600;
 const GYM_LS_KEY = "handz_gym_state";
 /** How often standing in the gym banks what the equipment has produced. */
 const PASSIVE_TICK_MS = 10_000;
+/** Seconds the pointer must rest on the ring before the camera pans to it. */
+const RING_DWELL_S = 1;
+/** Seconds the home ↔ ring camera pan takes. */
+const RING_PAN_S = 0.9;
 
 const BASE_FPH = { ring: 450, weightRack: 300, heavyBag: 120 } as const;
 const BASE_UPGRADE_COST = { ring: 1500, weightRack: 1000, heavyBag: 400 } as const;
@@ -81,6 +91,10 @@ export interface GymViewProps {
   onStartSparring: () => void;
   onStartWeightLifting: () => void;
   onStartBagWork: () => void;
+  /** Unscored 60-second bag session; open even when training is locked. */
+  onStartFreeBag?: () => void;
+  /** Fight week only: walk straight out to the scheduled bout from the gym. */
+  onFightNow?: () => void;
   onForceChange: (delta: number) => void;
   /** Credit Limit Increase — trade FORCE_PER_DIAMOND Force for 1 Diamond. */
   onForceToDiamond?: () => void;
@@ -232,7 +246,7 @@ function makeGymFight(): GameState {
 export default function GymView({
   fighter, playerColors, playerRank, weeklyBonus, trainingLocked, trainingLockReason, refinementSpent, refinementUnlocked, refinementUnseen,
   onExit, onOpenPlanner, onOpenStats, onOpenRefinements, onOpenEquipment, onOpenEditColors, onOpenEditRingColors, onLevelUp, sweepStatus, onSweep,
-  onStartSparring, onStartWeightLifting, onStartBagWork, onForceChange,
+  onStartSparring, onStartWeightLifting, onStartBagWork, onStartFreeBag, onFightNow, onForceChange,
   onForceToDiamond, roster, overlayBanner, onFighterChanged, onDailyRewardDue,
 }: GymViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -317,8 +331,13 @@ export default function GymView({
   // The 3D cases and crate (home screen and sparring) read this snapshot.
   useEffect(() => {
     const t = trophyRef.current;
-    setGymDressing({ aTrophies: t.aTrophies, aMedals: t.aMedals, bTrophies: t.bTrophies, bMedals: t.bMedals, crateUnlocked: equipUnlocked });
-  }, [fighter.id, fighter.wins, refinementSpent, equipUnlocked]);
+    const wins = fighter.wins ?? 0;
+    const fights = wins + (fighter.losses ?? 0) + (fighter.draws ?? 0);
+    setGymDressing({
+      aTrophies: t.aTrophies, aMedals: t.aMedals, bTrophies: t.bTrophies, bMedals: t.bMedals, crateUnlocked: equipUnlocked,
+      goldGloves: [wins >= 100, fights >= 300, fights >= 500],
+    });
+  }, [fighter.id, fighter.wins, fighter.losses, fighter.draws, refinementSpent, equipUnlocked]);
 
   useEffect(() => {
     const gl = glCanvasRef.current;
@@ -348,6 +367,8 @@ export default function GymView({
 
   // Fight week: no sparring in the ring, gym goes dark (night), monitor glows white
   const isFightWeek = trainingLockReason === "fightWeek";
+  const [fightConfirmOpen, setFightConfirmOpen] = useState(false);
+  useEnterKey(() => { setFightConfirmOpen(false); onFightNow?.(); }, { enabled: fightConfirmOpen && !!onFightNow, priority: ENTER_PRIORITY.milestone });
   const isFightWeekRef = useRef(isFightWeek);
   isFightWeekRef.current = isFightWeek;
 
@@ -359,6 +380,30 @@ export default function GymView({
   );
   const ringPaletteRef = useRef(ringPalette);
   ringPaletteRef.current = ringPalette;
+
+  // Gym customisation (walls, name, theme, bags). The 3D gym reads a
+  // module-level snapshot so sparring bouts wear it too; Edit Gym previews
+  // its draft through the same snapshot and restores the saved look on close.
+  // Read from the stored save (bumped on every write) so a stale fighter prop
+  // can never show — or later save back — an older look.
+  const [lookVersion, setLookVersion] = useState(0);
+  const savedLook = useMemo(() => gymLookOf(localSaves.getFighter(fighter.id) ?? fighter), [fighter, lookVersion]);
+  const [editGymOpen, setEditGymOpen] = useState(false);
+  const editGymOpenRef = useRef(false);
+  editGymOpenRef.current = editGymOpen;
+  useEffect(() => { if (!editGymOpen) setGymLook(savedLook); }, [savedLook, editGymOpen]);
+  const previewLook = useCallback((l: GymLook) => setGymLook(l), []);
+
+  // Ring view: resting the pointer on the ring for RING_DWELL_S pans the
+  // camera ringside; the back arrow returns. After returning, the pointer has
+  // to leave the ring before another dwell can start.
+  const [ringViewOpen, setRingViewOpen] = useState(false);
+  const ringViewOpenRef = useRef(false);
+  ringViewOpenRef.current = ringViewOpen;
+  const ringDwellRef = useRef(0);
+  const ringArmedRef = useRef(true);
+  const ringPanRef = useRef(0); // 0 = home, 1 = ringside (linear progress)
+  const popupOpenRef = useRef(false);
 
   // Init background CPU fight on mount (fight week: empty ring — fighters parked
   // far off-screen and the sim never runs, so only the gym scene renders)
@@ -475,12 +520,32 @@ export default function GymView({
         if (scene) {
           const idle = idleStateRef.current;
           if (idle) idle.player.bobPhase = ((idle.player.bobPhase || 0) + dt * 2.6 * Math.PI * 2) % (Math.PI * 2);
+          if (hoveredRef.current === "ring") {
+            if (!ringViewOpenRef.current && ringArmedRef.current && !fightWeek && !popupOpenRef.current && !editGymOpenRef.current) {
+              ringDwellRef.current += dt;
+              if (ringDwellRef.current >= RING_DWELL_S) {
+                ringDwellRef.current = 0;
+                ringViewOpenRef.current = true;
+                setRingViewOpen(true);
+              }
+            }
+          } else {
+            ringDwellRef.current = 0;
+            ringArmedRef.current = true;
+          }
+          const panTarget = ringViewOpenRef.current ? 1 : 0;
+          const panStep = dt / RING_PAN_S;
+          ringPanRef.current = panTarget > ringPanRef.current
+            ? Math.min(panTarget, ringPanRef.current + panStep)
+            : Math.max(panTarget, ringPanRef.current - panStep);
+          const p = ringPanRef.current;
           scene.render(gs, {
             gymHome: {
               hovered: hoveredRef.current,
               night: fightWeek,
               idle: idle ? { fighter: idle.player, state: idle, colors: playerColorsRef.current } : null,
               hideFighters: fightWeek,
+              ringView: p * p * (3 - 2 * p),
             },
           });
           // The home camera drifts, so the floating tags and dots follow it
@@ -516,12 +581,19 @@ export default function GymView({
     setHoveredZone(zone);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const closeRingView = useCallback(() => {
+    ringViewOpenRef.current = false;
+    ringArmedRef.current = false;
+    ringDwellRef.current = 0;
+    setRingViewOpen(false);
+  }, []);
+
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (editGymOpenRef.current) return;
     if (popup) { setPopup(null); return; }
     const zone = hoveredRef.current;
     if (!zone) return;
     if (zone === "door") { onExit(); return; }
-    if (zone === "office") { onOpenPlanner(); return; }
     if (zone === "trophyA") { onOpenStats(); return; }
     if (zone === "lockers") { openLocker(); return; }
     if (zone === "trophyB") {
@@ -533,6 +605,29 @@ export default function GymView({
     if (zone === "equipCrate" && !equipUnlockedRef.current) return;
     setPopup({ zone, x: e.clientX, y: e.clientY });
   }, [popup, onExit, onOpenPlanner, onOpenStats, onOpenRefinements, refinementUnlocked, openLocker]);
+
+  useEffect(() => { popupOpenRef.current = popup !== null; }, [popup]);
+
+  // ── Edit Gym purchases: priced off the stored save, never the prop ──
+  const syncFromSave = useCallback((f: Fighter) => {
+    setCurrentForce(f.force ?? 0);
+    currentForceRef.current = f.force ?? 0;
+    onFighterChanged?.(f);
+  }, [onFighterChanged]);
+  const saveGymLookPatch = useCallback((patch: GymLook, cost?: { force?: number }): boolean => {
+    const fresh = localSaves.getFighter(fighter.id) ?? fighter;
+    const data: Parameters<typeof localSaves.updateFighter>[1] = { gymLook: { ...gymLookOf(fresh), ...patch } as Record<string, string> };
+    if (cost?.force) {
+      const bal = fresh.force ?? 0;
+      if (bal < cost.force) return false;
+      data.force = bal - cost.force;
+    }
+    const updated = localSaves.updateFighter(fighter.id, data);
+    if (!updated) return false;
+    setLookVersion(v => v + 1);
+    syncFromSave(updated);
+    return true;
+  }, [fighter, syncFromSave]);
 
   const handleUpgrade = useCallback((itemKey: keyof Omit<GymState, "lastUpdate">, baseCost: number) => {
     const gs = gymRef.current;
@@ -590,7 +685,7 @@ export default function GymView({
     if (zone === "trophyB") return refinementUnlocked
       ? `Trophy Case — ${ts.bTrophies} trophies · ${ts.bMedals} medals — Skill Refinement`
       : "Trophy Case — Skill Refinement (unlocks at rank 650)";
-    if (zone === "office") return "Office — Fight Planner";
+    if (zone === "office") return "Office — Fight Planner · Edit Gym";
     if (zone === "equipCrate") return equipUnlocked ? "Equipment Crate — Equipment Upgrades" : "Locked";
     // Stat points live on the permanent strip at the bottom of the screen, so the
     // player's hover label stays short.
@@ -613,7 +708,9 @@ export default function GymView({
   const PopupMenu = () => {
     if (!popup) return null;
     const left = Math.max(4, Math.min(popup.x + 8, window.innerWidth - 215));
-    const top = Math.max(4, Math.min(popup.y + 8, window.innerHeight - 200));
+    // Taller menus (bag popup in fight camp) sit higher, and scroll rather than
+    // run off the bottom of the screen.
+    const top = Math.max(4, Math.min(popup.y + 8, window.innerHeight - 320));
 
     const CanAfford = (cost: number) => currentForce >= cost;
     const btnBase = "w-full text-left rounded px-2.5 py-2 text-xs font-bold transition-colors";
@@ -668,7 +765,7 @@ export default function GymView({
     return (
       <div
         className="fixed bg-[#1a1a1a] border border-white/20 rounded-lg p-3 z-[70] min-w-[195px] shadow-xl space-y-1.5"
-        style={{ left, top }}
+        style={{ left, top, maxHeight: `calc(100vh - ${top + 4}px)`, overflowY: "auto" }}
         onClick={e => e.stopPropagation()}
       >
         {popup.zone === "ring" && <>
@@ -681,6 +778,12 @@ export default function GymView({
                 ⬆ Upgrade — {upgradeCostFor(BASE_UPGRADE_COST.ring, gymState.ring.level).toLocaleString()} Force</button>
             : <div className="text-yellow-400 text-xs text-center py-1">★ MAX LEVEL 500</div>}
           <button className={btnAction} onClick={() => { setPopup(null); onOpenEditRingColors(); }} data-testid="gym-ring-colors">🎨 Ring Colors</button>
+        </>}
+
+        {popup.zone === "office" && <>
+          <div className="text-white font-bold text-xs">Office</div>
+          <button className={btnAction} onClick={() => { setPopup(null); onOpenPlanner(); }} data-testid="gym-office-enter">🚪 Enter</button>
+          <button className={btnAction} onClick={() => { setPopup(null); closeRingView(); setEditGymOpen(true); }} data-testid="gym-office-edit">🎨 Edit Gym</button>
         </>}
 
         {popup.zone === "equipCrate" && <>
@@ -730,6 +833,7 @@ export default function GymView({
                   ⬆ Upgrade — {cost.toLocaleString()} Force</button>
               : <div className="text-yellow-400 text-xs text-center py-1">★ MAX LEVEL 500</div>}
             {trainingLocked ? <LockedNote /> : <button className={btnAction} onClick={() => { setPopup(null); onStartBagWork(); }} data-testid="gym-bag-train">👊 Bag Work</button>}
+            {onStartFreeBag && <button className={btnAction} onClick={() => { setPopup(null); onStartFreeBag(); }} data-testid="gym-bag-free">🥊 Free Mode</button>}
             {!trainingLocked && <SweepControl testPrefix="gym-bag" />}
             </>}
           </>;
@@ -790,6 +894,36 @@ export default function GymView({
           data-testid="gym-canvas"
         />
 
+        {/* Ringside view: back to the regular gym shot. */}
+        {ringViewOpen && (
+          <button
+            className="absolute left-3 top-1/2 -translate-y-1/2 z-[75] flex items-center gap-1 rounded-full border border-white/25 bg-black/70 py-2 pl-2 pr-4 text-sm font-bold uppercase tracking-wider text-white hover:bg-black/90 hover:border-yellow-400/70"
+            onClick={closeRingView}
+            data-testid="gym-ring-back"
+          ><ChevronLeft className="h-6 w-6" />Back</button>
+        )}
+
+        {editGymOpen && (
+          <EditGymPanel
+            saved={savedLook}
+            force={currentForce}
+            onPreview={previewLook}
+            onSaveFree={(patch) => { saveGymLookPatch(patch); }}
+            onBuyName={(name) => saveGymLookPatch({ name }, { force: GYM_RENAME_FORCE })}
+            onOpenRingColors={() => { setEditGymOpen(false); onOpenEditRingColors(); }}
+            onClose={() => setEditGymOpen(false)}
+          />
+        )}
+
+        {/* Fight week: go straight to the bout, or visit the office first. */}
+        {isFightWeek && onFightNow && (
+          <button
+            className="absolute bottom-4 right-4 z-[70] rounded-md px-7 py-3 text-xl font-black uppercase tracking-[0.2em] text-black bg-yellow-500 hover:bg-yellow-400 border-2 border-yellow-300 shadow-[0_0_24px_rgba(234,179,8,0.45)] transition-colors"
+            onClick={() => { setPopup(null); setFightConfirmOpen(true); }}
+            data-testid="gym-fight-now"
+          >Fight</button>
+        )}
+
         {overlayBanner && (
           <div className="absolute bottom-3 right-3 pointer-events-none z-[70]">
             {overlayBanner}
@@ -819,6 +953,9 @@ export default function GymView({
           {/* Gym conditioning — stacks under the refinement meter, and takes its
               place in the column once that one has nothing left to show. */}
           <PunchEnduranceMeter roster={roster} fighterId={fighter.id} className="pointer-events-auto" />
+          {/* Defensive Mastery — mastery bar and the diamond ladder. */}
+          <DefensiveMasteryMeter fighter={fighter} roster={roster} onFighterChanged={onFighterChanged} className="pointer-events-auto" />
+          <PurePowerMeter roster={roster} className="pointer-events-auto" />
           {/* Daily chests — time left until the 00:00 reset, worked out from the
               device clock so it keeps running offline. */}
           <DailyRewardBadge roster={roster} onDue={onDailyRewardDue} className="pointer-events-auto" />
@@ -1041,6 +1178,26 @@ export default function GymView({
             onFighterChanged?.(f);
           }}
         />
+      )}
+
+      {fightConfirmOpen && onFightNow && (
+        <div className="fixed inset-0 z-[90] bg-black/70 flex items-center justify-center" onClick={() => setFightConfirmOpen(false)} data-testid="gym-fight-confirm">
+          <div className="bg-gray-950 border border-yellow-600/60 rounded-lg px-10 py-7 shadow-xl text-center" onClick={e => e.stopPropagation()}>
+            <div className="text-4xl font-black uppercase tracking-[0.25em] text-yellow-400 mb-6" data-testid="text-fight-confirm">READY?</div>
+            <div className="flex gap-3 justify-center">
+              <button
+                className="rounded px-6 py-2 text-sm font-black uppercase tracking-widest text-black bg-yellow-500 hover:bg-yellow-400"
+                onClick={() => { setFightConfirmOpen(false); onFightNow(); }}
+                data-testid="gym-fight-confirm-yes"
+              >Yes</button>
+              <button
+                className="rounded px-6 py-2 text-sm font-black uppercase tracking-widest text-white/80 bg-white/10 hover:bg-white/20"
+                onClick={() => setFightConfirmOpen(false)}
+                data-testid="gym-fight-confirm-no"
+              >No</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Popup click-away overlay */}

@@ -27,6 +27,8 @@ interface RingPalette {
   ropes: [string, string, string];
   /** Corner order matches ringCorners(): far, right (enemy), near, left (player). */
   posts: [string, string, string, string];
+  /** Apron lettering. */
+  text: string;
 }
 
 function darkenHex(hex: string, amount: number): string {
@@ -57,11 +59,15 @@ function ringPaletteOf(state: GameState): RingPalette {
       rc?.ropeUpper || DEFAULT_RING_COLORS.ropeUpper,
     ],
     posts: [post(0), post(1), post(2), post(3)],
+    text: rc?.text || STOCK_SKIRT_TEXT_COLOR,
   };
 }
 
+const DEFAULT_SKIRT_TEXT = "HANDZ  BOXING";
+const STOCK_SKIRT_TEXT_COLOR = "rgba(222,179,69,0.85)";
+
 function paletteKey(p: RingPalette): string {
-  return [p.canvas, p.apron, p.border, ...p.ropes, ...p.posts].join("|");
+  return [p.canvas, p.apron, p.border, ...p.ropes, ...p.posts, p.text].join("|");
 }
 
 /**
@@ -452,12 +458,25 @@ export class Arena3D {
     shade.addColorStop(1, "rgba(0,0,0,0.35)");
     ctx.fillStyle = shade;
     ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "rgba(222,179,69,0.85)";
-    ctx.font = `900 ${Math.round(H * 0.5)}px 'Oxanium', sans-serif`;
+    ctx.fillStyle = p.text;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("HANDZ  BOXING", W / 2, H / 2);
+    // A renamed career gym prints its own name on its ring; long names shrink.
+    let size = Math.round(H * 0.5);
+    ctx.font = `900 ${size}px 'Oxanium', sans-serif`;
+    const tw = ctx.measureText(this.skirtText).width, maxW = W * 0.9;
+    if (tw > maxW) { size = Math.max(8, Math.floor(size * maxW / tw)); ctx.font = `900 ${size}px 'Oxanium', sans-serif`; }
+    ctx.fillText(this.skirtText, W / 2, H / 2);
     this.skirtTexture.needsUpdate = true;
+  }
+
+  private skirtText = DEFAULT_SKIRT_TEXT;
+  /** Apron lettering; null = the stock "HANDZ BOXING". */
+  setSkirtText(text: string | null): void {
+    const t = text ?? DEFAULT_SKIRT_TEXT;
+    if (t === this.skirtText) return;
+    this.skirtText = t;
+    if (this.palette) this.drawSkirt(this.palette);
   }
 
   // -- Props ---------------------------------------------------------------
@@ -653,7 +672,7 @@ export class Arena3D {
       this.spacial.tick(nowMs);
       // The printed mat and skirt carry the starfield too; refresh them at the
       // same cadence so the stars keep moving.
-      if (isSpacial(pal.canvas) && this.spacialMatRedrawAt + 80 <= nowMs) {
+      if ((isSpacial(pal.canvas) || isSpacial(pal.text)) && this.spacialMatRedrawAt + 80 <= nowMs) {
         this.spacialMatRedrawAt = nowMs;
         this.drawMat(pal);
         this.drawSkirt(pal);
