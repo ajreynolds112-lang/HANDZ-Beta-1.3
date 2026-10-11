@@ -9,19 +9,21 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import PunchAnimEditor from "@/components/PunchAnimEditor";
+import PunchAnimEditor, { GameplayHitRange } from "@/components/PunchAnimEditor";
+import { getActivePunchAnimConfig, invalidatePunchAnimCache, loadPunchAnimConfig, savePunchAnimConfig, withHitBoxField } from "@/lib/punchAnimConfig";
+import { GUARD_STANCE_LABELS } from "@/game/three/poseOffsets";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import PunchRingTest from "@/components/PunchRingTest";
 import PunchTimelineLane, { type PhaseBand } from "@/components/PunchTimelineLane";
 import { createPoseStage, GROUPS, JOINT_LABEL } from "@/components/poseStage";
 import { createInitialState, punchPhaseFractions, punchTotalDuration } from "@/game/engine";
-import type { PunchType } from "@/game/types";
+import { PUNCH_CONFIGS, type PunchType } from "@/game/types";
 import type { BoneName } from "@/game/three/fighterRig";
 import {
   PROFILE_SLOTS, PUNCH_ROLES, PUNCH_ROLE_LABEL, type AxisTracks, type Key, type PunchProfile,
   copyProfileSlot, enginePunchForRole, fighterAtPunchTime, loadProfileStore, saveProfile, setDefaultSlot,
   evalSpeed, realTimeOf, setPunchProfileDraft, validLoopStart, SPEED_MIN, speedSlowdown, warpTime, PROFILE_TIME_SCALE,
-  ROT_MAX, boneLimits, type AxisLimits, HEIGHT_MAX, GUARD_LOCK_JOINTS, isGuardLocked, profileBones, type BoneTracks,
+  ROT_MAX, boneLimits, type AxisLimits, HEIGHT_MAX, GUARD_LOCK_JOINTS, isGuardLocked, lockKey, LOCK_KEYS, profileBones, onBones, ON_KEYS, DUCK_KEYS, type BoneTracks, loopOf, withLoop,
 } from "@/game/three/punchProfiles";
 
 const AXIS_LANES = [
@@ -34,7 +36,7 @@ const RATES = [0.1, 0.25, 0.5, 1];
 const PLAYBACK_STRETCH = PROFILE_TIME_SCALE;
 const PHASE_LABEL: Record<string, string> = { launchDelay: "Launch", armSpeed: "Extend", contact: "Contact", linger: "Linger", retraction: "Retract" };
 const EMPTY_TRACKS = (): AxisTracks => [[], [], []];
-const blank = (): PunchProfile => ({ name: "", bones: {}, speed: [] });
+const blank = (): PunchProfile => ({ name: "", bones: {}, speed: [], loop2: {}, loop3: {} });
 const clone = (p: PunchProfile): PunchProfile => JSON.parse(JSON.stringify(p));
 const mirrorName = (b: BoneName): BoneName =>
   (b.startsWith("Left") ? "Right" + b.slice(4) : b.startsWith("Right") ? "Left" + b.slice(5) : b) as BoneName;
@@ -67,6 +69,9 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   const [justSaved, setJustSaved] = useState(false);
   const [ringTest, setRingTest] = useState(false);
   const [fullGuard, setFullGuard] = useState(false);
+  const [showHitBoxes, setShowHitBoxes] = useState(true);
+  const [guard, setGuard] = useState(0);
+  const [duck, setDuck] = useState(false);
   const ringTestRef = useRef(ringTest);
   ringTestRef.current = ringTest;
   const dirty = JSON.stringify(draft) !== savedSnap;
@@ -171,17 +176,23 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   // Right-click an arm joint: Full Guard Follow (held at its Edit Poses guard) ↔ normal animation.
   const toggleGuardLock = (b: BoneName) => {
     if (!GUARD_LOCK_JOINTS.includes(b)) return;
-    const r = viewRef.current.role;
+    const { role: r, guard: gd } = viewRef.current;
+    const k = lockKey(gd);
     checkpoint();
-    setDraft(d => ({ ...d, guardLock: { ...d.guardLock, [b]: !isGuardLocked(d, r, b) } }));
+    setDraft(d => {
+      const next = { ...d };
+      for (const lk of LOCK_KEYS) next[lk] = { ...d[lk] };
+      next[k] = { ...next[k], [b]: !isGuardLocked(d, r, b, gd) };
+      return next;
+    });
   };
   const toggleGuardLockRef = useRef(toggleGuardLock);
   toggleGuardLockRef.current = toggleGuardLock;
 
   // ── 3D stage ──
   const hostRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef({ role, southpaw, selected, fullGuard });
-  viewRef.current = { role, southpaw, selected, fullGuard };
+  const viewRef = useRef({ role, southpaw, selected, fullGuard, guard, duck, showHitBoxes });
+  viewRef.current = { role, southpaw, selected, fullGuard, guard, duck, showHitBoxes };
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -190,6 +201,9 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
       return {
         southpaw: v.southpaw,
         fullGuard: v.fullGuard,
+        guardStance: v.guard,
+        duck: v.duck,
+        hitBox: v.showHitBoxes ? { params: getActivePunchAnimConfig()[v.role], side: PUNCH_CONFIGS[enginePunchForRole(v.role, v.southpaw)].isLeft ? 0 : 1 } : undefined,
         selected: v.southpaw ? mirrorName(v.selected) : v.selected,
         pose: (a) => {
           a.isPunching = true;
@@ -202,7 +216,11 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
         },
       };
     }, b => setSelected(viewRef.current.southpaw ? mirrorName(b) : b),
-    b => toggleGuardLockRef.current(viewRef.current.southpaw ? mirrorName(b) : b));
+    b => toggleGuardLockRef.current(viewRef.current.southpaw ? mirrorName(b) : b),
+    (key, cm) => {
+      savePunchAnimConfig(withHitBoxField(loadPunchAnimConfig(), viewRef.current.role, key, cm));
+      invalidatePunchAnimCache();
+    });
   }, []);
 
   // ── scrubbing ──
@@ -215,8 +233,9 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
     setTau(tauRef.current);
   };
   // Right-click the playback bar: a menu sets / removes the Loop Start and the Full Guard Slide.
-  const loopStart = validLoopStart(draft.loopStart);
-  const guardSlide = validLoopStart(draft.guardSlide);
+  const gLoop = loopOf(draft, guard);
+  const loopStart = validLoopStart(gLoop.loopStart);
+  const guardSlide = validLoopStart(gLoop.guardSlide);
   const menuXRef = useRef(0);
   /** Animation time under the last right-click on the playback bar. */
   const menuTau = () => {
@@ -225,30 +244,37 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
     return validLoopStart(warpTime(speedRef.current, real));
   };
   const setLoopStart = (next: number | null) => {
-    if (next == null && validLoopStart(draftRef.current.loopStart) == null) return;
+    if (next == null && validLoopStart(loopOf(draftRef.current, guard).loopStart) == null) return;
     checkpoint();
-    setDraft(d => {
-      const { loopStart: _drop, loopMode: _mode, ...rest } = d;
-      return next == null ? rest : { ...rest, loopStart: next, ...(d.loopMode === "slide" ? { loopMode: "slide" as const } : {}) };
-    });
+    setDraft(d => withLoop(d, guard, l => next == null ? { guardSlide: l.guardSlide } : { ...l, loopStart: next }));
   };
   const setGuardSlide = (next: number | null) => {
-    if (next == null && validLoopStart(draftRef.current.guardSlide) == null) return;
+    if (next == null && validLoopStart(loopOf(draftRef.current, guard).guardSlide) == null) return;
     checkpoint();
-    setDraft(d => {
-      const { guardSlide: _drop, ...rest } = d;
-      return next == null ? rest : { ...rest, guardSlide: next };
-    });
+    setDraft(d => withLoop(d, guard, l => next == null ? { loopStart: l.loopStart, loopMode: l.loopMode } : { ...l, guardSlide: next }));
   };
-  const slideMode = loopStart != null && draft.loopMode === "slide";
+  const slideMode = loopStart != null && gLoop.loopMode === "slide";
   const toggleLoopMode = () => {
     checkpoint();
-    setDraft(d => {
-      const { loopMode: _mode, ...rest } = d;
-      return d.loopMode === "slide" ? rest : { ...rest, loopMode: "slide" };
-    });
+    setDraft(d => withLoop(d, guard, l => ({ ...l, loopMode: l.loopMode === "slide" ? undefined : "slide" })));
   };
 
+  const isolated = !!draft.isolate?.[guard];
+  const toggleIsolate = () => {
+    checkpoint();
+    setDraft(d => {
+      const iso = [0, 1, 2].map(i => i === guard ? !d.isolate?.[i] : !!d.isolate?.[i]);
+      const { isolate: _i, ...rest } = d;
+      return iso.some(Boolean) ? { ...rest, isolate: iso } : rest;
+    });
+  };
+  const toggleSelfCollide = () => {
+    checkpoint();
+    setDraft(d => {
+      const { noSelfCollide: _n, ...rest } = d;
+      return d.noSelfCollide ? rest : { ...rest, noSelfCollide: true };
+    });
+  };
   const toggleAutoMotion = () => {
     checkpoint();
     setDraft(d => {
@@ -258,11 +284,13 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   };
 
   // ── editing ──
-  // Full guard On edits the On animation (bones); Off edits the Off animation
-  // (bonesOff), which plays the On keys until its first edit copies them in.
-  const viewBones = profileBones(draft, fullGuard);
-  const editSet = (d: PunchProfile): { key: "bones" | "bonesOff"; bones: BoneTracks } =>
-    fullGuard ? { key: "bones", bones: { ...d.bones } } : { key: "bonesOff", bones: { ...(d.bonesOff ?? d.bones) } };
+  // Full guard On edits the selected guard's On animation (bones / bones2 / bones3;
+  // the Secondary and Third play the Full Guard's until their first edit copies it
+  // in); Off edits the Off animation (bonesOff), which plays the On keys likewise.
+  // Duck edits the selected guard's duck animation; its first edit copies in the standing keys shown.
+  const viewBones = profileBones(draft, fullGuard, guard, duck);
+  const editSet = (d: PunchProfile): { key: (typeof ON_KEYS)[number] | (typeof DUCK_KEYS)[number] | "bonesOff"; bones: BoneTracks } =>
+    duck ? { key: DUCK_KEYS[guard], bones: { ...profileBones(d, fullGuard, guard, true) } } : fullGuard ? { key: ON_KEYS[guard], bones: { ...onBones(d, guard) } } : { key: "bonesOff", bones: { ...(d.bonesOff ?? onBones(d, guard)) } };
   const tracks = viewBones[selected] ?? EMPTY_TRACKS();
   const setAxis = (axis: number, keys: Key[]) => {
     setDraft(d => {
@@ -276,7 +304,17 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   };
   const copyOnToOff = () => {
     checkpoint();
-    setDraft(d => ({ ...d, bonesOff: { ...d.bones } }));
+    setDraft(d => ({ ...d, bonesOff: { ...onBones(d, guard) } }));
+  };
+  // Secondary/Third: take the Full Guard's punch (keys, loop/slide, isolate); locked joints still show this guard.
+  const copyFullGuard = () => {
+    checkpoint();
+    setDraft(d => {
+      const next = withLoop({ ...d, [ON_KEYS[guard]]: JSON.parse(JSON.stringify(d.bones)) }, guard, () => loopOf(d, 0));
+      const iso = [0, 1, 2].map(i => !!d.isolate?.[i === guard ? 0 : i]);
+      const { isolate: _i, ...rest } = next;
+      return iso.some(Boolean) ? { ...rest, isolate: iso } : rest;
+    });
   };
   const limits = boneLimits(draft, selected);
   // Typed a new max angle for one track: keys beyond it are pulled in to it.
@@ -299,7 +337,8 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
         return bones;
       };
       const { limits: _l, ...rest } = d;
-      const sets = { bones: clampSet(d.bones), ...(d.bonesOff ? { bonesOff: clampSet(d.bonesOff) } : {}) };
+      const sets: Partial<PunchProfile> = { bones: clampSet(d.bones) };
+      for (const k of ["bonesOff", "bones2", "bones3", ...DUCK_KEYS] as const) if (d[k]) sets[k] = clampSet(d[k]!);
       return Object.keys(all).length ? { ...rest, ...sets, limits: all } : { ...rest, ...sets };
     });
   };
@@ -344,6 +383,10 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
             </Button>
           ))}
         </div>
+        <Button size="sm" variant={!draft.noSelfCollide ? "default" : "outline"} onClick={toggleSelfCollide}
+          aria-pressed={!draft.noSelfCollide} data-testid="button-punchanim-selfcollide">
+          Self-collision: {draft.noSelfCollide ? "Off" : "On"}
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setRingTest(true)} data-testid="button-punchanim-ringtest">
           <Swords className="w-4 h-4 mr-1" /> Test in ring
         </Button>
@@ -428,7 +471,7 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
                     <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{g}</div>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {bones.map(b => {
-                        const locked = GUARD_LOCK_JOINTS.includes(b) && isGuardLocked(draft, role, b);
+                        const locked = GUARD_LOCK_JOINTS.includes(b) && isGuardLocked(draft, role, b, guard);
                         return (
                         <Button key={b} size="sm" variant={b === selected ? "default" : "outline"}
                           className={`h-6 px-1.5 text-[11px]${locked ? (b === selected ? " bg-amber-500 hover:bg-amber-500/90 text-black" : " border-amber-500 text-amber-400") : ""}`}
@@ -443,6 +486,13 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
                   </div>
                 ))}
                 <div className="text-[11px] text-muted-foreground">{keyedBones} joint{keyedBones === 1 ? "" : "s"} keyed{dirty ? " · unsaved changes" : ""}</div>
+              </div>
+              <div className="border-t border-border pt-2 flex flex-col gap-2">
+                <label className="flex items-center gap-2 text-xs">
+                  <Checkbox checked={showHitBoxes} onCheckedChange={v => setShowHitBoxes(!!v)} data-testid="checkbox-punchanim-hitboxes" />
+                  Show hitboxes
+                </label>
+                <GameplayHitRange key={role} punch={role} />
               </div>
             </Card>
           </div>
@@ -516,15 +566,32 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
                 aria-pressed={fullGuard} data-testid="button-punchanim-fullguard">
                 Full guard: {fullGuard ? "On" : "Off"}
               </Button>
-              {!fullGuard && (
+              <Select value={String(guard)} onValueChange={v => setGuard(Number(v))}>
+                <SelectTrigger className="h-7 text-[11px] w-44" data-testid="select-punchanim-guard"><SelectValue /></SelectTrigger>
+                <SelectContent>{GUARD_STANCE_LABELS.map((l, i) => <SelectItem key={i} value={String(i)}>{l}</SelectItem>)}</SelectContent>
+              </Select>
+              <Button size="sm" variant={duck ? "default" : "outline"} className="h-7 px-2 text-[11px]" onClick={() => setDuck(x => !x)}
+                aria-pressed={duck} data-testid="button-punchanim-duck">
+                Duck: {duck ? "On" : "Off"}
+              </Button>
+              {!duck && fullGuard && guard > 0 && (
+                <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={copyFullGuard} data-testid="button-punchanim-copy-fullguard">
+                  Copy Full Guard punch
+                </Button>
+              )}
+              {!duck && !fullGuard && (
                 <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={copyOnToOff}
-                  disabled={!draft.bonesOff || JSON.stringify(draft.bonesOff) === JSON.stringify(draft.bones)} data-testid="button-punchanim-copy-on">
+                  disabled={!draft.bonesOff || JSON.stringify(draft.bonesOff) === JSON.stringify(onBones(draft, guard))} data-testid="button-punchanim-copy-on">
                   Copy On animation
                 </Button>
               )}
               <Button size="sm" variant={draft.autoMotion ? "default" : "outline"} className="h-7 px-2 text-[11px]" onClick={toggleAutoMotion}
                 aria-pressed={!!draft.autoMotion} data-testid="button-punchanim-automotion">
                 Auto motion: {draft.autoMotion ? "On" : "Off"}
+              </Button>
+              <Button size="sm" variant={isolated ? "default" : "outline"} className="h-7 px-2 text-[11px]" onClick={toggleIsolate}
+                aria-pressed={isolated} data-testid="button-punchanim-isolate">
+                Isolate joints: {isolated ? "On" : "Off"}
               </Button>
             </div>
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground pl-[88px]">

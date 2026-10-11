@@ -25,7 +25,7 @@ interface HeavyBagGameProps {
    *  onComplete still fires at the end (with zeros). */
   freeMode?: boolean;
   /** Every punch input, in order (free mode feeds Drilled Actions with it). */
-  onPunch?: (punch: PunchType, aimsHead: boolean) => void;
+  onPunch?: (punch: PunchType, aimsHead: boolean, southpaw: boolean) => void;
   /** Free mode: fires when the session starts, with the chosen length in minutes. */
   onSessionStart?: (minutes: number) => void;
   /** Free mode: fires only when the clock runs out (never on quit or finish early). */
@@ -117,7 +117,10 @@ export default function HeavyBagGame({ fighter, onComplete, onQuit, calcStatPoin
   onSessionTimeUpRef.current = onSessionTimeUp;
   // Free mode defence: Shift ducks, C slips (arrows aim). The scene reads this
   // object live every frame; the key handlers below mutate it.
-  const defenseRef = useRef<BagDefense>({ duck: false, slip: false, aim: null });
+  const defenseRef = useRef<BagDefense>({
+    duck: false, slip: false, aim: null, guardStance: 0,
+    southpaw: (() => { try { return localStorage.getItem("handz_player_boxing_stance") === "southpaw"; } catch { return false; } })(),
+  });
   const defenseKeysRef = useRef({ shift: false, left: false, right: false, up: false, down: false });
   const countdownRef = useRef(freeMode ? 0 : 3);
   const sessionStartedRef = useRef(!freeMode);
@@ -168,6 +171,19 @@ export default function HeavyBagGame({ fighter, onComplete, onQuit, calcStatPoin
     const set = (e: KeyboardEvent, down: boolean) => {
       if (down && (!sessionStartedRef.current || countdownRef.current > 0 || stateRef.current.paused || stateRef.current.finished)) return;
       if (stateRef.current.paused || stateRef.current.finished) { if (down) return; }
+      // Right Shift switches stance and Tab cycles full guards, as in a bout
+      // (stance only between punches).
+      if (e.code === "ShiftRight") {
+        if (down && !e.repeat && !currentPunchRef.current && punchQueueRef.current.length === 0) {
+          d.southpaw = !d.southpaw;
+          try { localStorage.setItem("handz_player_boxing_stance", d.southpaw ? "southpaw" : "orthodox"); } catch {}
+        }
+        return;
+      }
+      if (e.key === "Tab") {
+        if (down) { e.preventDefault(); if (!e.repeat) d.guardStance = (d.guardStance + 1) % 3; }
+        return;
+      }
       switch (e.key) {
         case "Shift": k.shift = down; break;
         case "c": case "C": d.slip = down; break;
@@ -264,7 +280,9 @@ export default function HeavyBagGame({ fighter, onComplete, onQuit, calcStatPoin
       if (animatePunches) {
         const nextQueued = () => {
           const queued = punchQueueRef.current.shift();
-          return queued ? startPunch(queued) : null;
+          if (!queued) return null;
+          soundEngine.punchWhoosh(queued.type, true, false);
+          return startPunch(queued);
         };
         const prev = currentPunchRef.current;
         let cur: PunchState | null;
@@ -405,7 +423,7 @@ export default function HeavyBagGame({ fighter, onComplete, onQuit, calcStatPoin
       acceptedPunchesRef.current.push(accepted);
       setFreePunchCount(acceptedPunchesRef.current.length);
       // A ducked punch goes to the body, as in a bout.
-      onPunch?.(punchType, head);
+      onPunch?.(punchType, head, defenseRef.current.southpaw);
       return;
     }
 
@@ -413,7 +431,7 @@ export default function HeavyBagGame({ fighter, onComplete, onQuit, calcStatPoin
     const idx = comboIndexRef.current;
     const correct = key === combo[idx];
     punchQueueRef.current.push({ type: punchType, hit: correct, head: true });
-    onPunch?.(punchType, true);
+    onPunch?.(punchType, true, defenseRef.current.southpaw);
     if (correct) {
       const nextIdx = idx + 1;
       if (nextIdx >= combo.length) {
@@ -674,13 +692,30 @@ export default function HeavyBagGame({ fighter, onComplete, onQuit, calcStatPoin
           ctx.fillStyle = "#aaaacc";
           ctx.font = "bold 15px monospace";
           ctx.textAlign = "center";
-          ctx.fillText("CONTROLS", W / 2, 127);
-          ctx.font = "13px monospace";
-          ctx.fillStyle = "#ffffff";
-          ctx.fillText("Punches   Q  W  E  R  S  D", W / 2, 153);
-          ctx.fillText("Duck      Shift", W / 2, 176);
-          ctx.fillText("Slip      C", W / 2, 199);
-          ctx.fillText("Aim       Arrow keys", W / 2, 222);
+          ctx.fillText("CONTROLS", W / 2, 122);
+          const groups: [string, [string, string][]][] = [
+            ["ATTACK", [["Punches", "Q W E R S D"], ["Aim", "Arrow keys"]]],
+            ["DEFENCE", [["Duck", "Left Shift"], ["Slip", "C"]]],
+            ["STANCE", [["Switch stance", "Right Shift"], ["Full guards", "Tab"]]],
+          ];
+          let y = 148;
+          ctx.textAlign = "left";
+          for (const [title, rows] of groups) {
+            ctx.font = "bold 11px monospace";
+            ctx.fillStyle = "#ffcc00";
+            ctx.fillText(title, W / 2 - 150, y);
+            y += 18;
+            ctx.font = "13px monospace";
+            for (const [action, key] of rows) {
+              ctx.fillStyle = "#ffffff";
+              ctx.fillText(action, W / 2 - 150, y);
+              ctx.fillStyle = "#aaaacc";
+              ctx.fillText(key, W / 2 + 20, y);
+              y += 20;
+            }
+            y += 8;
+          }
+          ctx.textAlign = "center";
         }
         const menuItems = ["Resume", "Quit", "Finish Early"];
         menuItems.forEach((item, i) => {

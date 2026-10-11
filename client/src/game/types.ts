@@ -957,8 +957,12 @@ export interface FighterColors {
   laces?: string;
   /** Shoe sole colour; derived from the shoe colour when absent. */
   soles?: string;
-  /** Stripe across the top of the trunks; derived from the trunks colour when absent. */
-  waistStripe?: string;
+  /** Gear Decal: the white spots on the gloves and headgear; default white when absent. */
+  gearDecal?: string;
+  /** Sparring girdle outside colour; the player's pick (partners wear their difficulty colour). */
+  girdle?: string;
+  /** Sparring girdle lace colour. */
+  girdleLaces?: string;
 }
 
 // Duration of the knockdown fall animation (seconds); the referee count only
@@ -1488,6 +1492,10 @@ export interface FighterState {
   slipSlowTimer?: number;
   slipCounterTimer?: number;
   slipCounterQueued?: boolean;
+  /** Left standing after the opponent got up: free Reset due when the action resumes. */
+  kdFreeResetPending?: boolean;
+  /** Landed a counterpunch: the next Reset press is free and ignores stun/lockouts. */
+  freeResetBanked?: boolean;
   slipCounterPunch?: boolean;
   /** Seconds left of the punch/feint/slip lockout from being hit by a slip counter. */
   counterHitLockTimer?: number;
@@ -1504,6 +1512,10 @@ export interface FighterState {
   autoSlipSuppressed?: boolean;
   /** 0..1 eased lean. Outlives the slip itself so the torso snaps back. */
   slipLean: number;
+  /** Shoulder roll (X, full guard only): blocks straights, no punching; held up to 1s, re-press to roll again. */
+  shoulderRolling?: boolean;
+  shoulderRollTimer?: number;
+  shoulderRollKeyWasUp?: boolean;
   /** Lean the current slip started its slide from, so a re-slip does not pop. */
   slipLeanStart: number;
   /** Direction the visible lean is in — held through the snap-back. */
@@ -1601,6 +1613,8 @@ export interface FighterState {
    * 0–1. Applied on top of `critResistMult`, which the defense stat owns.
    */
   ironChinStunResist: number;
+  /** Pure Power. Share of incoming stun chance shrugged off, 0–1. Absent = none. */
+  purePowerStunResist?: number;
   /**
    * Iron Chin. Share of incoming punch damage this fighter absorbs, 0–1. Adds
    * with Punch Rolling's reduction rather than multiplying against it.
@@ -1649,7 +1663,7 @@ export interface FighterState {
   feintTouchingOpponent: boolean;
   feintDuckTouchingOpponent: boolean;
   /** Limbs are touching and this fighter's rhythm is the more exposed of the
-   *  two: no walking toward the opponent and no jabs. Recomputed every tick. */
+   *  two: no walking toward the opponent. Recomputed every tick. */
   limbContactPinned?: boolean;
   /** The two fighters' legs (or bodies) are touching: no movement toward the
    *  opponent at all. Recomputed every tick before either corner moves. */
@@ -1661,9 +1675,21 @@ export interface FighterState {
   /** Roster id whose assigned punch-animation profiles this fighter wears (3D
    *  view only). Unset → the per-punch default profile. */
   punchProfileRosterId?: number;
-  /** Pinned AND the opponent is holding a feint into the contact: jab and
-   *  cross inputs fail outright. Recomputed every tick. */
-  limbContactStraightsLocked?: boolean;
+  /** Full-guard stance 0-2 (Full / Secondary / Third Full Guard): which Edit Poses full guard and perfect block set this fighter uses. */
+  guardStance?: number;
+  /** Fighting style overrides (unset = guardStance): source guard per perfect block/shoulder roll variant (PB_VARIANTS order) and per punch role (PUNCH_ROLES order). */
+  defenseStance?: number[];
+  punchStance?: number[];
+  /** A custom fighting style is in use: Tab cannot change guard mid-fight. */
+  guardStanceLocked?: boolean;
+  /** Wears headgear + girdle outside sparring (career official bouts). */
+  wearsSparringGear?: boolean;
+  /** Player: the full guard the bout opened with stays up until Space is first pressed. */
+  openingGuard?: boolean;
+  /** AI: its once-per-fight stance change at a round bell has been used. */
+  guardStanceChanged?: boolean;
+  /** Edit Poses preview only: hold this perfect block pose. */
+  pbPreview?: import("./three/poseOffsets").PbVariant;
   /** F was tapped: the next punch launched while feintArmTimer runs goes out as
    *  a feint. Launching it spends the arm immediately, with no cooldown. */
   feintArmed?: boolean;
@@ -1823,6 +1849,12 @@ export interface FighterState {
   movingTime?: number;
   /** Guards against one tick being charged mileage twice -- see accrueRingMileage. */
   mileageChargedThisTick?: boolean;
+  /** Punch clock where a blocked punch was cut to retraction (its animation plays back from there); unset otherwise. */
+  punchCutU?: number;
+  /** Landed-punch walk back still to cover (px), and its direction. */
+  hitStepPx?: number;
+  hitStepDirX?: number;
+  hitStepDirZ?: number;
   /** Step cycles walked (fraction = how far through the current step). Drives the feet and the rhythm. */
   walkCycle?: number;
   /** Stride of the step in hand (m); 0 when the feet are planted. */
@@ -2024,6 +2056,8 @@ export interface GameState {
   dummyEnemy?: boolean;
   sparringMode: boolean;
   doghouseMode: boolean;
+  /** Challenge spar: gym sparring that keeps the career knockdown rules. */
+  challengeSparMode?: boolean;
   /**
    * An Import Ticket session: the player spars a roster fighter at their real
    * level. Purely cosmetic on the state — the gym renders with its lights out,
@@ -2450,7 +2484,7 @@ export const COLOR_PRESETS = {
   shoes: ["#1a1a1a", "#2a1a1a", "#ffffff", "#cc2222", "#1155cc", "#222222"],
   laces: ["#f0ece0", "#26262a", "#cc2222", "#1155cc", "#ddaa00", "#22aa22"],
   soles: ["#e4e0d6", "#2a2a2c", "#ffffff", "#cc2222", "#1155cc", "#ddaa00"],
-  waistStripe: ["#ffffff", "#111111", "#cc2222", "#1155cc", "#ddaa00", "#22aa22"],
+  gearDecal: ["#ffffff", "#111111", "#cc2222", "#1155cc", "#ddaa00", "#22aa22"],
   headgear: ["#2244aa", "#cc2222", "#22aa22", "#ddaa00", "#aa22aa", "#ffffff", "#111111", "#ff6600"],
   socks: ["#f0f0f0", "#111111", "#cc2222", "#1155cc", "#ddaa00", "#22aa22"],
 };

@@ -1,4 +1,5 @@
-import type { Fighter, InsertFighter, FightResult, InsertFightResult, ItemInventory } from "@shared/schema";
+import type { CareerRosterState, Fighter, InsertFighter, FightResult, InsertFightResult, ItemInventory } from "@shared/schema";
+import { reconcileChallengeState } from "@/game/challenges";
 import { DEFAULT_GEAR_COLORS } from "@shared/schema";
 import { loadXpConfig, saveXpConfig, XP_CONFIG_KEY, type XpConfig } from "@/lib/xpConfig";
 import { clampPassiveClock } from "@/game/gymIncome";
@@ -162,6 +163,8 @@ export function createFighter(data: InsertFighter): Fighter {
     ringSpacialUnlocked: data.ringSpacialUnlocked ?? false,
     gymLook: data.gymLook ?? null,
     outfits: null,
+    fightingStyle: null,
+    sparringGearInBouts: null,
     diamonds: data.diamonds ?? 0,
     shards: data.shards ?? 0,
     diamondLevelsBought: data.diamondLevelsBought ?? 0,
@@ -392,6 +395,17 @@ export function updateFighter(
         } as typeof data.careerRosterState,
       };
     }
+  }
+  // Challenges: the newest copy survives stale whole-blob writes, and every
+  // week advance rolls new requests no matter which handler moved the week.
+  if (data.careerRosterState && typeof data.careerRosterState === "object") {
+    const reconciled = reconcileChallengeState(
+      data.careerRosterState as CareerRosterState,
+      fighters[idx].careerRosterState as CareerRosterState | null,
+      data.wins ?? fighters[idx].wins ?? 0,
+      data.level ?? fighters[idx].level ?? 1,
+    );
+    if (reconciled !== data.careerRosterState) data = { ...data, careerRosterState: reconciled as typeof data.careerRosterState };
   }
   fighters[idx] = { ...fighters[idx], ...data };
   persistSaves(fighters);

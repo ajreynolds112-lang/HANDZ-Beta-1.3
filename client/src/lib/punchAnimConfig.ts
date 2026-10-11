@@ -27,6 +27,19 @@ export interface PunchAnimParams {
   uLiftDeg: number;
   /** Actual gameplay hit range in pixels used by hit detection. Independent of reachMult/distanceMult, which are visual-only. */
   hitRangePx: number;
+  /** 3D: how close (cm) the glove's surface must get to the opponent's head or torso surface to land. */
+  hitBoxCm: number;
+  /** Per-face hit box extensions (cm), in the glove's bind frame: x forward, y up, z lateral. */
+  hitBoxPX: number;
+  hitBoxNX: number;
+  hitBoxPY: number;
+  hitBoxNY: number;
+  hitBoxPZ: number;
+  hitBoxNZ: number;
+  /** Hit box rotation (degrees) about the glove's x/y/z. */
+  hitBoxRotX: number;
+  hitBoxRotY: number;
+  hitBoxRotZ: number;
   /** Base damage dealt by this punch before any fighter/archetype/refinement multipliers. */
   damage: number;
   /** Base stamina cost of throwing this punch before any fighter multipliers. */
@@ -55,6 +68,9 @@ export const DEFAULT_PARAMS: Omit<PunchAnimParams, "hitRangePx" | "damage" | "st
   shoulderY: 0,
   shoulderZ: 0,
   uLiftDeg: 15,
+  hitBoxCm: 10,
+  hitBoxPX: 0, hitBoxNX: 0, hitBoxPY: 0, hitBoxNY: 0, hitBoxPZ: 0, hitBoxNZ: 0,
+  hitBoxRotX: 0, hitBoxRotY: 0, hitBoxRotZ: 0,
 };
 
 export const DEFAULT_PUNCH_ANIM_CONFIG: PunchAnimConfig = {
@@ -68,6 +84,18 @@ export const DEFAULT_PUNCH_ANIM_CONFIG: PunchAnimConfig = {
 
 const LS_KEY = "handz_punch_anim";
 
+export type HitBoxKey = "hitBoxCm" | "hitBoxPX" | "hitBoxNX" | "hitBoxPY" | "hitBoxNY" | "hitBoxPZ" | "hitBoxNZ" | "hitBoxRotX" | "hitBoxRotY" | "hitBoxRotZ";
+/** Set a hit box field: size (hitBoxCm) is shared by all six punches (jab's copy canonical); face drags and rotation are per punch. */
+export function withHitBoxField(c: PunchAnimConfig, punch: PunchType, key: HitBoxKey, v: number): PunchAnimConfig {
+  const next = { ...c };
+  for (const k of key === "hitBoxCm" ? Object.keys(next) as PunchType[] : [punch]) next[k] = { ...next[k], [key]: v };
+  return next;
+}
+function shareHitBox(c: PunchAnimConfig): PunchAnimConfig {
+  for (const k of Object.keys(c) as PunchType[]) c[k].hitBoxCm = c.jab.hitBoxCm;
+  return c;
+}
+
 export function loadPunchAnimConfig(): PunchAnimConfig {
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -77,7 +105,7 @@ export function loadPunchAnimConfig(): PunchAnimConfig {
     for (const k of Object.keys(result) as PunchType[]) {
       if (saved[k]) result[k] = { ...DEFAULT_PUNCH_ANIM_CONFIG[k], ...saved[k] };
     }
-    return result;
+    return shareHitBox(result);
   } catch {
     return JSON.parse(JSON.stringify(DEFAULT_PUNCH_ANIM_CONFIG));
   }

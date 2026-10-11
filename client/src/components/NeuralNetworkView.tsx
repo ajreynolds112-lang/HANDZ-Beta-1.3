@@ -10,12 +10,13 @@ import NeuralTestFight from "@/components/NeuralTestFight";
 import AiTrainingView from "@/components/AiTrainingView";
 import GithubPushCard from "@/components/GithubPushCard";
 import SparringRewardsCard from "@/components/SparringRewardsCard";
+import GymNamesCard from "@/components/GymNamesCard";
+import SoundEqCard from "@/components/SoundEqCard";
 import RosterGenerationView from "@/components/RosterGenerationView";
 import * as localSaves from "@/lib/localSaves";
 import { regenerateRosterNumbers } from "@/game/careerRoster";
 import type { CareerRosterState } from "@shared/schema";
-import { ADMIN_PIN, isValidPin } from "@/lib/pinAuth";
-import { ArrowLeft, RotateCcw, Lock, Download, Upload, Star, Volume2, Lightbulb, Plus, Minus, Users, Package, BookOpen, Swords, PersonStanding } from "lucide-react";
+import { ArrowLeft, RotateCcw, Download, Upload, Star, Volume2, Lightbulb, Plus, Minus, Users, Package, BookOpen, Swords, PersonStanding } from "lucide-react";
 import ItemsEditorView from "@/components/ItemsEditorView";
 import CareerInjectCard from "@/components/CareerInjectCard";
 import type { Fighter } from "@shared/schema";
@@ -1386,10 +1387,6 @@ interface NeuralNetworkViewProps {
 }
 
 export default function NeuralNetworkView({ onBack, onRosterRegenerated, careerFighterId, onDiamondsInjected }: NeuralNetworkViewProps) {
-  const [unlocked, setUnlocked] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState(false);
-  const [pinEntered, setPinEntered] = useState(false);
   const [soundsDlPct, setSoundsDlPct] = useState<number | null>(null);
   const [nightmareBypass, setNightmareBypass] = useState(() => localStorage.getItem(LS_NIGHTMARE_BYPASS_KEY) === "true");
   const [refinementBypass, setRefinementBypass] = useState(() => localStorage.getItem(LS_REFINEMENT_BYPASS_KEY) === "true");
@@ -1753,21 +1750,7 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated, careerF
 
   // A tweak anywhere on this screen becomes the default the next build ships.
   // Nothing to press: the watcher pushes the bundle whenever a value changes.
-  useEffect(() => {
-    if (!unlocked) return;
-    return startTuningDefaultsWatcher();
-  }, [unlocked]);
-
-  const tryUnlock = () => {
-    if (isValidPin(pinInput)) {
-      setUnlocked(true);
-      setPinError(false);
-      if (pinInput === ADMIN_PIN) setPinEntered(true);
-    } else {
-      setPinError(true);
-      setPinInput("");
-    }
-  };
+  useEffect(() => startTuningDefaultsWatcher(), []);
 
   const downloadSourceCode = () => {
     const a = document.createElement("a");
@@ -1776,33 +1759,31 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated, careerF
     a.click();
   };
 
-  // Gated on `unlocked` like every other subview: these early returns sit above
-  // the PIN check, so one without it would render straight past the gate.
-  if (testMode === "normal" && unlocked) {
+  if (testMode === "normal") {
     return <NeuralTestFight onExit={() => setTestMode(null)} />;
   }
 
-  if (testMode === "training" && unlocked) {
+  if (testMode === "training") {
     return <AiTrainingView onExit={() => setTestMode(null)} />;
   }
 
-  if (showDocs && unlocked) {
+  if (showDocs) {
     return <GameDocsView onBack={() => setShowDocs(false)} />;
   }
 
-  if (showPoseEditor && unlocked) {
+  if (showPoseEditor) {
     return <PoseEditorView onBack={() => setShowPoseEditor(false)} />;
   }
 
-  if (showPunchAnim && unlocked) {
+  if (showPunchAnim) {
     return <PunchProfileEditorView key={`anim-${paramEpoch}`} onBack={() => setShowPunchAnim(false)} />;
   }
 
-  if (showItemsEditor && unlocked) {
+  if (showItemsEditor) {
     return <ItemsEditorView onBack={() => setShowItemsEditor(false)} />;
   }
 
-  if (showRosterGen && unlocked) {
+  if (showRosterGen) {
     return (
       <RosterGenerationView
         onBack={() => setShowRosterGen(false)}
@@ -1825,7 +1806,7 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated, careerF
     );
   }
 
-  if (showFightTipsEditor && unlocked) {
+  if (showFightTipsEditor) {
     const updateTip = (i: number, val: string) => {
       const updated = [...fightTips];
       updated[i] = val;
@@ -1912,41 +1893,6 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated, careerF
             <p className="text-xs text-center text-muted-foreground">Maximum 100 tips reached.</p>
           )}
         </div>
-      </div>
-    );
-  }
-
-  if (!unlocked) {
-    return (
-      <div className="flex flex-col items-center gap-4 p-4 max-w-lg mx-auto">
-        <div className="flex items-center gap-3 w-full">
-          <Button variant="ghost" size="icon" onClick={() => onBack()} data-testid="button-back-neural">
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <h2 className="text-xl font-bold flex-1">Neural Network</h2>
-        </div>
-        <Card className="p-8 w-full text-center space-y-4">
-          <Lock className="w-12 h-12 mx-auto text-muted-foreground" />
-          <h3 className="text-lg font-bold">Admin Access Required</h3>
-          <p className="text-sm text-muted-foreground">Enter your admin or career PIN to access neural network parameters.</p>
-          <div className="flex gap-2 justify-center items-center">
-            <Input
-              type="password"
-              maxLength={4}
-              value={pinInput}
-              onChange={e => {
-                setPinInput(e.target.value.replace(/\D/g, ""));
-                setPinError(false);
-              }}
-              onKeyDown={e => { if (e.key === "Enter") tryUnlock(); }}
-              placeholder="PIN"
-              className="w-24 text-center tracking-widest"
-              data-testid="input-neural-pin"
-            />
-            <Button onClick={tryUnlock} data-testid="button-neural-unlock">Unlock</Button>
-          </div>
-          {pinError && <p className="text-xs text-destructive">Incorrect PIN</p>}
-        </Card>
       </div>
     );
   }
@@ -2191,7 +2137,7 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated, careerF
           {soundsDlPct !== null ? `Downloading… ${soundsDlPct}%` : "Download Sounds"}
         </Button>
       </div>
-      {pinEntered && (
+      {(
         <div className="flex flex-col gap-2 w-full">
           <Card className="p-3 w-full" style={{ background: "#1a0a0a", border: "1px solid #7a1414" }}>
             <div className="flex items-center justify-between gap-3">
@@ -2951,6 +2897,8 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated, careerF
             ))}
           </Card>
           <SparringRewardsCard key={paramsRev} />
+          <GymNamesCard key={`gyms-${paramsRev}`} />
+          <SoundEqCard key={`eq-${paramsRev}`} />
           <Card className="p-3 w-full space-y-3" style={{ background: "#0a1a0a", border: "1px solid #1a4a1a" }}>
             <div className="flex items-center justify-between gap-2">
               <div>

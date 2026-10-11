@@ -16,8 +16,10 @@
  */
 import * as THREE from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { cssColorOf } from "../spacialColor";
+import { buildGirdleGeometry, girdleBandMaterial } from "./boxerGirdle";
 import { type BoneName, type Region, type RigInstance, RIG_HEIGHT, attachAtBind, newMaterials, relPos } from "./fighterRig";
 
 export const BOXER_DIR = "/models/boxer/";
@@ -57,7 +59,8 @@ export interface BoxerTemplate {
 }
 
 /** Load the FBXs and textures and prepare the shared template. */
-export async function loadBoxerTemplate(files: { body: string; eyes?: string }): Promise<BoxerTemplate> {
+/** `girdle` is a full URL to the Tripo girdle shell (optional; no girdle if it fails). */
+export async function loadBoxerTemplate(files: { body: string; eyes?: string; girdle?: string }): Promise<BoxerTemplate> {
   const fbx = new FBXLoader();
   const tl = new THREE.TextureLoader();
   const tex = (f: string, srgb: boolean) => tl.loadAsync(BOXER_DIR + f).then(t => {
@@ -65,11 +68,14 @@ export async function loadBoxerTemplate(files: { body: string; eyes?: string }):
     t.anisotropy = 4;
     return t;
   });
-  const [main, eyes, ...t] = await Promise.all([
+  const [main, eyes, girdleSrc, ...t] = await Promise.all([
     fbx.loadAsync(BOXER_DIR + files.body),
     files.eyes ? fbx.loadAsync(BOXER_DIR + files.eyes) : Promise.resolve(null),
+    files.girdle
+      ? new GLTFLoader().loadAsync(files.girdle).then(g => g.scene, err => { console.warn("[3D] girdle unavailable", err); return null; })
+      : Promise.resolve(null),
     tex("skin_light.jpg", true), tex("skin_dark.jpg", true), tex("skin_normal.jpg", false), tex("eyes.jpg", true),
-    tex("gear.jpg", true), tex("gear_mask.jpg", false), tex("gear_normal.jpg", false),
+    tex("gear.jpg", true), tex("gear_regions.png", false), tex("gear_normal.jpg", false),
     tex("shorts.jpg", true), tex("shorts_normal.jpg", false),
   ]);
   const textures: BoxerTextures = {
@@ -93,14 +99,18 @@ export async function loadBoxerTemplate(files: { body: string; eyes?: string }):
   const rebind = (m: THREE.SkinnedMesh, role: string) => {
     const baked = bakeBind(m);
     if (role === "headgear") { headgearParts.push(baked); return; }
-    baked.applyMatrix4(bodyInv);
     const si = baked.getAttribute("skinIndex");
     const sw = baked.getAttribute("skinWeight");
-    if (role === "glove" || role === "trim") {
+    const rigid = role === "glove" || role === "trim";
+    let left = 0;
+    if (rigid) {
+      for (let k = 0; k < si.count; k++) if (m.skeleton.bones[si.getComponent(k, 0)]?.name.endsWith("_l")) left++;
+      extendCuff(baked, left * 2 > si.count ? "l" : "r");
+    }
+    baked.applyMatrix4(bodyInv);
+    if (rigid) {
       // A glove is rigid: the whole glove and its cuff ride the hand alone, so
       // turning the wrist turns the glove instead of wringing its cuff.
-      let left = 0;
-      for (let k = 0; k < si.count; k++) if (m.skeleton.bones[si.getComponent(k, 0)]?.name.endsWith("_l")) left++;
       const hand = boneIndex.get(left * 2 > si.count ? "hand_l" : "hand_r")!;
       for (let k = 0; k < si.count; k++) { si.setXYZW(k, hand, 0, 0, 0); sw.setXYZW(k, 1, 0, 0, 0); }
     } else for (let k = 0; k < si.count; k++) {
@@ -138,6 +148,16 @@ export async function loadBoxerTemplate(files: { body: string; eyes?: string }):
     if (!holdsBones) main.remove(c);
   }
   const headgearGeo = mergeSimple(headgearParts);
+  if (girdleSrc) {
+    // Built against the body's own materials (skipping the hidden tank top).
+    const geo = buildGirdleGeometry(girdleSrc, body, "blinn21");
+    if (geo) {
+      const g = new THREE.SkinnedMesh(geo, [new THREE.MeshBasicMaterial(), new THREE.MeshBasicMaterial()]);
+      g.name = "boxer:girdle:shell";
+      parent.add(g);
+      g.bind(skel, body.bindMatrix);
+    }
+  }
   shortenForearms(main, skel);
 
   const boneMap = new Map<string, BoneName>();
@@ -145,6 +165,26 @@ export async function loadBoxerTemplate(files: { body: string; eyes?: string }):
   const missing = Object.values(UE_BONES).filter(b => !Array.from(boneMap.values()).includes(b));
   if (missing.length) throw new Error(`boxer rig is missing bones: ${missing.join(", ")}`);
   return { scene: main, boneMap, tex: textures, headgearGeo };
+}
+
+/**
+ * Wrist strap length: the glove cuff (and its strap) is pushed down the forearm
+ * so the cuff is ~0.42x the glove body, like the user's reference glove. Axis
+ * and centre = each glove's long axis in the FBX bind world (measured offline);
+ * the stretch sits between the cuff label and the opening so neither distorts.
+ */
+const CUFF_AXIS = { l: { c: [59.65, 103.32, 3.31], v: [-0.379, 0.861, -0.34] }, r: { c: [-60, 103.19, 3.39], v: [0.409, 0.851, -0.33] } };
+const CUFF_EXTEND = 1.7, CUFF_RAMP0 = 10.4, CUFF_RAMP1 = 11.4;
+
+function extendCuff(g: THREE.BufferGeometry, side: "l" | "r"): void {
+  const { c, v } = CUFF_AXIS[side];
+  const pos = g.getAttribute("position") as THREE.BufferAttribute;
+  for (let k = 0; k < pos.count; k++) {
+    const x = pos.getX(k), y = pos.getY(k), z = pos.getZ(k);
+    const t = (x - c[0]) * v[0] + (y - c[1]) * v[1] + (z - c[2]) * v[2];
+    const d = CUFF_EXTEND * THREE.MathUtils.clamp((t - CUFF_RAMP0) / (CUFF_RAMP1 - CUFF_RAMP0), 0, 1);
+    if (d > 0) pos.setXYZ(k, x + v[0] * d, y + v[1] * d, z + v[2] * d);
+  }
 }
 
 /** Forearm length relative to the source model (the upper arm is untouched). */
@@ -284,20 +324,31 @@ export interface MaskedTint {
   spacialMap: { value: THREE.Texture | null };
 }
 
-/** Tint only where the mask is set; the spacial finish also only fills masked texels. */
-function maskedTintMaterial(map: THREE.Texture, mask: THREE.Texture, normal: THREE.Texture, roughness: number): THREE.MeshStandardMaterial {
+/**
+ * Region mask (gear_regions.png): r = the piece's own colour, g = its secondary
+ * (Gear Decal on gloves/headgear, Soles = the shoe's white), b = laces. g/b
+ * repaint by texel brightness; their colours ride other regions' materials
+ * (`linkedTints`). `darkLift` (the trim strap) colours the dark base instead; b on the glove = its cuff band, tinted with the strap.
+ */
+function maskedTintMaterial(map: THREE.Texture, mask: THREE.Texture, normal: THREE.Texture, roughness: number, darkLift = false): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({ map, normalMap: normal, roughness, metalness: 0 });
   mat.normalScale.set(1, -1);
-  const u: MaskedTint & { tintMask: { value: THREE.Texture } } = {
-    tint: { value: new THREE.Color(1, 1, 1) }, spacialOn: { value: 0 }, spacialMap: { value: null }, tintMask: { value: mask },
+  const u = {
+    tint: { value: new THREE.Color(1, 1, 1) }, tint2: { value: new THREE.Color(1, 1, 1) }, tint3: { value: new THREE.Color(1, 1, 1) },
+    spacialOn: { value: 0 }, spacialMap: { value: null as THREE.Texture | null }, tintMask: { value: mask }, darkLift: { value: darkLift ? 1 : 0 },
   };
   mat.userData.maskedTint = u;
   mat.onBeforeCompile = sh => {
-    Object.assign(sh.uniforms, { tintColor: u.tint, spacialOn: u.spacialOn, spacialMap: u.spacialMap, tintMask: u.tintMask });
-    sh.fragmentShader = "uniform vec3 tintColor;\nuniform float spacialOn;\nuniform sampler2D spacialMap;\nuniform sampler2D tintMask;\n"
+    Object.assign(sh.uniforms, { tintColor: u.tint, tint2Color: u.tint2, tint3Color: u.tint3, spacialOn: u.spacialOn, spacialMap: u.spacialMap, tintMask: u.tintMask, darkLift: u.darkLift });
+    sh.fragmentShader = "uniform vec3 tintColor;\nuniform vec3 tint2Color;\nuniform vec3 tint3Color;\nuniform float spacialOn;\nuniform float darkLift;\nuniform sampler2D spacialMap;\nuniform sampler2D tintMask;\n"
       + sh.fragmentShader.replace("#include <map_fragment>", `#include <map_fragment>
-  float tintM = texture2D(tintMask, vMapUv).r;
-  diffuseColor.rgb *= mix(vec3(1.0), tintColor, tintM);
+  vec3 tintM3 = texture2D(tintMask, vMapUv).rgb;
+  float tintM = tintM3.r;
+  float tintL = min(1.0, dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)) * 1.35);
+  vec3 tinted = darkLift > 0.5 ? tintColor * min(1.0, 0.75 + tintL) : diffuseColor.rgb * tintColor;
+  diffuseColor.rgb = mix(diffuseColor.rgb, tinted, tintM);
+  diffuseColor.rgb = mix(diffuseColor.rgb, tint2Color * tintL, tintM3.g);
+  diffuseColor.rgb = mix(diffuseColor.rgb, tint3Color * tintL, tintM3.b);
   if (spacialOn > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, texture2D(spacialMap, gl_FragCoord.xy / 110.0).rgb, tintM);`);
   };
   mat.customProgramCacheKey = () => "boxerMaskedTint";
@@ -305,6 +356,9 @@ function maskedTintMaterial(map: THREE.Texture, mask: THREE.Texture, normal: THR
 }
 
 // ───────────────────────── instance ─────────────────────────
+
+/** Sock top height in the body's bind space (model units, feet at 0). */
+const SOCK_TOP = 31;
 
 export function buildBoxerRig(t: BoxerTemplate): RigInstance {
   const model = cloneSkinned(t.scene) as THREE.Group;
@@ -378,12 +432,38 @@ export function buildBoxerRig(t: BoxerTemplate): RigInstance {
   };
   tex(materials.skin, T.skinLight, T.skinNormal);
   tex(materials.trunks, T.shorts, T.shortsNormal);
-  tex(materials.tape, T.gear, T.gearNormal);
-  materials.glove.dispose(); materials.shoe.dispose(); materials.headgear.dispose();
+  materials.glove.dispose(); materials.shoe.dispose(); materials.headgear.dispose(); materials.tape.dispose();
   materials.glove = maskedTintMaterial(T.gear, T.gearMask, T.gearNormal, 0.4);
   materials.shoe = maskedTintMaterial(T.gear, T.gearMask, T.gearNormal, 0.55);
   materials.headgear = maskedTintMaterial(T.gear, T.gearMask, T.gearNormal, 0.5);
+  materials.tape = maskedTintMaterial(T.gear, T.gearMask, T.gearNormal, 0.8, true);
   materials.headgear.side = THREE.DoubleSide;
+  const sub = (m: THREE.Material) => m.userData.maskedTint as { tint2: { value: THREE.Color }; tint3: { value: THREE.Color } };
+  materials.decal.userData.linkedTints = [sub(materials.glove).tint2, sub(materials.headgear).tint2];
+  materials.sole.userData.linkedTints = [sub(materials.shoe).tint2];
+  materials.laces.userData.linkedTints = [sub(materials.shoe).tint3];
+  // The wrist strap is the glove's cuff band (blue on the glove) plus the trim piece.
+  materials.tape.userData.linkedTints = [sub(materials.glove).tint3];
+  // Socks: the body has no sock mesh, so the skin paints them below a height
+  // line in bind space (the shoe tops reach y≈25.8 in model units).
+  const girdleLaceColor = { value: new THREE.Color(1, 1, 1) };
+  // The laces are painted by the band shader, so their Spacial finish rides uniforms too.
+  const girdleLaceSpacial = { on: { value: 0 }, map: { value: null as THREE.Texture | null } };
+  materials.girdleLaces.userData.linkedTints = [girdleLaceColor];
+  materials.girdleLaces.userData.linkedSpacial = girdleLaceSpacial;
+  const girdleBand = girdleBandMaterial(girdleLaceColor, girdleLaceSpacial);
+  const sockColor = { value: new THREE.Color(1, 1, 1) };
+  materials.socks.userData.linkedTints = [sockColor];
+  materials.skin.onBeforeCompile = sh => {
+    sh.uniforms.sockColor = sockColor;
+    sh.vertexShader = "varying float vSockY;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n  vSockY = position.y;");
+    sh.fragmentShader = "uniform vec3 sockColor;\nvarying float vSockY;\n" + sh.fragmentShader
+      .replace("#include <map_fragment>", `#include <map_fragment>
+  float sockM = step(vSockY, ${SOCK_TOP.toFixed(1)});
+  diffuseColor.rgb = mix(diffuseColor.rgb, sockColor * 0.9, sockM);`)
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\n  roughnessFactor = mix(roughnessFactor, 0.95, sockM);");
+  };
+  materials.skin.customProgramCacheKey = () => "boxerSkinSocks";
   const eyeMat = new THREE.MeshStandardMaterial({ map: T.eyes, roughness: 0.25, metalness: 0 });
   const mouthMat = new THREE.MeshStandardMaterial({ color: "#4a2424", roughness: 0.7, metalness: 0 });
   const hidden = new THREE.MeshBasicMaterial({ visible: false });
@@ -394,8 +474,10 @@ export function buildBoxerRig(t: BoxerTemplate): RigInstance {
       : m.name === "phongE1" ? mouthMat
         : materials.skin);
   const gloveMeshes: THREE.Object3D[] = [];
+  let girdle: THREE.Object3D | undefined;
   for (const m of skinned) {
     const r = role(m);
+    if (r === "girdle") { m.material = [materials.girdle, girdleBand]; m.visible = false; girdle = m; }
     if (r === "glove") { m.material = materials.glove; gloveMeshes.push(m); }
     else if (r === "trim") { m.material = materials.tape; gloveMeshes.push(m); }
     else if (r === "shoe") m.material = materials.shoe;
@@ -422,7 +504,7 @@ export function buildBoxerRig(t: BoxerTemplate): RigInstance {
   const skinColor = new THREE.Color();
 
   return {
-    body: root, bones, materials, gloveCenter, eyes: [], headgear, kind: "boxer",
+    body: root, bones, materials, gloveCenter, eyes: [], headgear, girdle, kind: "boxer",
     skinTone(css: string) {
       skinColor.set(cssColorOf(css));
       const hsl = { h: 0, s: 0, l: 0 };
@@ -441,7 +523,7 @@ export function buildBoxerRig(t: BoxerTemplate): RigInstance {
     },
     dispose() {
       for (const m of Object.values(materials) as THREE.Material[]) m.dispose();
-      eyeMat.dispose(); mouthMat.dispose(); hidden.dispose();
+      eyeMat.dispose(); mouthMat.dispose(); hidden.dispose(); girdleBand.dispose();
     },
   };
 }

@@ -8,7 +8,7 @@ import { REFINEMENT_KEYS, sanitizeRefinementKeys } from "./refinementKeys";
 import { activeRefinementsOnly, MAX_ACTIVE_REFINEMENTS } from "./engine";
 import { grownEquipmentLevel, normalizeEquipmentLevels, postChampEquipmentFloor } from "./equipmentConfig";
 import { clampPunchEndurance, punchEnduranceOf, PUNCH_ENDURANCE_MIN, punchEnduranceLossOf, PUNCH_ENDURANCE_LOSS_MAX, PUNCH_ENDURANCE_LOSS_MIN, PUNCH_ENDURANCE_GRACE_WEEKS, PUNCH_ENDURANCE_STEP_WEEKS, needsPunchEnduranceLossRebase } from "./punchEndurance";
-import { clampPurePower, purePowerOf, PURE_POWER_DECAY_PER_WEEK } from "./purePower";
+import { clampPurePower, purePowerOf, PURE_POWER_DECAY_PER_WEEK, PURE_POWER_GRACE_WEEKS } from "./purePower";
 import { applySpacialGear, spacialSelectionOf } from "./spacialColor";
 import { advanceDrilledWeek } from "./drilledActions";
 import { advanceResetTrainingWeek, resetTrainingOf, RESET_SPEED_GRACE_WEEKS, RESET_SPEED_STEP_WEEKS, RESET_SPEED_MAX_STEPS } from "./resetTraining";
@@ -736,7 +736,7 @@ export interface RosterColorSet {
   socks: string;
   laces?: string;
   soles?: string;
-  waistStripe?: string;
+  gearDecal?: string;
 }
 
 interface RosterCustomization {
@@ -751,7 +751,7 @@ interface RosterCustomization {
   customSocks?: string;
   customLaces?: string;
   customSoles?: string;
-  customWaistStripe?: string;
+  customGearDecal?: string;
   customSpacial?: boolean;
   customSpacialParts?: string[];
   customRefinementSkills?: Record<string, number>;
@@ -782,7 +782,7 @@ export function saveRosterCustomizations(roster: RosterFighterState[]): void {
     if (f.customSocks) c.customSocks = f.customSocks;
     if (f.customLaces) c.customLaces = f.customLaces;
     if (f.customSoles) c.customSoles = f.customSoles;
-    if (f.customWaistStripe) c.customWaistStripe = f.customWaistStripe;
+    if (f.customGearDecal) c.customGearDecal = f.customGearDecal;
     if (f.customSpacial) c.customSpacial = true;
     if (f.customSpacialParts?.length) c.customSpacialParts = [...f.customSpacialParts];
     if (f.customRefinementSkills && Object.values(f.customRefinementSkills).some(v => v > 0)) {
@@ -842,7 +842,7 @@ export function applyRosterCustomizations(roster: RosterFighterState[]): RosterF
       customSocks: f.customSocks ?? c.customSocks,
       customLaces: f.customLaces ?? c.customLaces,
       customSoles: f.customSoles ?? c.customSoles,
-      customWaistStripe: f.customWaistStripe ?? c.customWaistStripe,
+      customGearDecal: f.customGearDecal ?? c.customGearDecal,
       customSpacial: f.customSpacial ?? c.customSpacial,
       customSpacialParts: f.customSpacialParts ?? c.customSpacialParts,
       customRefinementSkills: f.customRefinementSkills ?? c.customRefinementSkills,
@@ -2831,10 +2831,10 @@ export function* simulateWeekSteps(incomingState: CareerRosterState, weekSeed: n
     peLossRiseWeek += peLossRises * PUNCH_ENDURANCE_STEP_WEEKS;
   }
 
-  // Pure Power answers to the weights: three full weeks without a Weight
+  // Pure Power answers to the weights: two full weeks without a Weight
   // Lifting session, then it sheds 20% a week. Same anchor/bye rules as the
   // heavy-bag clock above.
-  const ppFirstDrop = (state.lastWLWeek ?? 0) + PUNCH_ENDURANCE_GRACE_WEEKS;
+  const ppFirstDrop = (state.lastWLWeek ?? 0) + PURE_POWER_GRACE_WEEKS;
   let purePower = purePowerOf(state);
   let ppDropWeek = Math.max(ppFirstDrop, state.purePowerDecayWeek ?? ppFirstDrop);
   if (peFightWeekBye) {
@@ -2985,10 +2985,10 @@ export function getRosterFighterColors(f: RosterFighterState): RosterColorSet {
     shoes: f.customShoes || f.genShoes || "#1a1a1a",
     socks: f.customSocks || f.genSocks || sockColorForFighterId(f.id),
     // Left undefined unless edited, so untouched fighters keep deriving their
-    // laces/soles/stripe from the shoe and trunk colours.
+    // laces/soles from the shoe colour.
     laces: f.customLaces,
     soles: f.customSoles,
-    waistStripe: f.customWaistStripe,
+    gearDecal: f.customGearDecal,
   }, spacialSelectionOf({ spacialColors: f.customSpacial, spacialParts: f.customSpacialParts }));
 }
 
@@ -3008,7 +3008,7 @@ export function getQuickFightColorsForRosterId(rosterId: number): RosterColorSet
     socks: c?.customSocks || gen.genSocks,
     laces: c?.customLaces,
     soles: c?.customSoles,
-    waistStripe: c?.customWaistStripe,
+    gearDecal: c?.customGearDecal,
   }, spacialSelectionOf({ spacialColors: c?.customSpacial, spacialParts: c?.customSpacialParts }));
 }
 

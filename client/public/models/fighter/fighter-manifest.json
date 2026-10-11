@@ -26,6 +26,11 @@
       "file": "headgear.glb",
       "taskId": "1871ff3e-df3c-48df-a217-6520fec32617",
       "prompt": "boxing sparring headgear helmet only, low poly game asset, padded head guard with open face, cheek pads and forehead pad, plain untextured, no logo, no head inside"
+    },
+    "girdle": {
+      "file": "girdle.glb",
+      "taskId": "60a6b9cc-b84a-40fa-b779-e5974f62de85",
+      "prompt": "boxing groin protector girdle, high waist leather belt with front cup, plain untextured, no logo, no straps"
     }
   }
 }

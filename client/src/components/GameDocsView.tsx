@@ -454,7 +454,7 @@ const SECTIONS: DocSection[] = [
       {
         t: "ul",
         items: [
-          "Hold C to slip; the held arrow key aims it, and with no arrow held you slip straight back.",
+          "Hold C to slip; the held arrow key aims it.",
           "Only the completed slip evades. There is a 0.15 second window once you arrive — get hit during the entry, or after the window closes, and the punch lands normally.",
           "You can hold a slip for at most 2 seconds.",
           "Taking a head shot locks slipping out for 0.75 seconds.",

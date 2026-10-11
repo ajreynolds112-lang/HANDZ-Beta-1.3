@@ -1,9 +1,12 @@
+import type { PbVariant } from "@/game/three/poseOffsets";
 import * as THREE from "three";
 import { createInitialState } from "@/game/engine";
-import type { FighterState, GameState } from "@/game/types";
+import type { FighterColors, FighterState, GameState } from "@/game/types";
 import { Fighter3D } from "@/game/three/fighterModel";
 import { PROFILE_VIEW_OPP_PX } from "@/game/three/punchProfiles";
 import { BONE_NAMES, type BoneName, ensureFighterAssets, fighterAssetEpoch } from "@/game/three/fighterRig";
+import { type HitBoxFaceKey, gloveHitBox, hitBoxFaceKey, hitBoxFaceMinCm, newGloveHitBox } from "@/game/three/gloveHitBox";
+import type { PunchAnimParams } from "@/lib/punchAnimConfig";
 
 export const JOINT_LABEL: Record<BoneName, string> = {
   Hips: "Hips", Spine: "Lower Spine", Spine1: "Mid Spine", Spine2: "Chest", Neck: "Neck", Head: "Head",
@@ -27,6 +30,13 @@ export interface PoseStageFrame {
   selected: BoneName | null;
   /** Show the nose line (and hold the head off its fight aim, so the line can be tuned). */
   noseLine?: boolean;
+  /** Which full guard (0-2) and which perfect block pose (if any) to hold. */
+  guardStance?: number;
+  pbPreview?: PbVariant;
+  /** Gear and skin colours (default: the stock player colours). */
+  colors?: FighterColors;
+  /** Show the punching glove's hit box (this punch's config, glove `side`). Undefined = hidden. */
+  hitBox?: { params: PunchAnimParams | undefined; side: 0 | 1 };
   /** Last word on the posed fighter each frame (e.g. drive a punch). */
   pose?: (fighter: FighterState, state: GameState) => void;
 }
@@ -36,7 +46,8 @@ export interface PoseStageFrame {
  * (drag), shift-drag to raise/lower, wheel zoom, click a joint to pick it.
  * Returns the disposer.
  */
-export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, onPick: (b: BoneName) => void, onContextPick?: (b: BoneName) => void): () => void {
+export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, onPick: (b: BoneName) => void, onContextPick?: (b: BoneName) => void,
+  onHitBoxFace?: (key: HitBoxFaceKey, cm: number) => void): () => void {
   let disposed = false;
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
@@ -65,6 +76,19 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
   noseLine.renderOrder = 11;
   noseLine.visible = false;
   scene.add(noseLine);
+  // Hit box: faces are dragged in/out; the grabbed face brightens.
+  const boxMats = [0, 1, 2, 3, 4, 5].map(() => new THREE.MeshBasicMaterial({ color: "#ef4444", transparent: true, opacity: 0.15, depthWrite: false }));
+  const hitBoxMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), boxMats);
+  hitBoxMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(hitBoxMesh.geometry), new THREE.LineBasicMaterial({ color: "#f87171", transparent: true, opacity: 0.8 })));
+  hitBoxMesh.renderOrder = 9;
+  hitBoxMesh.matrixAutoUpdate = false;
+  hitBoxMesh.visible = false;
+  scene.add(hitBoxMesh);
+  const box = newGloveHitBox(), boxLocal = new THREE.Matrix4(), boxPos = new THREE.Vector3();
+  let boxFrame: PoseStageFrame["hitBox"];
+  let boxSouthpaw = false;
+  /** Face drag: screen px per metre along the face normal, from where it was grabbed. */
+  let faceDrag: { face: number; key: HitBoxFaceKey; x0: number; y0: number; dx: number; dy: number; start: number; min: number } | null = null;
   const nlO = new THREE.Vector3(), nlD = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
   const NOSE_FROM = 0.1, NOSE_TO = 1.4;
 
@@ -104,19 +128,32 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
       a.x = 400; a.z = 300; a.facingAngle = 0;
       d.x = a.x + PROFILE_VIEW_OPP_PX; d.z = 300; d.facingAngle = Math.PI;
       a.boxingStance = (v.southpaw ? "southpaw" : "orthodox") as typeof a.boxingStance;
-      a.guardBlend = v.fullGuard ? 1 : 0;
+      a.guardBlend = v.fullGuard || v.pbPreview ? 1 : 0;
+      a.guardStance = v.guardStance ?? 0;
+      a.pbPreview = v.pbPreview;
       a.defenseState = v.duck ? "duck" : "none";
       a.duckProgress = v.duck ? 1 : 0;
       a.isPunching = false;
       a.currentPunch = null;
       v.pose?.(a, st);
       fig.aimHead = !v.noseLine;
-      fig.update(a, st.playerColors, d, st, 1);
+      fig.update(a, v.colors ?? st.playerColors, d, st, 1);
       fig.root.position.set(0, 0, 0);
       fig.root.updateMatrixWorld(true);
       const bone = v.selected ? bindOf()[v.selected]?.bone : null;
       marker.visible = !!bone;
       if (bone) bone.getWorldPosition(marker.position);
+      boxFrame = v.hitBox;
+      boxSouthpaw = v.southpaw;
+      hitBoxMesh.visible = !!v.hitBox;
+      if (v.hitBox) {
+        const side = v.hitBox.side;
+        gloveHitBox(v.hitBox.params, fig.gloveHalf[side], v.southpaw, box);
+        boxLocal.compose(boxPos.copy(box.c).applyQuaternion(box.q), box.q, box.s);
+        hitBoxMesh.matrix.multiplyMatrices((side ? fig.rig.gloveCenter.right : fig.rig.gloveCenter.left).matrixWorld, boxLocal);
+        hitBoxMesh.updateMatrixWorld(true);
+      }
+      boxMats.forEach((m, i) => { m.opacity = faceDrag?.face === i ? 0.45 : 0.15; });
       noseLine.visible = !!v.noseLine;
       if (v.noseLine) {
         fig.noseRay(nlO, nlD);
@@ -137,8 +174,37 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
 
   let drag: { x: number; y: number; moved: boolean; shift: boolean } | null = null;
   const el = renderer.domElement;
-  const onDown = (e: PointerEvent) => { drag = { x: e.clientX, y: e.clientY, moved: false, shift: e.shiftKey }; el.setPointerCapture(e.pointerId); };
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  const toScreen = (p: THREE.Vector3) => { const r = el.getBoundingClientRect(); p.project(camera); return [(p.x * 0.5 + 0.5) * r.width, (-p.y * 0.5 + 0.5) * r.height]; };
+  const grabFace = (e: PointerEvent): boolean => {
+    if (!fig || !boxFrame || !onHitBoxFace || e.button !== 0) return false;
+    const r = el.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObject(hitBoxMesh, false)[0];
+    const face = hit?.face?.materialIndex;
+    if (face == null) return false;
+    const n = new THREE.Vector3().setComponent(face >> 1, face & 1 ? -1 : 1).transformDirection(hitBoxMesh.matrixWorld);
+    const [ax, ay] = toScreen(hit.point.clone()), [bx, by] = toScreen(hit.point.clone().addScaledVector(n, 0.1));
+    const dx = (bx - ax) / 0.1, dy = (by - ay) / 0.1;
+    if (Math.hypot(dx, dy) < 20) return false; // face seen edge-on: no usable drag direction
+    const key = hitBoxFaceKey(face, boxSouthpaw);
+    faceDrag = { face, key, x0: e.clientX, y0: e.clientY, dx, dy, start: boxFrame.params?.[key] ?? 0,
+      min: hitBoxFaceMinCm(boxFrame.params, fig.gloveHalf[boxFrame.side], face, boxSouthpaw) };
+    return true;
+  };
+  const onDown = (e: PointerEvent) => {
+    el.setPointerCapture(e.pointerId);
+    if (grabFace(e)) return;
+    drag = { x: e.clientX, y: e.clientY, moved: false, shift: e.shiftKey };
+  };
   const onMove = (e: PointerEvent) => {
+    if (faceDrag) {
+      const f = faceDrag;
+      const m = ((e.clientX - f.x0) * f.dx + (e.clientY - f.y0) * f.dy) / (f.dx * f.dx + f.dy * f.dy);
+      onHitBoxFace!(f.key, Math.round(Math.max(f.min, f.start + m * 100) * 10) / 10);
+      return;
+    }
     if (!drag) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
@@ -165,6 +231,7 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
     return best;
   };
   const onUp = (e: PointerEvent) => {
+    faceDrag = null;
     const d = drag;
     drag = null;
     if (!d || d.moved || e.button !== 0) return;
@@ -189,6 +256,8 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
     ro.disconnect();
     fig?.dispose();
     for (const m of [floor, marker, noseLine]) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
+    hitBoxMesh.geometry.dispose();
+    boxMats.forEach(m => m.dispose());
     grid.dispose();
     renderer.dispose();
     el.remove();

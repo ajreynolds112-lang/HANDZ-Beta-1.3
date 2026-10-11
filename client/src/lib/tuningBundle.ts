@@ -29,6 +29,7 @@
  */
 import { reloadScaling } from "./scalingConfig";
 import { invalidatePunchAnimCache } from "./punchAnimConfig";
+import { invalidateSoundEqCache } from "./soundEqConfig";
 import { reloadRefinementTuning } from "@/game/refinementTuning";
 import { reloadChampionFundamentals } from "@/game/championStates";
 import { deserializeRlRun, loadRlCheckpointRaw, saveRlCheckpoint } from "@/game/rlRun";
@@ -50,6 +51,7 @@ const PARAM_SHAPES = {
   handz_pose_offsets: "object",
   handz_punch_profiles: "object",
   handz_punch_profile_assign: "object",
+  handz_guard_stance_assign: "object",
   // AI graphs: live state, "set as default" snapshots, named presets, per-opponent overrides
   handz_neural_state: "object",
   handz_neural_defaults: "object",
@@ -75,10 +77,14 @@ const PARAM_SHAPES = {
   handz_turn_config: "object",
   handz_ai_range_config: "object",
   handz_stand_height_config: "object",
+  // Per-sound 7-band EQ + fine pitch
+  handz_sound_eq: "object",
   handz_rc_config: "object",
   handz_stoppage_config: "object",
   // Sparring rewards: accuracy upgrade threshold + per-tier XP/points/cap
   handz_sparring_reward_config: "object",
+  // Admin renames of the challenger gyms
+  handz_away_gym_names: "array",
   handz_ai_pattern_config: "object",
   handz_fatigue_config: "object",
   handz_punch_counter_config: "object",
@@ -234,6 +240,7 @@ export function invalidateTuningCaches(): void {
   try { invalidatePunchAnimCache(); } catch { /* nothing to reload */ }
   try { reloadRefinementTuning(); } catch { /* nothing to reload */ }
   try { reloadChampionFundamentals(); } catch { /* nothing to reload */ }
+  invalidateSoundEqCache();
 }
 
 /** Replace every parameter with the bundle's. Validate first. */

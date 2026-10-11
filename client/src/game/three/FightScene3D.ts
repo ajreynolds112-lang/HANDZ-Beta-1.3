@@ -14,6 +14,11 @@ import { Arena3D } from "./arena3d";
 import { BroadcastCamera, CAMERA_ASPECT } from "./broadcastCamera";
 import { FightEffects3D, type EffectFighter } from "./effects3d";
 import { Fighter3D } from "./fighterModel";
+import { setGloveGaps } from "../gloveContact";
+import { gloveHitBox, newGloveHitBox } from "./gloveHitBox";
+import { punchRole } from "../engine";
+import { PUNCH_CONFIGS } from "../types";
+import { getActivePunchAnimConfig } from "@/lib/punchAnimConfig";
 import { ensureFighterAssets } from "./fighterRig";
 import { loadGeneratedProps } from "./props3d";
 import { GymEnvironment3D, getGymRingName } from "./gym3d";
@@ -191,6 +196,7 @@ export class FightScene3D {
     this.homeCam.updateProjectionMatrix();
   }
 
+  private hitBox = newGloveHitBox();
   private syncFighters(state: GameState): void {
     type F = GameState["player"];
     const list: { f: F; colors: FighterColors; opp: F }[] = [
@@ -214,6 +220,17 @@ export class FightScene3D {
       // Nose lines aim at each other: the two mains at one another, Nightmare extras at the player.
       fig.aimAt = entry ? this.fighters[i === 0 ? 1 : 0] ?? null : null;
       if (entry) fig.update(entry.f, entry.colors, entry.opp, state, this.frame, epoch);
+    });
+    // Gloves stop at the other fighter's torso (both posed first).
+    this.fighters.forEach((fig, i) => { if (list[i] && fig.aimAt?.root.visible) fig.keepHandsOut(fig.aimAt); });
+    // Hit detection: each glove's gap to the opponent (after the torso pass).
+    this.fighters.forEach((fig, i) => {
+      const f = list[i]?.f;
+      if (!f?.currentPunch || !fig.aimAt?.root.visible) return;
+      const side = PUNCH_CONFIGS[f.currentPunch].isLeft ? 0 : 1;
+      const sp = f.boxingStance === "southpaw";
+      const gap = fig.gloveGap(side, fig.aimAt, gloveHitBox(getActivePunchAnimConfig()[punchRole(f.currentPunch, f.boxingStance)], fig.gloveHalf[side], sp, this.hitBox));
+      setGloveGaps(f, side ? Infinity : gap, side ? gap : Infinity);
     });
 
     this.referee.root.visible = state.refereeVisible;

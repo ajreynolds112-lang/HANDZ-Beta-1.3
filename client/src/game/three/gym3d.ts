@@ -399,14 +399,17 @@ export class GymEnvironment3D {
     });
     const clock = new THREE.Mesh(new THREE.CircleGeometry(0.32, 32),
       new THREE.MeshStandardMaterial({ map: canvasTexture(128, 128, drawClock), roughness: 0.6 }));
-    clock.position.set(R.minX + 0.03, 2.95, GYM_SPOTS.door.z);
-    clock.rotation.y = Math.PI / 2;
-    this.group.add(clock);
+    // Over the door, on whichever wall it stands against.
+    const door = GYM_SPOTS.door, onX = Math.abs(Math.sin(door.rotY)) > 0.7;
+    const overDoor = (m: THREE.Mesh, y: number, off: number) => {
+      if (onX) m.position.set(Math.sin(door.rotY) > 0 ? R.minX + off : R.maxX - off, y, door.z);
+      else m.position.set(door.x, y, Math.cos(door.rotY) > 0 ? R.minZ + off : R.maxZ - off);
+      m.rotation.y = door.rotY;
+      this.group.add(m);
+    };
+    overDoor(clock, 2.95, 0.03);
     // A lit EXIT sign over the door.
-    const exit = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.26), new THREE.MeshBasicMaterial({ map: canvasTexture(140, 52, drawExit) }));
-    exit.position.set(R.minX + 0.04, 2.55, GYM_SPOTS.door.z);
-    exit.rotation.y = Math.PI / 2;
-    this.group.add(exit);
+    overDoor(new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.26), new THREE.MeshBasicMaterial({ map: canvasTexture(140, 52, drawExit) })), 2.55, 0.04);
 
     this.buildOffice();
 

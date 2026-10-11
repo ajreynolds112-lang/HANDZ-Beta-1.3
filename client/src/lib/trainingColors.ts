@@ -23,6 +23,8 @@ export function trainingColors(fighter: Fighter): FighterColors {
     socks: gc.socks || DEFAULT_GEAR_COLORS.socks,
     laces: gc.laces,
     soles: gc.soles,
-    waistStripe: gc.waistStripe,
+    gearDecal: gc.gearDecal,
+    girdle: gc.girdle,
+    girdleLaces: gc.girdleLaces,
   }, spacialSelectionOf(f));
 }

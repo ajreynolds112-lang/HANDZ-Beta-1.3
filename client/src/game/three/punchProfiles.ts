@@ -31,7 +31,7 @@ export const PUNCH_ROLE_LABEL: Record<PunchType, string> = {
 export const ROT_MAX = 45;
 /** Range a per-track limit may be set to. */
 export const ROT_LIMIT_MIN = 1;
-export const ROT_LIMIT_MAX = 180;
+export const ROT_LIMIT_MAX = 270;
 export type AxisLimits = [number, number, number];
 /** A per-track rotation limit, clamped to its legal range (default ROT_MAX). */
 export function cleanLimit(v: unknown): number {
@@ -62,6 +62,12 @@ export const PROFILE_TIME_SCALE = 10;
 export interface Key { t: number; v: number }
 export type AxisTracks = [Key[], Key[], Key[]];
 export type BoneTracks = Partial<Record<BoneName, AxisTracks>>;
+/** A guard's Loop Start, loop mode and Full Guard Slide (each guard keeps its own). */
+export interface GuardLoop {
+  loopStart?: number;
+  loopMode?: "loop" | "slide";
+  guardSlide?: number;
+}
 export interface PunchProfile {
   name: string;
   /** Joint rotation keys: the Full Guard On animation (and Off's too while it has none of its own). */
@@ -71,6 +77,17 @@ export interface PunchProfile {
    * keys. In a fight the two blend by the fighter's guard blend.
    */
   bonesOff?: BoneTracks;
+  /** The Secondary / Third Full Guard's On animation; absent = plays the Full Guard's (bones). */
+  bones2?: BoneTracks;
+  bones3?: BoneTracks;
+  /**
+   * Each full guard's (Full Guard / Secondary / Third) duck animation: replaces
+   * that guard's keys by the fighter's crouch depth; absent = ducked punches
+   * play the standing keys.
+   */
+  bonesDuck?: BoneTracks;
+  bonesDuck2?: BoneTracks;
+  bonesDuck3?: BoneTracks;
   speed: Key[];
   /** Hips height offset (cm), eased like a rotation lane; absent/empty = none. */
   height?: Key[];
@@ -82,17 +99,27 @@ export interface PunchProfile {
   loopMode?: "loop" | "slide";
   /** Layer the keyframes on the stock (automatic) punch motion; absent = keyframes alone, from the guard. */
   autoMotion?: boolean;
+  /** Self-collision off: this punch's gloves may pass through the fighter's own torso; absent = on. */
+  noSelfCollide?: boolean;
   /**
    * Full Guard Slide end (animation time): from τ=0 to here the fighter's current
    * guard (full or normal) eases into the animation; absent = the animation from τ=0.
    */
   guardSlide?: number;
+  /** The Secondary / Third Full Guard's own Loop Start, loop mode and Full Guard Slide (the fields above are the Full Guard's). */
+  loop2?: GuardLoop;
+  loop3?: GuardLoop;
   /**
    * Per arm joint (upper arm, forearm, hand): true = Full Guard Follow (the joint
    * holds its Edit Poses guard rotation, no animation), false = normal animation.
    * Absent = the default: the non-punching arm follows the guard.
    */
   guardLock?: Partial<Record<BoneName, boolean>>;
+  /** The Secondary / Third Full Guard's own locks (guardLock is the Full Guard's). */
+  guardLock2?: Partial<Record<BoneName, boolean>>;
+  guardLock3?: Partial<Record<BoneName, boolean>>;
+  /** Per full guard (index = guard stance): true = a joint's keys turn only that joint, not its children. */
+  isolate?: boolean[];
 }
 export interface ProfileStore {
   slots: Record<PunchType, (PunchProfile | null)[]>;
@@ -111,6 +138,11 @@ export function enginePunchForRole(role: PunchType, southpaw: boolean): PunchTyp
 }
 
 // ── storage ──
+/** Each full guard's own lock set (index = guard stance). */
+export const LOCK_KEYS = ["guardLock", "guardLock2", "guardLock3"] as const;
+/** The profile field holding each full guard's (0-2) duck animation. */
+export const DUCK_KEYS = ["bonesDuck", "bonesDuck2", "bonesDuck3"] as const;
+export const lockKey = (guard: number) => LOCK_KEYS[Math.max(0, Math.min(2, Math.round(guard)))];
 function cleanKeys(v: unknown, lo: number, hi: number): Key[] {
   if (!Array.isArray(v)) return [];
   const out: Key[] = [];
@@ -145,21 +177,27 @@ export function cleanProfile(v: unknown): PunchProfile | null {
   const out: PunchProfile = { name: typeof o.name === "string" ? o.name.slice(0, 40) : "", bones: cleanBones(o.bones), speed: cleanKeys(o.speed, SPEED_MIN, SPEED_MAX) };
   // Kept even when empty: an edited Off animation with no keys is not "plays the On keys".
   if (o.bonesOff && typeof o.bonesOff === "object" && !Array.isArray(o.bonesOff)) out.bonesOff = cleanBones(o.bonesOff);
+  for (const k of ["bones2", "bones3", ...DUCK_KEYS] as const) if (o[k] && typeof o[k] === "object" && !Array.isArray(o[k])) out[k] = cleanBones(o[k]);
   if (Object.keys(limits).length) out.limits = limits;
   const height = cleanKeys(o.height, -HEIGHT_MAX, HEIGHT_MAX);
   if (height.length) out.height = height;
-  const ls = validLoopStart(o.loopStart);
-  if (ls != null) out.loopStart = ls;
-  if (ls != null && o.loopMode === "slide") out.loopMode = "slide";
-  const gs = validLoopStart(o.guardSlide);
-  if (gs != null) out.guardSlide = gs;
+  Object.assign(out, cleanLoop(o));
+  // Older saves shared one set: Secondary/Third start as a copy, separate from then on.
+  for (const k of ["loop2", "loop3"] as const) out[k] = cleanLoop(o[k] && typeof o[k] === "object" ? o[k] as Record<string, unknown> : o);
   if (o.autoMotion === true) out.autoMotion = true;
-  if (o.guardLock && typeof o.guardLock === "object") {
+  if (o.noSelfCollide === true) out.noSelfCollide = true;
+  const iso = Array.isArray(o.isolate) ? [0, 1, 2].map(i => (o.isolate as unknown[])[i] === true) : [];
+  if (iso.some(Boolean)) out.isolate = iso;
+  // Older saves shared one lock set: Secondary/Third start as a copy, separate from then on.
+  for (const k of LOCK_KEYS) {
+    const src = o[k] ?? o.guardLock;
+    if (!src || typeof src !== "object") continue;
     const gl: NonNullable<PunchProfile["guardLock"]> = {};
-    for (const [b, v] of Object.entries(o.guardLock as Record<string, unknown>)) {
+    for (const [b, v] of Object.entries(src as Record<string, unknown>)) {
       if ((GUARD_LOCK_JOINTS as string[]).includes(b) && typeof v === "boolean") gl[b as BoneName] = v;
     }
-    if (Object.keys(gl).length) out.guardLock = gl;
+    // Kept even when empty: once any guard's locks are edited, all three are stored, so none re-copies the Full Guard's.
+    out[k] = gl;
   }
   return out;
 }
@@ -171,16 +209,16 @@ export function rolePunchSide(role: PunchType): "Left" | "Right" {
   return role === "jab" || role === "leftHook" || role === "leftUppercut" ? "Left" : "Right";
 }
 /** Whether a joint follows the guard in this profile (explicit setting, else the non-punching arm does). */
-export function isGuardLocked(p: Pick<PunchProfile, "guardLock">, role: PunchType, b: BoneName): boolean {
-  const v = p.guardLock?.[b];
+export function isGuardLocked(p: Pick<PunchProfile, (typeof LOCK_KEYS)[number]>, role: PunchType, b: BoneName, guard = 0): boolean {
+  const v = p[lockKey(guard)]?.[b];
   if (v != null) return v;
   return (GUARD_LOCK_JOINTS as string[]).includes(b) && !b.startsWith(rolePunchSide(role));
 }
 /** Every guard-held joint of a profile (orthodox names); a locked upper arm also holds its shoulder. */
-export function guardLockedJoints(p: Pick<PunchProfile, "guardLock">, role: PunchType): BoneName[] {
+export function guardLockedJoints(p: Pick<PunchProfile, (typeof LOCK_KEYS)[number]>, role: PunchType, guard = 0): BoneName[] {
   const out: BoneName[] = [];
   for (const b of GUARD_LOCK_JOINTS) {
-    if (!isGuardLocked(p, role, b)) continue;
+    if (!isGuardLocked(p, role, b, guard)) continue;
     out.push(b);
     if (b.endsWith("Arm") && !b.endsWith("ForeArm")) out.push(b.replace("Arm", "Shoulder") as BoneName);
   }
@@ -341,6 +379,25 @@ export function warpTime(keys: Key[], u: number): number {
 }
 
 /** A usable Loop Start, or null (off / out of range). */
+export function cleanLoop(o: GuardLoop | Record<string, unknown>): GuardLoop {
+  const r = o as Record<string, unknown>, out: GuardLoop = {};
+  const ls = validLoopStart(r.loopStart);
+  if (ls != null) { out.loopStart = ls; if (r.loopMode === "slide") out.loopMode = "slide"; }
+  const gs = validLoopStart(r.guardSlide);
+  if (gs != null) out.guardSlide = gs;
+  return out;
+}
+/** A guard's Loop Start / loop mode / Full Guard Slide. */
+export function loopOf(p: PunchProfile, stance: number): GuardLoop {
+  return stance === 1 ? p.loop2 ?? {} : stance === 2 ? p.loop3 ?? {} : p;
+}
+/** p with guard `stance`'s loop settings replaced by f(current). */
+export function withLoop(p: PunchProfile, stance: number, f: (l: GuardLoop) => GuardLoop): PunchProfile {
+  const next = cleanLoop(f(loopOf(p, stance)));
+  if (stance === 1 || stance === 2) return { ...p, [stance === 1 ? "loop2" : "loop3"]: next };
+  const { loopStart: _a, loopMode: _b, guardSlide: _c, ...rest } = p;
+  return { ...rest, ...next };
+}
 export function validLoopStart(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) && v > 0.005 && v < 0.995 ? v : null;
 }
@@ -370,9 +427,18 @@ export function guardSlideWeight(p: Pick<PunchProfile, "guardSlide">, tau: numbe
   return x * x * x * (x * (x * 6 - 15) + 10);
 }
 
-/** The joint keys the Full Guard On (true) or Off (false) animation plays. */
-export function profileBones(p: Pick<PunchProfile, "bones" | "bonesOff">, fullGuard: boolean): BoneTracks {
-  return fullGuard || !p.bonesOff ? p.bones : p.bonesOff;
+/** The profile field holding each full guard's (0-2) On animation. */
+export const ON_KEYS = ["bones", "bones2", "bones3"] as const;
+type OnBones = Pick<PunchProfile, "bones" | "bonesOff" | "bones2" | "bones3" | (typeof DUCK_KEYS)[number]>;
+/** Full guard `stance`'s On animation (the Full Guard's while it has none of its own). */
+export function onBones(p: OnBones, stance = 0): BoneTracks {
+  return p[ON_KEYS[Math.max(0, Math.min(2, Math.round(stance)))]] ?? p.bones;
+}
+/** The joint keys the Full Guard On (true, of guard `stance`) or Off (false) animation plays. */
+export function profileBones(p: OnBones, fullGuard: boolean, stance = 0, duck = false): BoneTracks {
+  const d = duck ? p[DUCK_KEYS[Math.max(0, Math.min(2, Math.round(stance)))]] : undefined;
+  if (d) return d;
+  return fullGuard || !p.bonesOff ? onBones(p, stance) : p.bonesOff;
 }
 function evalBones(bones: BoneTracks, tau: number): PoseOffsets {
   const out: PoseOffsets = {};
@@ -383,15 +449,24 @@ function evalBones(bones: BoneTracks, tau: number): PoseOffsets {
   return out;
 }
 /** Joint offsets at τ: the Off animation slid into the On animation by the guard blend g (0 = off, 1 = full guard). */
-export function evalProfileOffsets(p: PunchProfile, tau: number, g = 1): PoseOffsets {
+export function evalProfileOffsets(p: PunchProfile, tau: number, g = 1, stance = 0, duck = 0): PoseOffsets {
+  const dw = Math.max(0, Math.min(1, duck || 0));
+  const dk = p[DUCK_KEYS[Math.max(0, Math.min(2, Math.round(stance)))]];
+  if (dk && dw > 0) {
+    const ducked = evalBones(dk, tau);
+    if (dw >= 1) return ducked;
+    return lerpOffsets(evalProfileOffsets(p, tau, g, stance), ducked, dw);
+  }
   const w = Math.max(0, Math.min(1, g || 0));
-  if (!p.bonesOff || w >= 1) return evalBones(p.bones, tau);
+  if (!p.bonesOff || w >= 1) return evalBones(onBones(p, stance), tau);
   const off = evalBones(p.bonesOff, tau);
   if (w <= 0) return off;
-  const on = evalBones(p.bones, tau);
+  return lerpOffsets(off, evalBones(onBones(p, stance), tau), w);
+}
+function lerpOffsets(from: PoseOffsets, to: PoseOffsets, w: number): PoseOffsets {
   const out: PoseOffsets = {};
-  for (const b of new Set([...Object.keys(on), ...Object.keys(off)]) as Set<BoneName>) {
-    const a = off[b] ?? [0, 0, 0], c = on[b] ?? [0, 0, 0];
+  for (const b of new Set([...Object.keys(from), ...Object.keys(to)]) as Set<BoneName>) {
+    const a = from[b] ?? [0, 0, 0], c = to[b] ?? [0, 0, 0];
     out[b] = [a[0] + (c[0] - a[0]) * w, a[1] + (c[1] - a[1]) * w, a[2] + (c[2] - a[2]) * w];
   }
   return out;
@@ -404,8 +479,11 @@ export function punchClock(f: FighterState): number | null {
   const fr = punchPhaseFractions(f);
   if (!fr) return null;
   if (f.punchPhase === "retraction") {
+    const R = Math.max(0, Math.min(1, f.retractionProgress || 0));
+    // A blocked punch was cut short: play its way out backwards from where it stopped.
+    if (f.punchCutU != null) return f.punchCutU * (1 - R);
     const [a, b] = fr.retraction;
-    return a + (b - a) * Math.max(0, Math.min(1, f.retractionProgress || 0));
+    return a + (b - a) * R;
   }
   return Math.max(0, Math.min(1, f.punchProgress || 0));
 }
@@ -475,6 +553,10 @@ export interface ActivePunchProfile {
   guardLock: BoneName[];
   /** Full Guard Slide: 0 = the fighter's current guard, 1 = the authored animation. */
   guardIn: number;
+  /** Joints turn only themselves (the fighter's current guard's toggle). */
+  isolate: boolean;
+  /** Gloves stay out of the fighter's own torso. */
+  selfCollide: boolean;
 }
 /** The profile a punching fighter wears this frame, or null for the stock animation. */
 export function activePunchProfile(f: FighterState): ActivePunchProfile | null {
@@ -485,14 +567,21 @@ export function activePunchProfile(f: FighterState): ActivePunchProfile | null {
   const p = profileForRole(f, role);
   if (!p) return null;
   const raw = warpTime(p.speed, u);
-  const slide = slideWeight(p, raw);
-  const L = validLoopStart(p.loopStart);
-  const tau = p.loopMode === "slide" ? (L != null ? Math.min(raw, L) : raw) : loopTime(p.loopStart, raw);
-  const offs = evalProfileOffsets(p, tau, f.guardBlend || 0);
+  // Fighting style: each punch can come from any guard (per-role map, PUNCH_ROLES order).
+  const ps = f.punchStance?.[PUNCH_ROLES.indexOf(role)] ?? f.guardStance ?? 0;
+  const lp = loopOf(p, ps);
+  const slide = slideWeight(lp, raw);
+  const L = validLoopStart(lp.loopStart);
+  const tau = lp.loopMode === "slide" ? (L != null ? Math.min(raw, L) : raw) : loopTime(lp.loopStart, raw);
+  const offs = evalProfileOffsets(p, tau, f.guardBlend || 0, ps, f.duckProgress || 0);
+  // Slip while punching: the Lower Spine tilt, authored orthodox (mirrored for a southpaw, so is the direction), only for a direction that guard has a slip pose for.
   const retimed = p.speed.length > 0 || L != null;
   const height = p.height?.length ? evalRotation(p.height, tau) / 100 : 0;
-  const locks = guardLockedJoints(p, role);
+  const locks = guardLockedJoints(p, role, ps);
   const guardLock = southpaw ? locks.map(mirrorBoneName) : locks;
-  const guardIn = guardSlideWeight(p, p.loopMode === "slide" ? tau : raw);
-  return { fighter: retimed ? fighterAtPunchTime(f, tau) : f, offsets: southpaw ? mirrorPose(offs) : offs, slide, height, auto: !!p.autoMotion, guardLock, guardIn };
+  // A Secondary/Third copy of the Full Guard punch also eases back into its own guard at the loop's end.
+  const st = Math.round(ps);
+  const copied = st >= 1 && !!p[ON_KEYS[Math.min(2, st)]];
+  const guardIn = guardSlideWeight(lp, lp.loopMode === "slide" || copied ? tau : raw);
+  return { fighter: retimed ? fighterAtPunchTime(f, tau) : f, offsets: southpaw ? mirrorPose(offs) : offs, slide, height, auto: !!p.autoMotion, guardLock, guardIn, isolate: !!p.isolate?.[ps], selfCollide: !p.noSelfCollide };
 }

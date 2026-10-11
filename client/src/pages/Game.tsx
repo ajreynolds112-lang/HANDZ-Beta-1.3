@@ -3,6 +3,7 @@ import { requestCloudSave, setScreenKind } from "@/lib/uiChrome";
 import BackgroundTrainingControl from "@/components/BackgroundTrainingControl";
 import { pauseBackgroundTraining } from "@/game/backgroundTraining";
 import * as localSaves from "@/lib/localSaves";
+import { applyFightingStyle } from "@/game/fightingStyle";
 import { GameState, Archetype, FighterColors, DEFAULT_PLAYER_COLORS, AIDifficulty, TimerSpeed, DoghouseOpponentSpec, BoxingStance, PunchType } from "@/game/types";
 import { creditBagSession } from "@/game/drilledActions";
 import { createInitialState, startFight, startNextRound, xpToNextLevel, extractPerformanceStats, extractPlayerPlaystyle, savePlayerPlaystyle, activateNightmareMode, clearAllKeys, applyItemFightMods, applyAiPatternStudy, foldAiPatternLibrary, attachDrilledActions, collectDrilledActions, collectResetTrainingReps, carryDrilledActions, applyFightEquipment, spreadRefinementPoints, activeRefinementsOnly, MAX_ACTIVE_REFINEMENTS, REFINEMENT_TOTAL_CAP, NIGHTMARE_REFINEMENT_STEP_PCT, nightmareRefinementBudgetFor, DOGHOUSE_ENEMY_STAMINA_MULT, DOGHOUSE_PLAYER_STAMINA_MULT } from "@/game/engine";
@@ -58,14 +59,15 @@ import FightEnd from "@/components/FightEnd";
 import CareerMode, { type TrainingType, RosterEditView, AllocateStats, RefinementView, refinementExchangeCost, refUnlockForceCost, refUnlockShardCost } from "@/components/CareerMode";
 import { SPARRING_MODE_COSTS, type SparringMode } from "@/game/sparringModes";
 import { ringColorsOf } from "@/game/ringColors";
-import { gymLookOf } from "@/game/gymLook";
+import { awayGymFor, gymLookOf } from "@/game/gymLook";
 import WeightLiftingGame from "@/components/WeightLiftingGame";
 import { PAID_SWEEP_SHARD_COST } from "@/components/GymView";
 import { cappedStatPointForce, FORCE_PER_CAPPED_SP_BOUT, FORCE_PER_CAPPED_SP_TRAINING } from "@/game/statPointEconomy";
 import HeavyBagGame from "@/components/HeavyBagGame";
 import PausePunchEditor from "@/components/PausePunchEditor";
 import { Settings } from "lucide-react";
-import type { Fighter, SkillPoints, CareerStats, GearColors, TrainingBonuses, CareerRosterState, RosterFighterState, SkillRefinement, ItemInventory } from "@shared/schema";
+import type { Fighter, SkillPoints, CareerStats, GearColors, TrainingBonuses, CareerRosterState, RosterFighterState, SkillRefinement, ItemInventory, ChallengeRequest } from "@shared/schema";
+import { challengeChestForRank, challengeStateOf, nextChallengeState } from "@/game/challenges";
 import { DEFAULT_CAREER_STATS, DEFAULT_TRAINING_BONUSES, DEFAULT_GEAR_COLORS, DEFAULT_SKILL_REFINEMENT, statPointCap, totalSkillPts, perStatCap, refinementSlotsForRank, refinementSlotsUnlocked, REFINEMENT_SLOT_RANK_UNLOCKS, BASE_ACTIVE_REFINEMENT_SLOTS } from "@shared/schema";
 import { loadXpConfig } from "@/lib/xpConfig";
 import CrateRevealView from "@/components/CrateRevealView";
@@ -701,10 +703,14 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
    * longer on the roster) must leave the ticket armed.
    */
   const importedPartnerUsedRef = useRef(false);
+  /** Set while the bout is a Challenges spar (3x3min Champion at the challenger's gym). */
+  const challengeSparRef = useRef<ChallengeRequest | null>(null);
 
   const [showPausePunchEditor, setShowPausePunchEditor] = useState(false);
   const [selectedArchetype, setSelectedArchetype] = useState<Archetype>("BoxerPuncher");
   const [activeFighterRaw, setActiveFighterRaw] = useState<Fighter | null>(null);
+  /** The career fighting style the current bout opened with (null = none); restarts re-apply it. */
+  const fightStyleRef = useRef<unknown>(null);
   const activeFighter = useMemo(() => {
     if (!activeFighterRaw) return null;
     const raw = (activeFighterRaw.skillPoints || {}) as Partial<SkillPoints>;
@@ -786,13 +792,13 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
     try { const v = localStorage.getItem("handz_show_exp_bar"); return v === null ? true : v === "true"; } catch { return true; }
   });
   const [showFightItemsHud, setShowFightItemsHud] = useState(() => {
-    try { const v = localStorage.getItem("handz_show_fight_items"); return v === null ? true : v === "true"; } catch { return true; }
+    try { const v = localStorage.getItem("handz_show_fight_items"); return v === "true"; } catch { return false; }
   });
   const [trainingType, setTrainingType] = useState<TrainingType | null>(null);
   // Free heavy bag: unscored, no session count, no rewards.
   const [freeBagMode, setFreeBagMode] = useState(false);
   /** Free bag: the session's punches in order, banked into Drilled Actions on exit. */
-  const freeBagPunchesRef = useRef<{ type: PunchType; head: boolean }[]>([]);
+  const freeBagPunchesRef = useRef<{ type: PunchType; head: boolean; southpaw?: boolean }[]>([]);
   // Chosen free-bag length (minutes); 0 = session never started.
   const freeBagMinutesRef = useRef(0);
   // True only once the free-bag clock has run all the way out.
@@ -1144,6 +1150,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
       1,
       1,
     );
+    fightStyleRef.current = null;
     newState.tutorialMode = true;
     newState.tutorialStage = stage;
     newState.tutorialStep = 1;
@@ -1252,6 +1259,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
           nmRestartRef,
           true
         );
+        applyFightingStyle(nmRestart.player, fightStyleRef.current);
         if (newState.playerRefinement) nmRestart.playerRefinement = { ...newState.playerRefinement };
         nmRestart.careerEnemyRefinement = (nmRestartRef ? { ...nmRestartRef } : {}) as Record<string, number>;
         nmRestart.careerXpMult = newState.careerXpMult;
@@ -1305,6 +1313,9 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         undefined,
         newState.playerRefinement
       );
+      applyFightingStyle(restartState.player, fightStyleRef.current);
+      restartState.player.wearsSparringGear = newState.player.wearsSparringGear;
+      restartState.enemy.wearsSparringGear = newState.enemy.wearsSparringGear;
       restartState.ringColors = newState.ringColors;
       restartState.gymRingName = newState.gymRingName;
       if (newState.careerEnemySkillPoints) {
@@ -1736,6 +1747,10 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
 
       } else if (isSparring && activeFighter) {
         const sparringWon = newState.fightWinner === "player";
+        const challengeSpar = challengeSparRef.current;
+        challengeSparRef.current = null;
+        // Challenge spar boost: 10x on a win, 3x on a loss.
+        const challengeMult = challengeSpar ? (sparringWon ? 10 : 3) : 1;
         const thrown = newState.player.punchesThrown;
         const landed = newState.player.punchesLanded;
         const accuracy = thrown > 0 ? landed / thrown : 0;
@@ -1919,6 +1934,8 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         updatedRosterState = withGymWorkFromBout(updatedRosterState, newState);
         let didSimulate = false;
         let sparDecayedSP: SkillPoints | null = null;
+        // A challenge spar in the back half of the week sends the player straight home.
+        const challengeBackHalf = !!challengeSpar && (updatedRosterState?.trainingsSinceLastWeek ?? 0) >= 1;
         if (updatedRosterState) {
           // Persistent availability perk: camp sparring sessions also add +0.1% each.
           const wasInFightCampSpar = updatedRosterState.selectedOpponentId != null && (updatedRosterState.prepWeeksRemaining ?? 0) > 0;
@@ -1929,7 +1946,8 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
           // branches below, exactly once each. What it is worth towards the
           // Reset's snap rides on the partner's grade.
           const sparTotal = nextSparCount(activeFighter.id, updatedRosterState, sparSessionsForDifficulty(sparringDifficulty));
-          if (prevTrainingsSpar >= 1) {
+          // A challenge spar is the week's trip: it always closes the week.
+          if (prevTrainingsSpar >= 1 || challengeSpar) {
             const sparInFightCamp = updatedRosterState.selectedOpponentId != null && (updatedRosterState.prepWeeksRemaining ?? 0) > 0;
             const weekSeed = Date.now();
             updatedRosterState = simulateWeek({ ...updatedRosterState, lastSparWeek: sparPreWeek, totalSpars: sparTotal, weeklyBonus: null }, weekSeed, activeFighter.careerDifficulty, newLevel, true, refinementTotal(activeFighter.skillRefinement as Record<string, number> | null), getEquipmentLevels(activeFighter));
@@ -1972,17 +1990,22 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
           updatedRosterState = grantDefensiveMasteryBonus(
             updatedRosterState,
             localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null,
-            perfectBlocksOf(newState) * (MASTERY_PCT_PER_PERFECT_BLOCK[sparringDifficulty] ?? 0),
+            perfectBlocksOf(newState) * (MASTERY_PCT_PER_PERFECT_BLOCK[sparringDifficulty] ?? 0) * challengeMult,
           );
+          // Challenge spar: +2 Punch Endurance and -1% max stamina cost on a win, +1 on a loss.
+          if (challengeSpar && !sparringWon) updatedRosterState = grantPunchEndurance(activeFighter.id, updatedRosterState, 1);
+          if (challengeSpar && sparringWon) {
+            updatedRosterState = { ...updatedRosterState, punchEnduranceLoss: improvedPunchEnduranceLoss(activeFighter.id, updatedRosterState) };
+          }
           // Conditioning: winning the session is worth a point. Losing still
           // restarts the decay clock through the stamp above.
           if (sparringWon) {
-            updatedRosterState = grantPunchEndurance(activeFighter.id, updatedRosterState, 1);
+            updatedRosterState = grantPunchEndurance(activeFighter.id, updatedRosterState, challengeSpar ? 2 : 1);
             // Slip training: every close-range hand slip pays its grade's rate.
             updatedRosterState = grantSlipTraining(
               updatedRosterState,
               localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null,
-              slipsLandedOf(newState) * (SLIP_TRAINING_PCT_PER_SLIP[sparringDifficulty] ?? 0),
+              slipsLandedOf(newState) * (SLIP_TRAINING_PCT_PER_SLIP[sparringDifficulty] ?? 0) * challengeMult,
             );
           }
         }
@@ -1992,6 +2015,19 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         const sparSaved = withSavedInventory(activeFighter);
         const sparImported = importedPartnerUsedRef.current;
         importedPartnerUsedRef.current = false;
+        // Challenges: the trip is done (win or lose), and anyone sparred —
+        // challenge or Import Ticket — pays double Force when fought for real.
+        const sparredId = challengeSpar?.rosterId ?? (sparImported ? newState.enemy.punchProfileRosterId : undefined);
+        if (updatedRosterState && (challengeSpar || sparredId != null)) {
+          updatedRosterState = {
+            ...updatedRosterState,
+            challengeState: nextChallengeState(localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null, c => ({
+              ...c,
+              away: challengeSpar && c.away ? (challengeBackHalf ? null : { ...c.away, done: true, won: sparringWon }) : c.away,
+              sparredRosterIds: sparredId != null && !c.sparredRosterIds.includes(sparredId) ? [...c.sparredRosterIds, sparredId] : c.sparredRosterIds,
+            })),
+          };
+        }
         let sparInventory: ItemInventory | null =
           consumeBoostsFor(sparSaved, "sparring", updatedRosterState, {
             sparring: true,
@@ -2026,6 +2062,14 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
           deferredFightMilestonesRef.current = deferredFightMilestonesRef.current?.length
             ? [...deferredFightMilestonesRef.current, upgradeMilestone]
             : [upgradeMilestone];
+        }
+        if (challengeSpar && sparringWon) {
+          const chCrate = challengeChestForRank(updatedRosterState?.playerRank ?? 701);
+          const chRoll = rollCrateForFighter(sparInventory ? { ...sparSaved, itemInventory: sparInventory } : sparSaved, chCrate, updatedRosterState?.playerRank ?? null, false, "training");
+          if (chRoll.inventory && chRoll.itemIds.length > 0) {
+            sparInventory = chRoll.inventory;
+            pendingCratesRef.current = [{ crateId: chCrate, itemIds: chRoll.itemIds }];
+          }
         }
         if (sparRewardRarity) {
           const sparRewardRoll = rollRarityItemForFighter(
@@ -2500,7 +2544,9 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
 
         // Fight Surge multiplies the win's Force payout.
         const forceItemMult = getForceMult(activeFighter, updatedRosterState);
-        const forceEarned = isWin ? Math.round(computeForceEarned(oppRankForForce) * forceItemMult) : 0;
+        // Challenges: an opponent the player has sparred pays double Force.
+        const sparredMult = careerOpponentId != null && challengeStateOf(localSaves.getFighter(activeFighter.id)?.careerRosterState as CareerRosterState | null).sparredRosterIds.includes(careerOpponentId) ? 2 : 1;
+        const forceEarned = isWin ? Math.round(computeForceEarned(oppRankForForce) * forceItemMult * sparredMult) : 0;
         // Every win pays a diamond — the fight-end card reports it, so there is
         // no milestone popup for it.
         const diamondsEarned = isWin ? 1 : 0;
@@ -2928,6 +2974,13 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
       return "orthodox";
     })() as BoxingStance;
     const newState = startFight(gameState, isQuick ? selectedArchetype : (fighter?.archetype as Archetype || selectedArchetype), playerLevel, enemyLevel, name, fightColors, isQuick, diff, rounds, duration, speed, pArm, enemyArmLen, enemyArch, enemyName, tb, false, towel, practice, record, simMode, enemyColors, false, careerTier, isQuick ? aiPowerMult : careerOfficialPowerMult, isQuick ? aiSpeedMult : careerOfficialSpeedMult, isQuick ? aiStaminaMult : careerOfficialStaminaMult, sp, enemySp, mercy, enemyRosterId, ref, enemyRef, false, enemyRank, false, undefined, playerBoxingStance, enemyBoxingStance);
+    fightStyleRef.current = !isQuick && fighter ? (localSaves.getFighter(fighter.id) ?? fighter).fightingStyle : null;
+    applyFightingStyle(newState.player, fightStyleRef.current);
+    if (!isQuick && !isSparring && fighter) {
+      newState.player.wearsSparringGear = !!(localSaves.getFighter(fighter.id) ?? fighter).sparringGearInBouts;
+      // Everyone but the rank-1 NPC has a 1 in 5 chance of turning up in sparring gear.
+      newState.enemy.wearsSparringGear = enemyRank !== 1 && Math.random() < 0.2;
+    }
     // Apply player career multipliers for all official career bouts (not quick, not sparring).
     // Nightmare and Doghouse are intentionally included — they are official career bouts.
     if (!isQuick && !isSparring) {
@@ -3132,7 +3185,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         socks: oppColors.socks,
         laces: oppColors.laces,
         soles: oppColors.soles,
-        waistStripe: oppColors.waistStripe,
+        gearDecal: oppColors.gearDecal,
       };
 
       let savedRoundLen = 3;
@@ -3225,6 +3278,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         undefined,
         true
       );
+      fightStyleRef.current = null;
       activateNightmareMode(newState, Math.max(1, quickFightPlayerLevel - 15), aiDifficulty);
       commitGameState(newState);
       setUiMode("fighting");
@@ -3256,7 +3310,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         socks: qfColors.socks,
         laces: qfColors.laces,
         soles: qfColors.soles,
-        waistStripe: qfColors.waistStripe,
+        gearDecal: qfColors.gearDecal,
       };
       handleStartFight(
         quickFightPlayerLevel,
@@ -3568,7 +3622,9 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
       // shoe and trunk colours.
       laces: gc.laces,
       soles: gc.soles,
-      waistStripe: gc.waistStripe,
+      gearDecal: gc.gearDecal,
+      girdle: gc.girdle,
+      girdleLaces: gc.girdleLaces,
     }, spacialSelectionOf(fighter));
   };
 
@@ -3604,7 +3660,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
       socks: oppColors.socks,
       laces: oppColors.laces,
       soles: oppColors.soles,
-      waistStripe: oppColors.waistStripe,
+      gearDecal: oppColors.gearDecal,
     };
 
     let savedRoundLen2 = fighter.roundLengthMins || 3;
@@ -3760,6 +3816,8 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
       nmEnemyRef,
       true
     );
+    fightStyleRef.current = (localSaves.getFighter(fighter.id) ?? fighter).fightingStyle;
+    applyFightingStyle(newState.player, fightStyleRef.current);
     if (nmPlayerRef) newState.playerRefinement = { ...nmPlayerRef };
     // Mirror the opponent's refinement onto the state the Bout Details panel
     // reads — without this the pause screen shows the AI as all zeroes even
@@ -3862,7 +3920,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         socks: sc.socks,
         laces: sc.laces,
         soles: sc.soles,
-        waistStripe: sc.waistStripe,
+        gearDecal: sc.gearDecal,
       };
     }
 
@@ -3937,7 +3995,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         name: f.name,
         archetype: f.archetype as Archetype,
         armLength: f.armLength || 65,
-        colors: { gloves: sc.gloves, gloveTape: sc.gloveTape, trunks: sc.trunks, shoes: sc.shoes, skin: sc.skin, socks: sc.socks, laces: sc.laces, soles: sc.soles, waistStripe: sc.waistStripe },
+        colors: { gloves: sc.gloves, gloveTape: sc.gloveTape, trunks: sc.trunks, shoes: sc.shoes, skin: sc.skin, socks: sc.socks, laces: sc.laces, soles: sc.soles, gearDecal: sc.gearDecal },
         level: dhRefLevel,
         skillPoints: dhEnemySp,
         refinement: dhMirrorOn
@@ -3986,6 +4044,8 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
       true,
       dhOpponentPool
     );
+    fightStyleRef.current = (localSaves.getFighter(fighter.id) ?? fighter).fightingStyle;
+    applyFightingStyle(newState.player, fightStyleRef.current);
     // Doghouse also rides the sparring flags — apply before its stamina scaling
     // so the multipliers compose the same way they do elsewhere.
     applyItemFightMods(
@@ -4036,9 +4096,11 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
     setUiMode("fighting");
   };
 
-  const handleStartTraining = (fighter: Fighter, type: TrainingType, sparDiff?: AIDifficulty, importedPartnerId?: number, sparDuration: SparringDuration = 60) => {
+  const handleStartTraining = (fighter: Fighter, type: TrainingType, sparDiff?: AIDifficulty, importedPartnerId?: number, sparDuration: SparringDuration = 60, challenge?: ChallengeRequest) => {
     // Clear any leftover flag from a session that was started but abandoned.
     importedPartnerUsedRef.current = false;
+    challengeSparRef.current = challenge ?? null;
+    if (challenge) importedPartnerId = challenge.rosterId;
     setFreeBagMode(false);
     setActiveFighter(fighter);
     setTrainingType(type);
@@ -4073,7 +4135,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
       const importedPartner = importedPartnerId != null
         ? importRosterState?.roster.find(f => f.id === importedPartnerId) ?? null
         : null;
-      importedPartnerUsedRef.current = importedPartner != null;
+      importedPartnerUsedRef.current = importedPartner != null && !challenge;
       const foughtOpponents = rosterState ? rosterState.roster.filter(f => f.beatenByPlayer) : [];
       const usePreviousOpponent = !importedPartner && fighter.careerBoutIndex >= 3 && foughtOpponents.length > 0 && Math.random() < 0.35;
 
@@ -4090,7 +4152,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         sparPartnerArm = importedPartner.armLength || 65;
         sparPartnerRosterId = importedPartner.id;
         const sc = getRosterFighterColors(importedPartner);
-        sparPartnerColors = { gloves: sc.gloves, gloveTape: sc.gloveTape, trunks: sc.trunks, shoes: sc.shoes, skin: sc.skin, socks: sc.socks, laces: sc.laces, soles: sc.soles, waistStripe: sc.waistStripe };
+        sparPartnerColors = { gloves: sc.gloves, gloveTape: sc.gloveTape, trunks: sc.trunks, shoes: sc.shoes, skin: sc.skin, socks: sc.socks, laces: sc.laces, soles: sc.soles, gearDecal: sc.gearDecal };
       } else if (usePreviousOpponent && foughtOpponents.length > 0) {
         const sparPartner = foughtOpponents[Math.floor(Math.random() * foughtOpponents.length)];
         sparPartnerName = sparPartner.name;
@@ -4107,7 +4169,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
           socks: sc.socks,
           laces: sc.laces,
           soles: sc.soles,
-          waistStripe: sc.waistStripe,
+          gearDecal: sc.gearDecal,
         };
       } else if (rosterState && rosterState.roster.length > 0) {
         const randomIdx = Math.floor(Math.random() * rosterState.roster.length);
@@ -4126,7 +4188,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
           socks: sc.socks,
           laces: sc.laces,
           soles: sc.soles,
-          waistStripe: sc.waistStripe,
+          gearDecal: sc.gearDecal,
         };
       }
 
@@ -4229,12 +4291,12 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         gameState,
         fighter.archetype as Archetype,
         fighter.level,
-        importedPartner?.level ?? fighter.level,
+        challenge?.level ?? importedPartner?.level ?? fighter.level,
         playerName,
         careerColors,
         false,
         sparDiff,
-        1,
+        challenge ? 3 : 1,
         // An Import Ticket buys a full three-minute round; normal sparring
         // runs the 1/2/3-minute length picked on the difficulty screen.
         importedPartner ? 180 : sparDuration,
@@ -4262,11 +4324,13 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         sparPlayerRef,
         sparEnemyRef
       );
+      fightStyleRef.current = (localSaves.getFighter(fighter.id) ?? fighter).fightingStyle;
+      applyFightingStyle(newState.player, fightStyleRef.current);
       // An imported partner is bought for a full three-minute round, so it
       // carries double the gas. Champion partners no longer do: a flat x2 on
       // top of their tier pool left them with roughly two and a half times the
       // player's tank off a near-identical stamina stat.
-      if (importedPartner) {
+      if (importedPartner && !challenge) {
         newState.enemy.maxStamina = Math.round(newState.enemy.maxStamina * 2);
         newState.enemy.maxStaminaCap = Math.round(newState.enemy.maxStaminaCap * 2);
         newState.enemy.stamina = newState.enemy.maxStamina;
@@ -4334,6 +4398,13 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
       }
       newState.ringColors = fighter.ringColors ? ringColorsOf(fighter) : undefined;
       newState.gymRingName = gymLookOf(localSaves.getFighter(fighter.id) ?? fighter).name ?? null;
+      // A challenge spar is fought in the challenger's gym.
+      if (challenge) {
+        const awayGym = awayGymFor(challenge.rosterId);
+        newState.ringColors = { ...awayGym.ring };
+        newState.gymRingName = awayGym.look.name;
+        newState.challengeSparMode = true;
+      }
       commitGameState(newState);
       setUiMode("fighting");
     } else {
@@ -5825,6 +5896,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
             onSimulateWeek={handleSimulateWeek}
             onStartNightmare={handleStartNightmare}
             onStartDoghouse={handleStartDoghouse}
+            onStartChallengeSpar={(f, req) => handleStartTraining(f, "sparring", "champion", undefined, 180, req)}
             onSelectOpponent={handleSelectOpponent}
             onInitRoster={handleInitRoster}
             // Today's chests, already granted and persisted by the hub. The
@@ -6075,7 +6147,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
               <HeavyBagGame
                 fighter={activeFighter}
                 freeMode
-                onPunch={(p, head) => { freeBagPunchesRef.current.push({ type: p, head }); }}
+                onPunch={(p, head, southpaw) => { freeBagPunchesRef.current.push({ type: p, head, southpaw }); }}
                 onSessionStart={(m) => { freeBagMinutesRef.current = m; freeBagPunchesRef.current = []; freeBagFullTimeRef.current = false; }}
                 onSessionTimeUp={() => { freeBagFullTimeRef.current = true; }}
                 freeTargetPerMinute={FREE_BAG_PUNCHES_PER_MINUTE}

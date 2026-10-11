@@ -2,13 +2,16 @@ import { Button } from "@/components/ui/button";
 import { SPARRING_DURATIONS, getSparringRewardConfig, SPARRING_TIER_LABELS, nextSparringTier, loadSparringDuration, saveSparringDuration, type SparringDuration } from "@/game/sparringRewards";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronLeft, ChevronRight, Dumbbell, Target, Trophy, Users, Swords, Pencil, Save, Check, Settings, Lock, Unlock, Download, Upload, Hammer, RotateCcw, MessageSquare, Copy, ClipboardPaste, Zap, Palette, PaintBucket } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, ChevronUp, ChevronLeft, ChevronRight, Dumbbell, Target, Trophy, Users, Swords, Pencil, Save, Check, Settings, Lock, Unlock, Download, Upload, Hammer, RotateCcw, MessageSquare, Copy, ClipboardPaste, Zap, Palette, PaintBucket, X } from "lucide-react";
 import PunchProfileAssignCard from "@/components/PunchProfileAssignCard";
+import GuardStanceAssignCard from "@/components/GuardStanceAssignCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SPARRING_MODE_COSTS, grandfatherSparringUnlocks, type SparringMode } from "@/game/sparringModes";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Fighter, CareerStats, SkillPoints, GearColors, SavedOutfit, TrainingBonuses, CareerRosterState, RosterFighterState, SkillRefinement } from "@shared/schema";
+import type { Fighter, CareerStats, SkillPoints, GearColors, SavedOutfit, TrainingBonuses, CareerRosterState, RosterFighterState, SkillRefinement, ChallengeRequest, ChallengeState } from "@shared/schema";
+import { challengeStateOf, nextChallengeState } from "@/game/challenges";
+import { AWAY_GYMS, awayGymFor } from "@/game/gymLook";
 import { DEFAULT_CAREER_STATS, DEFAULT_GEAR_COLORS, DEFAULT_TRAINING_BONUSES, DEFAULT_SKILL_REFINEMENT, statPointCap, perStatCap, maxActiveRefinementsFor, refinementSlotsForRank, refinementSlotsUnlocked, REFINEMENT_SLOT_RANK_UNLOCKS } from "@shared/schema";
 import { migrateStatCaps, updateFighter } from "@/lib/localSaves";
 import { claimDailyReward } from "@/lib/dailyReward";
@@ -39,7 +42,7 @@ import {
   precisionStrikerRangeBonus, slipperyRepunchThreshold, chinHitterChargeMult, technicianWhiffForgiveness,
 } from "@/game/refinementTuning";
 import { SkinColorField } from "@/components/ColorPicker";
-import { defaultLaceColor, defaultSoleColor, defaultWaistStripeColor } from "@/game/renderer";
+import { defaultLaceColor, defaultSoleColor, defaultGearDecalColor } from "@/game/renderer";
 import { STAT_POINTS_PER_LEVEL } from "@/game/career";
 import {
   getOpponentCandidates,
@@ -107,6 +110,8 @@ interface CareerModeProps {
   onSweepTraining?: (fighter: Fighter, type: "weightLifting" | "heavyBag") => void;
   onStartNightmare?: (fighter: Fighter) => void;
   onStartDoghouse?: (fighter: Fighter) => void;
+  /** Challenges: the 3x3min Champion spar at the challenger's gym. */
+  onStartChallengeSpar?: (fighter: Fighter, request: ChallengeRequest) => void;
   onSelectOpponent: (fighterId: string, opponentId: number) => void;
   onInitRoster: (fighterId: string, rosterState: CareerRosterState) => void;
   /**
@@ -492,7 +497,9 @@ export function careerFighterColors(f: Fighter): FighterColors {
     socks: gear?.socks || DEFAULT_GEAR_COLORS.socks,
     laces: gear?.laces,
     soles: gear?.soles,
-    waistStripe: gear?.waistStripe,
+    gearDecal: gear?.gearDecal,
+    girdle: gear?.girdle,
+    girdleLaces: gear?.girdleLaces,
   }, spacialSelectionOf(f));
 }
 
@@ -870,7 +877,7 @@ export function RefinementView({ fighter, onAllocate, onUnlock, onBack, onSetAct
 }
 
 export default function CareerMode({
-  fighters, onSelectFighter, onCreateFighter, onDeleteFighter, onBack, onAllocateStats, onStartTraining, onStartFreeBag, onEndWeek, onSimulateWeek, onSweepTraining, onStartNightmare, onStartDoghouse, onSelectOpponent, onInitRoster, onDailyReward, onUpdateColors, isLoading, initialFighter, careerRefStoppageEnabled, onToggleCareerRefStoppage, careerTowelStoppageEnabled, onToggleCareerTowelStoppage, onTutorial, onUnlockRefinement, onAllocateRefinement, onForceSpend, onShardSpend, onDiamondSpend, onFighterRefresh, showExpBar, onToggleShowExpBar, showFightItemsHud, onToggleShowFightItemsHud,
+  fighters, onSelectFighter, onCreateFighter, onDeleteFighter, onBack, onAllocateStats, onStartTraining, onStartFreeBag, onEndWeek, onSimulateWeek, onSweepTraining, onStartNightmare, onStartDoghouse, onStartChallengeSpar, onSelectOpponent, onInitRoster, onDailyReward, onUpdateColors, isLoading, initialFighter, careerRefStoppageEnabled, onToggleCareerRefStoppage, careerTowelStoppageEnabled, onToggleCareerTowelStoppage, onTutorial, onUnlockRefinement, onAllocateRefinement, onForceSpend, onShardSpend, onDiamondSpend, onFighterRefresh, showExpBar, onToggleShowExpBar, showFightItemsHud, onToggleShowFightItemsHud,
   startInCreate,
 }: CareerModeProps & { initialFighter?: Fighter | null; startInCreate?: boolean }) {
   const [view, setView] = useState<CareerView>(initialFighter ? "gym" : startInCreate && fighters.length === 0 ? "create" : "slots");
@@ -964,6 +971,20 @@ export default function CareerMode({
   }, [view, runDailyClaim]);
   const [rosterEditFighter, setRosterEditFighter] = useState<Fighter | null>(null);
   const [pendingOpponentId, setPendingOpponentId] = useState<number | null>(null);
+  // Challenges: every write starts from the freshest save and bumps rev.
+  const writeChallenges = useCallback((fighterId: string, fn: (c: ChallengeState) => ChallengeState) => {
+    const rs = localSaves.getFighter(fighterId)?.careerRosterState as CareerRosterState | null;
+    if (!rs) return null;
+    const updated = updateFighter(fighterId, { careerRosterState: { ...rs, challengeState: nextChallengeState(rs, fn) } });
+    if (updated) { setSelectedFighter(updated); onFighterRefresh?.(updated); }
+    return updated;
+  }, [onFighterRefresh]);
+  // The one extra session at the challenger's gym is over: travel home.
+  useEffect(() => {
+    if (view !== "gym" || !selectedFighter) return;
+    const rs = localSaves.getFighter(selectedFighter.id)?.careerRosterState as CareerRosterState | null;
+    if (rs?.challengeState?.away?.sessionUsed) writeChallenges(selectedFighter.id, c => ({ ...c, away: null }));
+  }, [view, selectedFighter?.id, writeChallenges]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showSettings, setShowSettings] = useState(false);
 
   const [negotiateConfirmWeek, setNegotiateConfirmWeek] = useState<number | null>(null);
@@ -1757,9 +1778,52 @@ export default function CareerMode({
     const gymIsFightWeek = (gymRs?.prepWeeksRemaining ?? 0) === 0 && gymRs?.selectedOpponentId != null;
     const gymTrainingLocked = gymIsFightWeek || (gymRs?.trainingsSinceLastWeek ?? 0) >= 2;
     const gymColors: FighterColors = careerFighterColors(selectedFighter);
+    const gymCh = challengeStateOf(gymRs);
+    const chName = (id: number) => {
+      const e = getRosterEntryById(id);
+      return e ? getRosterDisplayName(e, gymRs?.roster.find(f => f.id === id)) : `Fighter ${id}`;
+    };
+    const gymAway = gymCh.away;
+    // After the challenge spar, one regular session is allowed before heading home.
+    const awaySession = <T extends unknown[]>(fn: (...a: T) => void) => (...a: T) => {
+      if (gymAway?.done) writeChallenges(selectedFighter.id, c => (c.away ? { ...c, away: { ...c.away, sessionUsed: true } } : c));
+      fn(...a);
+    };
     return (
       <>
       <GymView
+        key={gymAway ? "away" : "home"}
+        challenges={{
+          requests: gymCh.requests.map(r => {
+            const rf = gymRs?.roster.find(f => f.id === r.rosterId);
+            return {
+              id: r.id, name: chName(r.rosterId), kind: r.kind, level: r.level,
+              weeksLeft: Math.max(1, r.expiresWeek - (gymRs?.weekNumber ?? 0) + 1),
+              rank: rf?.rank ?? null,
+              record: rf ? `${rf.wins}W-${rf.losses}L-${rf.draws}D` : "",
+              colors: rf ? getRosterFighterColors(rf) : null,
+              stance: rf?.boxingStance,
+            };
+          }),
+          away: gymAway ? { name: chName(gymAway.request.rosterId), done: gymAway.done, gym: AWAY_GYMS.indexOf(awayGymFor(gymAway.request.rosterId)) } : null,
+          fightBlocked: gymRs?.selectedOpponentId != null,
+          sparBlocked: gymIsFightWeek,
+        }}
+        onChallengeDecision={(id, approve) => {
+          const fresh = localSaves.getFighter(selectedFighter.id)?.careerRosterState as CareerRosterState | null;
+          const req = challengeStateOf(fresh).requests.find(r => r.id === id);
+          if (!req) return;
+          if (approve && (req.kind === "fight" ? fresh?.selectedOpponentId != null : gymIsFightWeek)) return;
+          writeChallenges(selectedFighter.id, c => ({
+            ...c,
+            requests: c.requests.filter(r => r.id !== id),
+            accepted: c.accepted + (approve ? 1 : 0),
+            away: approve && req.kind === "spar" ? { request: req, done: false } : c.away,
+          }));
+          if (approve && req.kind === "fight") { setPendingOpponentId(req.rosterId); setView("prepWeeks"); }
+        }}
+        onChallengeSpar={() => { if (gymAway && !gymAway.done) onStartChallengeSpar?.(selectedFighter, gymAway.request); }}
+        onChallengeReturnHome={() => writeChallenges(selectedFighter.id, c => ({ ...c, away: null }))}
         fighter={selectedFighter}
         onFighterChanged={(f) => { setSelectedFighter(f); onFighterRefresh?.(f); }}
         onDailyRewardDue={runDailyClaim}
@@ -1799,10 +1863,10 @@ export default function CareerMode({
           if (updated) setSelectedFighter(updated);
         }}
         onStartSparring={() => setView("sparringSelect")}
-        onStartWeightLifting={() => { onStartTraining(selectedFighter, "weightLifting"); }}
-        onStartBagWork={() => { onStartTraining(selectedFighter, "heavyBag"); }}
+        onStartWeightLifting={awaySession(() => { onStartTraining(selectedFighter, "weightLifting"); })}
+        onStartBagWork={awaySession(() => { onStartTraining(selectedFighter, "heavyBag"); })}
         onStartFreeBag={onStartFreeBag ? () => onStartFreeBag(selectedFighter) : undefined}
-        onFightNow={gymIsFightWeek && gymRs?.selectedOpponentId != null ? () => handleFight(gymRs.selectedOpponentId as number) : undefined}
+        onFightNow={!gymAway && gymIsFightWeek && gymRs?.selectedOpponentId != null ? () => handleFight(gymRs.selectedOpponentId as number) : undefined}
         sweepStatus={(() => {
           const inCamp = gymRs?.selectedOpponentId != null && (gymRs?.prepWeeksRemaining ?? 0) > 0;
           if (!inCamp) return "notCamp" as const;
@@ -1815,6 +1879,7 @@ export default function CareerMode({
           return "available" as const;
         })()}
         onSweep={(type) => {
+          if (gymAway?.done) writeChallenges(selectedFighter.id, c => (c.away ? { ...c, away: { ...c.away, sessionUsed: true } } : c));
           onSweepTraining?.(selectedFighter, type);
           // Sweep writes to the save synchronously — re-sync the gym's snapshot
           // so the once-per-week lock and rep counters reflect immediately.
@@ -1893,6 +1958,8 @@ export default function CareerMode({
     return <SparringDifficultySelect
       fighter={selectedFighter}
       onSelect={(diff, importedPartnerId, duration) => {
+        const ch = (localSaves.getFighter(selectedFighter.id)?.careerRosterState as CareerRosterState | null)?.challengeState;
+        if (ch?.away?.done) writeChallenges(selectedFighter.id, c => (c.away ? { ...c, away: { ...c.away, sessionUsed: true } } : c));
         onStartTraining(selectedFighter, "sparring", diff, importedPartnerId, duration);
       }}
       onNightmare={() => {
@@ -2157,13 +2224,18 @@ export default function CareerMode({
           }
           setView("gym");
         }}
-        onBack={() => setView("gym")}
         onSaveOutfits={(outfits) => {
           const updated = updateFighter(selectedFighter.id, { outfits });
           if (!updated) return;
           // Only the slots change: swapping the whole record in would re-run the
           // editor's purchase-follow effect and drop its unsaved Spacial ticks.
           setSelectedFighter(prev => prev ? { ...prev, outfits: updated.outfits } : prev);
+          onFighterRefresh?.(updated);
+        }}
+        onSaveSparringGearInBouts={(on) => {
+          const updated = updateFighter(selectedFighter.id, { sparringGearInBouts: on });
+          if (!updated) return;
+          setSelectedFighter(prev => prev ? { ...prev, sparringGearInBouts: on } : prev);
           onFighterRefresh?.(updated);
         }}
         onBuySpacialPart={(partKey) => {
@@ -2364,7 +2436,9 @@ export default function CareerMode({
       socks: (selectedFighter.gearColors as GearColors)?.socks || DEFAULT_GEAR_COLORS.socks,
       laces: (selectedFighter.gearColors as GearColors)?.laces,
       soles: (selectedFighter.gearColors as GearColors)?.soles,
-      waistStripe: (selectedFighter.gearColors as GearColors)?.waistStripe,
+      gearDecal: (selectedFighter.gearColors as GearColors)?.gearDecal,
+      girdle: (selectedFighter.gearColors as GearColors)?.girdle,
+      girdleLaces: (selectedFighter.gearColors as GearColors)?.girdleLaces,
     }, spacialSelectionOf(selectedFighter));
 
     return (
@@ -3568,7 +3642,7 @@ function OpponentSelectionView({ fighter, rosterState, onSelectOpponent, onBack 
               socks: fc.socks,
               laces: fc.laces,
               soles: fc.soles,
-              waistStripe: fc.waistStripe,
+              gearDecal: fc.gearDecal,
             };
             return (
               <Card
@@ -3686,7 +3760,7 @@ function RankingsView({ rosterState, fighter, onBack }: {
     socks: (fighter.gearColors as any)?.socks || "#f0f0f0",
     laces: (fighter.gearColors as any)?.laces,
     soles: (fighter.gearColors as any)?.soles,
-    waistStripe: (fighter.gearColors as any)?.waistStripe,
+    gearDecal: (fighter.gearColors as any)?.gearDecal,
   };
 
   return (
@@ -3718,7 +3792,7 @@ function RankingsView({ rosterState, fighter, onBack }: {
             socks: fc.socks,
             laces: fc.laces,
             soles: fc.soles,
-            waistStripe: fc.waistStripe,
+            gearDecal: fc.gearDecal,
           };
 
           return (
@@ -3947,14 +4021,14 @@ function CreateFighter({
                   <SkinColorField value={skinColor} onChange={setSkinColor} unlocked={false} testId="color-create-skin" />
                 </div>
                 {colorField("Gloves", gearColors.gloves, c => setGearColors({ ...gearColors, gloves: c }), "color-create-gloves")}
-                {colorField("Tape", gearColors.gloveTape, c => setGearColors({ ...gearColors, gloveTape: c }), "color-create-tape")}
+                {colorField("Wrist Strap", gearColors.gloveTape, c => setGearColors({ ...gearColors, gloveTape: c }), "color-create-tape")}
                 {colorField("Trunks", gearColors.trunks, c => setGearColors({ ...gearColors, trunks: c }), "color-create-trunks")}
                 {colorField("Shoes", gearColors.shoes, c => setGearColors({ ...gearColors, shoes: c }), "color-create-shoes")}
                 {colorField("Socks", gearColors.socks || DEFAULT_GEAR_COLORS.socks || "#f0f0f0", c => setGearColors({ ...gearColors, socks: c }), "color-create-socks")}
                 {colorField("Headgear", gearColors.headgear || DEFAULT_GEAR_COLORS.headgear || "#2244aa", c => setGearColors({ ...gearColors, headgear: c }), "color-create-headgear")}
                 {colorField("Laces", gearColors.laces || defaultLaceColor(gearColors.shoes), c => setGearColors({ ...gearColors, laces: c }), "color-create-laces")}
                 {colorField("Soles", gearColors.soles || defaultSoleColor(gearColors.shoes), c => setGearColors({ ...gearColors, soles: c }), "color-create-soles")}
-                {colorField("Waist Stripe", gearColors.waistStripe || defaultWaistStripeColor(gearColors.trunks), c => setGearColors({ ...gearColors, waistStripe: c }), "color-create-waist-stripe")}
+                {colorField("Gear Decal", gearColors.gearDecal || defaultGearDecalColor(), c => setGearColors({ ...gearColors, gearDecal: c }), "color-create-gear-decal")}
               </div>
             </div>
             <div className="w-28 h-36 shrink-0 bg-black/40 border border-white/10 rounded-lg flex items-center justify-center overflow-hidden">
@@ -4127,6 +4201,8 @@ function CareerStatsView({ fighter, onBack }: { fighter: Fighter; onBack: () => 
           <StatRow label="Rounds Won" value={stats.totalRoundsWon} />
           <StatRow label="Rounds Lost" value={stats.totalRoundsLost} />
           <StatRow label="Lifetime XP" value={Math.ceil(stats.lifetimeXp)} />
+          <StatRow label="Challenge Requests" value={challengeStateOf(fighter.careerRosterState as CareerRosterState | null).received} />
+          <StatRow label="Accepted Challenges" value={challengeStateOf(fighter.careerRosterState as CareerRosterState | null).accepted} />
         </div>
       </Card>
 
@@ -4649,12 +4725,14 @@ export function AllocateStats({ fighter, onAllocate, onBack, allowedStats, fixed
 /** Compact price tag for the per-piece buy buttons, where the full figure won't fit. */
 const SPACIAL_PART_PRICE_LABEL = `${Math.round(SPACIAL_PRICE_PER_GEAR_FORCE / 1_000_000)}M`;
 
-function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart, onSaveOutfits }: {
+function EditFighterColors({ fighter, onSave, onBuySpacialPart, onSaveOutfits, onSaveSparringGearInBouts }: {
   fighter: Fighter;
+  /** Also the back button: leaving the editor saves. */
   onSave: (skinColor: string, gearColors: GearColors, spacialParts: string[]) => void;
-  onBack: () => void;
   /** Persist the outfit slots straight away (independent of Save Colors). */
   onSaveOutfits: (outfits: (SavedOutfit | null)[]) => void;
+  /** Persist the wear-sparring-gear-in-official-bouts toggle straight away. */
+  onSaveSparringGearInBouts: (on: boolean) => void;
   /** Buy the finish for a single gear piece. Only called when the balance covers it. */
   onBuySpacialPart: (partKey: string) => void;
 }) {
@@ -4666,14 +4744,16 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart, onSaveOu
   const [shoes, setShoes] = useState(gc.shoes);
   const [headgear, setHeadgear] = useState(gc.headgear || DEFAULT_GEAR_COLORS.headgear || "#2244aa");
   const [socks, setSocks] = useState(gc.socks || DEFAULT_GEAR_COLORS.socks || "#f0f0f0");
-  // Null means "not chosen": laces/soles/stripe keep following the shoe and
-  // trunk colours until the player actually picks one.
+  const [girdle, setGirdle] = useState(gc.girdle || DEFAULT_GEAR_COLORS.girdle || "#2244aa");
+  const [girdleLaces, setGirdleLaces] = useState(gc.girdleLaces || DEFAULT_GEAR_COLORS.girdleLaces || "#f2f2f2");
+  // Null means "not chosen": laces/soles keep following the shoe and the decal
+  // stays default white until the player actually picks one.
   const [laces, setLaces] = useState<string | null>(gc.laces ?? null);
   const [soles, setSoles] = useState<string | null>(gc.soles ?? null);
-  const [waistStripe, setWaistStripe] = useState<string | null>(gc.waistStripe ?? null);
+  const [gearDecal, setGearDecal] = useState<string | null>(gc.gearDecal ?? null);
   const lacesShown = laces ?? defaultLaceColor(shoes);
   const solesShown = soles ?? defaultSoleColor(shoes);
-  const waistStripeShown = waistStripe ?? defaultWaistStripeColor(trunks);
+  const gearDecalShown = gearDecal ?? defaultGearDecalColor();
 
   // Spacial Color: on offer from day one, whatever the player can afford, and
   // picked per gear piece once it has been bought.
@@ -4689,6 +4769,10 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart, onSaveOu
   const canAffordPart = forceBalance >= SPACIAL_PRICE_PER_GEAR_FORCE;
   const toggleSpacialPart = (key: string) =>
     setSpacialParts(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+  // Try-on: an unbought piece wears the finish in the preview until bought or
+  // cancelled. Never saved (saves keep owned pieces only).
+  const [tryOnPart, setTryOnPart] = useState<string | null>(null);
+  const tryOn = tryOnPart && !ownedParts.includes(tryOnPart) ? tryOnPart : null;
   // A purchase rewrites the record underneath this screen, so follow it.
   useEffect(() => {
     const bought = spacialSelectionOf(fighter);
@@ -4697,10 +4781,10 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart, onSaveOu
   }, [fighter.spacialColors, fighter.spacialParts]);
 
   const currentGear = (): GearColors => ({
-    gloves, gloveTape, trunks, shoes, headgear, socks,
+    gloves, gloveTape, trunks, shoes, headgear, socks, girdle, girdleLaces,
     laces: laces ?? undefined,
     soles: soles ?? undefined,
-    waistStripe: waistStripe ?? undefined,
+    gearDecal: gearDecal ?? undefined,
   });
   const loadOutfit = (o: SavedOutfit) => {
     const g = o.gearColors;
@@ -4710,23 +4794,26 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart, onSaveOu
     setShoes(g.shoes || DEFAULT_GEAR_COLORS.shoes);
     setHeadgear(g.headgear || DEFAULT_GEAR_COLORS.headgear || "#2244aa");
     setSocks(g.socks || DEFAULT_GEAR_COLORS.socks || "#f0f0f0");
+    setGirdle(g.girdle || DEFAULT_GEAR_COLORS.girdle || "#2244aa");
+    setGirdleLaces(g.girdleLaces || DEFAULT_GEAR_COLORS.girdleLaces || "#f2f2f2");
     setLaces(g.laces ?? null);
     setSoles(g.soles ?? null);
-    setWaistStripe(g.waistStripe ?? null);
+    setGearDecal(g.gearDecal ?? null);
     // A piece sold off since the outfit was saved can't be worn.
     setSpacialParts(o.spacialParts.filter(k => ownedParts.includes(k)));
   };
 
   const previewColors: FighterColors = applySpacialGear({
-    gloves, gloveTape, trunks, shoes, skin: skinColor, headgear, socks,
-    laces: lacesShown, soles: solesShown, waistStripe: waistStripeShown,
-  }, spacialParts);
+    gloves, gloveTape, trunks, shoes, skin: skinColor, headgear, socks, girdle, girdleLaces,
+    laces: lacesShown, soles: solesShown, gearDecal: gearDecalShown,
+  }, tryOn ? [...spacialParts, tryOn] : spacialParts);
 
   const swatchField = (label: string, value: string, onChange: (v: string) => void, testId: string, partKey?: string) => {
     const spacialOnPart = !!partKey && spacialParts.includes(partKey);
     const ownsPart = !!partKey && ownedParts.includes(partKey);
+    const tryingOn = !!partKey && tryOn === partKey;
     return (
-      <div className={`bg-black/40 border rounded-lg px-3 py-2 ${spacialOnPart ? "border-purple-500/60" : "border-white/10"}`}>
+      <div className={`bg-black/40 border rounded-lg px-3 py-2 ${spacialOnPart || tryingOn ? "border-purple-500/60" : "border-white/10"}`}>
         <div className="flex items-center justify-between gap-2 mb-1">
           <label className="text-[10px] text-white/50 font-semibold uppercase tracking-widest">{label}</label>
           {partKey && ownsPart && (
@@ -4740,15 +4827,37 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart, onSaveOu
               <Check className="w-3.5 h-3.5" />
             </button>
           )}
-          {partKey && !ownsPart && (
+          {partKey && tryingOn && (
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => onBuySpacialPart(partKey)}
+                disabled={!canAffordPart}
+                title={canAffordPart ? undefined : `Needs ${SPACIAL_PRICE_PER_GEAR_FORCE.toLocaleString()} Force`}
+                className={`h-5 px-1.5 rounded border text-[9px] font-bold ${canAffordPart ? "bg-purple-600 border-purple-400 text-white hover:bg-purple-500" : "border-white/15 text-white/25 cursor-not-allowed"}`}
+                data-testid={`${testId}-confirm-spacial`}
+              >
+                Buy ✦ {SPACIAL_PART_PRICE_LABEL}
+              </button>
+              <button
+                type="button"
+                onClick={() => setTryOnPart(null)}
+                title="Cancel"
+                className="h-5 w-5 rounded border border-white/25 text-white/60 hover:text-white flex items-center justify-center"
+                data-testid={`${testId}-cancel-spacial`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+          {partKey && !ownsPart && !tryingOn && (
             <button
               type="button"
-              onClick={() => onBuySpacialPart(partKey)}
-              disabled={!canAffordPart}
+              onClick={() => setTryOnPart(partKey)}
               title={canAffordPart
                 ? `Buy Spacial Color for this piece — ${SPACIAL_PRICE_PER_GEAR_FORCE.toLocaleString()} Force`
                 : `Needs ${SPACIAL_PRICE_PER_GEAR_FORCE.toLocaleString()} Force`}
-              className={`h-5 px-1.5 rounded border text-[9px] font-bold shrink-0 ${canAffordPart ? "border-purple-400/60 text-purple-200 hover:bg-purple-600/30" : "border-white/15 text-white/25 cursor-not-allowed"}`}
+              className={`h-5 px-1.5 rounded border text-[9px] font-bold shrink-0 ${canAffordPart ? "border-purple-400/60 text-purple-200 hover:bg-purple-600/30" : "border-white/15 text-white/40 hover:border-purple-400/40"}`}
               data-testid={`${testId}-buy-spacial`}
             >
               ✦ {SPACIAL_PART_PRICE_LABEL}
@@ -4760,12 +4869,12 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart, onSaveOu
             type="color"
             value={value}
             onChange={e => onChange(e.target.value)}
-            disabled={spacialOnPart}
+            disabled={spacialOnPart || tryingOn}
             title={spacialOnPart ? "Untick Spacial to change this colour" : undefined}
-            className={`w-9 h-9 rounded-md bg-transparent ${spacialOnPart ? "opacity-40 pointer-events-none" : "cursor-pointer"}`}
+            className={`w-9 h-9 rounded-md bg-transparent ${spacialOnPart || tryingOn ? "opacity-40 pointer-events-none" : "cursor-pointer"}`}
             data-testid={testId}
           />
-          <span className="text-xs text-white/60 font-mono">{spacialOnPart ? "Spacial" : value}</span>
+          <span className="text-xs text-white/60 font-mono">{spacialOnPart || tryingOn ? "Spacial" : value}</span>
         </div>
       </div>
     );
@@ -4775,7 +4884,7 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart, onSaveOu
     <div className="flex w-full h-screen overflow-hidden bg-[#0d0d0d]">
       <div className="flex flex-col gap-3 p-4 w-[52%] overflow-y-auto shrink-0">
         <div className="flex items-center gap-3 w-full">
-          <Button variant="ghost" size="icon" onClick={() => onBack()} className="text-white/70 hover:text-white" data-testid="button-back-edit-colors">
+          <Button variant="ghost" size="icon" onClick={() => onSave(skinColor, currentGear(), spacialParts.filter(k => ownedParts.includes(k)))} className="text-white/70 hover:text-white" data-testid="button-back-edit-colors">
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div className="flex-1">
@@ -4798,44 +4907,35 @@ function EditFighterColors({ fighter, onSave, onBack, onBuySpacialPart, onSaveOu
               <SkinColorField value={skinColor} onChange={setSkinColor} unlocked={isChampBeaten((fighter.careerRosterState as CareerRosterState | null)?.roster ?? []) || fighter.level >= 100} testId="color-hub-skin" />
             </div>
             {swatchField("Gloves", gloves, setGloves, "color-hub-gloves", "gloves")}
-            {swatchField("Tape", gloveTape, setGloveTape, "color-hub-tape", "gloveTape")}
+            {swatchField("Wrist Strap", gloveTape, setGloveTape, "color-hub-tape", "gloveTape")}
             {swatchField("Trunks", trunks, setTrunks, "color-hub-trunks", "trunks")}
             {swatchField("Shoes", shoes, setShoes, "color-hub-shoes", "shoes")}
             {swatchField("Socks", socks, setSocks, "color-hub-socks", "socks")}
             {swatchField("Headgear", headgear, setHeadgear, "color-hub-headgear", "headgear")}
+            {swatchField("Girdle", girdle, setGirdle, "color-hub-girdle", "girdle")}
+            {swatchField("Girdle Laces", girdleLaces, setGirdleLaces, "color-hub-girdle-laces", "girdleLaces")}
             {swatchField("Laces", lacesShown, setLaces, "color-hub-laces", "laces")}
             {swatchField("Soles", solesShown, setSoles, "color-hub-soles", "soles")}
-            {swatchField("Waist Stripe", waistStripeShown, setWaistStripe, "color-hub-waist-stripe", "waistStripe")}
+            {swatchField("Gear Decal", gearDecalShown, setGearDecal, "color-hub-gear-decal", "gearDecal")}
           </div>
-          <p className="text-[10px] text-white/35">Headgear is worn in sparring sessions. Laces, soles and the waist stripe follow your shoe and trunk colours until you pick your own.</p>
+          <label className="flex items-center gap-2 text-xs text-white/80 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={!!fighter.sparringGearInBouts}
+              onChange={e => onSaveSparringGearInBouts(e.target.checked)}
+              className="w-4 h-4 accent-yellow-400"
+              data-testid="toggle-sparring-gear-in-bouts"
+            />
+            Wear sparring gear in official bouts
+          </label>
+          <p className="text-[10px] text-white/35">Headgear is worn in sparring sessions. Laces and soles follow your shoe colour until you pick your own.</p>
         </div>
 
-        <div className="bg-[#120b1f] border border-purple-500/40 rounded-lg p-4 space-y-2" data-testid="panel-spacial-color">
-          <div>
-            <p className="text-[10px] text-purple-300/70 font-semibold uppercase tracking-widest">Spacial Color</p>
-            <p className="text-[11px] text-white/50">Deep-space black with drifting purple stars.</p>
-          </div>
-          <p className="text-[11px] text-white/50">
-            Bought one piece at a time — ⚡{SPACIAL_PRICE_PER_GEAR_FORCE.toLocaleString()} Force each.
-            Hit <span className="text-purple-200 font-bold">✦</span> on a piece to buy it, then tick it to wear it.
-          </p>
-          <p className="text-[10px] text-white/40" data-testid="text-spacial-owned">
-            {ownedParts.length} of {SPACIAL_GEAR_KEYS.length} pieces owned · you have ⚡{forceBalance.toLocaleString()} Force.
-          </p>
-        </div>
-
-        <Button
-          onClick={() => onSave(skinColor, currentGear(), spacialParts.filter(k => ownedParts.includes(k)))}
-          className="w-full gap-2 bg-[#634b3b] hover:bg-[#7a5c4a] text-white font-bold"
-          data-testid="button-save-colors"
-        >
-          <Check className="w-4 h-4" /> Save Colors
-        </Button>
       </div>
 
       <div className="flex-1 flex items-center justify-center overflow-hidden p-4">
         <div className="bg-[#1a1a1a] border border-white/15 rounded-xl p-4 flex items-center justify-center">
-          <FighterStanceCanvas colors={previewColors} width={320} height={560} showHeadgear stance={playerBoxingStance()} />
+          <FighterStanceCanvas colors={previewColors} width={320} height={560} showHeadgear stance={playerBoxingStance()} spinnable />
         </div>
       </div>
     </div>
@@ -5048,7 +5148,7 @@ export function RosterEditView({
   const [editSocks, setEditSocks] = useState("#f0f0f0");
   const [editLaces, setEditLaces] = useState<string | null>(null);
   const [editSoles, setEditSoles] = useState<string | null>(null);
-  const [editWaistStripe, setEditWaistStripe] = useState<string | null>(null);
+  const [editGearDecal, setEditGearDecal] = useState<string | null>(null);
   const [editRefinementSkills, setEditRefinementSkills] = useState<Record<string, number>>(BLANK_REF_SKILLS);
   const [hasRefClipboard, setHasRefClipboard] = useState(() => {
     try { return !!localStorage.getItem(REF_SKILLS_CLIPBOARD_KEY); } catch { return false; }
@@ -5182,7 +5282,7 @@ export function RosterEditView({
             if (imported.customSocks !== undefined) importedRoster[idx].customSocks = imported.customSocks;
             if (imported.customLaces !== undefined) importedRoster[idx].customLaces = imported.customLaces;
             if (imported.customSoles !== undefined) importedRoster[idx].customSoles = imported.customSoles;
-            if (imported.customWaistStripe !== undefined) importedRoster[idx].customWaistStripe = imported.customWaistStripe;
+            if (imported.customGearDecal !== undefined) importedRoster[idx].customGearDecal = imported.customGearDecal;
             if (imported.customSpacial !== undefined) importedRoster[idx].customSpacial = imported.customSpacial;
             if (imported.customSpacialParts !== undefined) importedRoster[idx].customSpacialParts = imported.customSpacialParts;
             if (imported.customSkinColor !== undefined) importedRoster[idx].customSkinColor = imported.customSkinColor;
@@ -5260,7 +5360,7 @@ export function RosterEditView({
     setEditSocks(f.customSocks ?? colors.socks);
     setEditLaces(f.customLaces ?? null);
     setEditSoles(f.customSoles ?? null);
-    setEditWaistStripe(f.customWaistStripe ?? null);
+    setEditGearDecal(f.customGearDecal ?? null);
     setEditSpacialParts(rosterSpacialFrom(f));
     setEditRefinementSkills(f.customRefinementSkills
       ? { ...BLANK_REF_SKILLS(), ...f.customRefinementSkills }
@@ -5453,7 +5553,7 @@ export function RosterEditView({
       customSocks: editSocks,
       customLaces: editLaces ?? undefined,
       customSoles: editSoles ?? undefined,
-      customWaistStripe: editWaistStripe ?? undefined,
+      customGearDecal: editGearDecal ?? undefined,
       customSpacial: undefined,
       customSpacialParts: editSpacialParts.length ? [...editSpacialParts] : undefined,
       customRefinementSkills: allZero ? undefined : { ...editRefinementSkills },
@@ -5486,7 +5586,7 @@ export function RosterEditView({
     setEditSocks(target.customSocks ?? colors.socks);
     setEditLaces(target.customLaces ?? null);
     setEditSoles(target.customSoles ?? null);
-    setEditWaistStripe(target.customWaistStripe ?? null);
+    setEditGearDecal(target.customGearDecal ?? null);
     setEditSpacialParts(rosterSpacialFrom(target));
     setEditRefinementSkills(target.customRefinementSkills
       ? { ...BLANK_REF_SKILLS(), ...target.customRefinementSkills }
@@ -5680,7 +5780,7 @@ export function RosterEditView({
       socks: editSocks,
       laces: editLaces ?? defaultLaceColor(editShoes),
       soles: editSoles ?? defaultSoleColor(editShoes),
-      waistStripe: editWaistStripe ?? defaultWaistStripeColor(editTrunks),
+      gearDecal: editGearDecal ?? defaultGearDecalColor(),
     }, editSpacialParts);
 
     const currentIndex = filtered.findIndex(fi => fi.id === editingId);
@@ -5787,13 +5887,13 @@ export function RosterEditView({
               </div>
             </div>
             {rosterColorField("Gloves", editGloves, setEditGloves, "color-edit-gloves", "gloves")}
-            {rosterColorField("Tape", editGloveTape, setEditGloveTape, "color-edit-tape", "gloveTape")}
+            {rosterColorField("Wrist Strap", editGloveTape, setEditGloveTape, "color-edit-tape", "gloveTape")}
             {rosterColorField("Trunks", editTrunks, setEditTrunks, "color-edit-trunks", "trunks")}
             {rosterColorField("Shoes", editShoes, setEditShoes, "color-edit-shoes", "shoes")}
             {rosterColorField("Socks", editSocks, setEditSocks, "color-edit-socks", "socks")}
             {rosterColorField("Laces", editLaces ?? defaultLaceColor(editShoes), setEditLaces, "color-edit-laces", "laces")}
             {rosterColorField("Soles", editSoles ?? defaultSoleColor(editShoes), setEditSoles, "color-edit-soles", "soles")}
-            {rosterColorField("Waist Stripe", editWaistStripe ?? defaultWaistStripeColor(editTrunks), setEditWaistStripe, "color-edit-waist-stripe", "waistStripe")}
+            {rosterColorField("Gear Decal", editGearDecal ?? defaultGearDecalColor(), setEditGearDecal, "color-edit-gear-decal", "gearDecal")}
           </div>
           <div className="shrink-0 bg-black/30 border border-border rounded-lg p-2 flex items-center justify-center" data-testid="preview-edit-fighter">
             <FighterStanceCanvas colors={previewColors} width={180} height={280} stance={editedRoster.find(ef => ef.id === editingId)?.boxingStance} />
@@ -6067,6 +6167,7 @@ export function RosterEditView({
             </Button>
           )}
         </Card>
+        {editingId !== null && <GuardStanceAssignCard key={`stance-${editingId}`} rosterId={editingId} />}
         {editingId !== null && <PunchProfileAssignCard key={editingId} rosterId={editingId} />}
         <Button onClick={applyEdit} className="w-full gap-2" data-testid="button-apply-edit">
           <Check className="w-4 h-4" /> Apply Changes
@@ -6158,7 +6259,7 @@ export function RosterEditView({
             socks: fc.socks,
             laces: fc.laces,
             soles: fc.soles,
-            waistStripe: fc.waistStripe,
+            gearDecal: fc.gearDecal,
           };
           return (
             <Card

@@ -12,6 +12,7 @@ import {
   resetPunchAnimConfig,
   hasSavedPunchAnimConfig,
   invalidatePunchAnimCache,
+  withHitBoxField,
 } from "@/lib/punchAnimConfig";
 import { DEFAULT_PLAYER_COLORS, type PunchPhaseType } from "@/game/types";
 import { renderFighterPreview3D } from "@/game/three/fighterPreview3d";
@@ -609,24 +610,6 @@ export default function PunchAnimEditor({ defaultExpanded = false }: PunchAnimEd
                 </div>
               </div>
 
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-red-400 mb-2">
-                  Gameplay Hit Range
-                  <span className="ml-1 font-normal normal-case text-muted-foreground">
-                    — actual reach used for hit detection, not visual
-                  </span>
-                </p>
-                <div className="space-y-3">
-                  <SliderRow
-                    label="Hit Range (px)"
-                    desc="Real distance the punch must be within to actually land — independent of Reach/Distance above, which are visual only"
-                    value={p.hitRangePx}
-                    min={10} max={150} step={1}
-                    defaultVal={DEFAULT_PUNCH_ANIM_CONFIG[activePunch].hitRangePx}
-                    onChange={v => updateParam(activePunch, "hitRangePx", v)}
-                  />
-                </div>
-              </div>
             </div>
 
             <div className="shrink-0 self-start sticky top-4">
@@ -641,5 +624,46 @@ export default function PunchAnimEditor({ defaultExpanded = false }: PunchAnimEd
         </div>
       )}
     </Card>
+  );
+}
+
+/** Gameplay Hit Range for one punch (shown in the 3D Punch Animation Editor under the joints). */
+export function GameplayHitRange({ punch }: { punch: PunchType }) {
+  const [cfg, setCfg] = useState(loadPunchAnimConfig);
+  const p = cfg[punch];
+  // Fresh read: the 3D stage writes face drags to the same config.
+  const set = (field: "hitBoxCm" | "hitBoxRotX" | "hitBoxRotY" | "hitBoxRotZ", v: number) => setCfg(() => {
+    const next: PunchAnimConfig = withHitBoxField(loadPunchAnimConfig(), punch, field, v);
+    savePunchAnimConfig(next);
+    invalidatePunchAnimCache();
+    return next;
+  });
+  return (
+    <div>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-red-400 mb-2">
+        Gameplay Hit Range
+        <span className="ml-1 font-normal normal-case text-muted-foreground">
+          — actual reach used for hit detection, not visual
+        </span>
+      </p>
+      <div className="space-y-3">
+        <SliderRow
+          label="Hit Box (cm)"
+          value={p.hitBoxCm}
+          min={0} max={40} step={0.5}
+          defaultVal={DEFAULT_PUNCH_ANIM_CONFIG[punch].hitBoxCm}
+          onChange={v => set("hitBoxCm", v)}
+        />
+        {(["X", "Y", "Z"] as const).map(ax => (
+          <SliderRow key={ax}
+            label={`Hit Box Rotate ${ax} (°)`}
+            value={p[`hitBoxRot${ax}`]}
+            min={-180} max={180} step={1}
+            defaultVal={0}
+            onChange={v => set(`hitBoxRot${ax}`, v)}
+          />
+        ))}
+      </div>
+    </div>
   );
 }

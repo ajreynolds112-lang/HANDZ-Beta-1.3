@@ -7,6 +7,8 @@ import { z } from "zod";
 import { execSync } from "child_process";
 import path from "path";
 import fs from "fs";
+import express from "express";
+import { createHash } from "crypto";
 import { writeTunedDefaults } from "./tuningDefaults";
 import { githubStatus, pushSourceToGithub, importFromGithub, GithubPushError } from "./githubPush";
 
@@ -218,6 +220,26 @@ export async function registerRoutes(
     } catch {
       res.status(500).json({ error: "Failed to write tuned defaults" });
     }
+  });
+
+  /**
+   * Replacement sound files (Neural Network → Sound EQ). Stored in data/sounds so
+   * they ship with the build; writes are workspace-only like the tuned defaults.
+   */
+  const SOUND_DIR = path.resolve(process.cwd(), "data", "sounds");
+  app.use("/sound-files", express.static(SOUND_DIR, { immutable: true, maxAge: "1y" }));
+  app.post("/api/sound-files", (req, res) => {
+    if (process.env.NODE_ENV === "production") return res.status(403).json({ error: "Sounds ship with the build and can't be changed here" });
+    const id = String(req.query.id ?? "");
+    const ext = String(req.query.ext ?? "").toLowerCase();
+    const body = req.body as Buffer;
+    if (!/^[a-zA-Z0-9]{1,40}$/.test(id) || (ext !== "mp3" && ext !== "wav") || !Buffer.isBuffer(body) || !body.length) {
+      return res.status(400).json({ error: "Expected an mp3 or wav file" });
+    }
+    const name = `${id}-${createHash("sha1").update(body).digest("hex").slice(0, 12)}.${ext}`;
+    fs.mkdirSync(SOUND_DIR, { recursive: true });
+    fs.writeFileSync(path.join(SOUND_DIR, name), body);
+    res.json({ url: `/sound-files/${name}` });
   });
 
   /**

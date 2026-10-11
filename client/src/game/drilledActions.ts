@@ -784,15 +784,17 @@ const SOUTHPAW_KEY_MIRROR: Record<PunchType, PunchType> = {
  */
 export function creditBagSession(
   entries: DrilledActionEntry[] | undefined | null,
-  keyPunches: { type: PunchType; head: boolean }[],
+  keyPunches: { type: PunchType; head: boolean; southpaw?: boolean }[],
   stance: BoxingStance,
   cfg: DrilledActionConfig = DRILLED_ACTION_CONFIG,
 ): DrilledActionEntry[] | null {
   const ds = createDrilledFightState(entries ?? [], true, cfg);
   for (let i = 0; i + DRILLED_LENGTH <= keyPunches.length; i += DRILLED_LENGTH) {
     const acts = keyPunches.slice(i, i + DRILLED_LENGTH).map(k => {
-      const punch = stance === "southpaw" ? (SOUTHPAW_KEY_MIRROR[k.type] ?? k.type) : k.type;
-      return punchActionToken(punch, k.head, stance);
+      // Each punch carries the stance it was thrown in (Right Shift switches mid-session).
+      const st: BoxingStance = k.southpaw === undefined ? stance : k.southpaw ? "southpaw" : "orthodox";
+      const punch = st === "southpaw" ? (SOUTHPAW_KEY_MIRROR[k.type] ?? k.type) : k.type;
+      return punchActionToken(punch, k.head, st);
     });
     noteDrilledThrow(ds, acts, cfg);
     applyDrilledSuccess(ds, acts, cfg);

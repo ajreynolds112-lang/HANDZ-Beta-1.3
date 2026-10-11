@@ -54,6 +54,14 @@ const PARTS: PartSpec[] = [
     prompt: "boxing sparring headgear helmet only, low poly game asset, padded head guard with open face, cheek pads and forehead pad, plain untextured, no logo, no head inside",
     faceLimit: 2000,
   },
+  {
+    // Sparring groin girdle, shaped from the user's front reference photo. The
+    // textured boxer skins it to the hips at load and fits it over the trunks.
+    id: "girdle",
+    prompt: "boxing groin protector girdle, high waist leather belt with front cup, plain untextured, no logo, no straps",
+    faceLimit: 4000,
+    image: "attached_assets/Screenshot_2026-10-10_at_9.57.01_PM_1791683973213.png",
+  },
 ];
 
 async function tripo<T = any>(apiPath: string, body?: unknown): Promise<T> {

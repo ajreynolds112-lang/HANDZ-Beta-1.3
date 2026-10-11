@@ -939,9 +939,9 @@ export function defaultSoleColor(shoeColor: string): string {
   return contrastInk(shoeColor, "#e4e0d6", "#2a2a2c");
 }
 
-/** Waist-stripe colour used when a fighter has not picked one. */
-export function defaultWaistStripeColor(trunksColor: string): string {
-  return shadeColor(trunksColor, 30);
+/** Gear Decal colour (the white spots on the gloves and headgear) used when a fighter has not picked one. */
+export function defaultGearDecalColor(): string {
+  return "#eeeeee";
 }
 
 function shadeColor(color: string, percent: number): string {

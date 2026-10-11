@@ -71,7 +71,7 @@ export default function ColorPicker({ colors, onChange }: ColorPickerProps) {
           testId="swatch-gloves"
         />
         <SwatchRow
-          label="Tape"
+          label="Wrist Strap"
           selected={colors.gloveTape}
           options={COLOR_PRESETS.gloveTape}
           onSelect={c => onChange({ ...colors, gloveTape: c })}

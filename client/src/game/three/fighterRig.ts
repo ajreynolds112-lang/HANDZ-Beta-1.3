@@ -32,7 +32,7 @@ export type BoneName = typeof BONE_NAMES[number];
 
 /** Material slots every rig exposes; the fighter tints them from its colours. */
 export type BodyRegion = "skin" | "trunks" | "stripe" | "socks";
-export type GearRegion = "glove" | "tape" | "shoe" | "laces" | "sole" | "headgear";
+export type GearRegion = "glove" | "tape" | "shoe" | "laces" | "sole" | "headgear" | "decal" | "girdle" | "girdleLaces";
 export type Region = BodyRegion | GearRegion;
 const BODY_REGIONS: BodyRegion[] = ["skin", "trunks", "stripe", "socks"];
 
@@ -46,6 +46,8 @@ export interface RigInstance {
   gloveCenter: { left: THREE.Object3D; right: THREE.Object3D };
   eyes: THREE.Mesh[];
   headgear: THREE.Object3D;
+  /** Sparring girdle (textured body only); shown with the headgear. */
+  girdle?: THREE.Object3D;
   /** Body-space corrections for a bind pose that isn't upright (Tripo: a head pitched down). Applied before the pose. */
   bindFix?: Partial<Record<BoneName, THREE.Quaternion>>;
   kind: "boxer" | "tripo" | "code";
@@ -64,7 +66,8 @@ export function newMaterials(): Record<Region, THREE.MeshStandardMaterial> {
   const m = (rough: number) => new THREE.MeshStandardMaterial({ roughness: rough, metalness: 0 });
   return {
     skin: m(0.62), trunks: m(0.5), stripe: m(0.5), socks: m(0.85),
-    glove: m(0.35), tape: m(0.8), shoe: m(0.55), laces: m(0.8), sole: m(0.7), headgear: m(0.5),
+    glove: m(0.35), tape: m(0.8), shoe: m(0.55), laces: m(0.8), sole: m(0.7), headgear: m(0.5), decal: m(0.5),
+    girdle: m(0.4), girdleLaces: m(0.8),
   };
 }
 
@@ -300,7 +303,7 @@ export function preloadFighterAssets(): Promise<void> {
       // The textured boxer replaces the Tripo body; that one stays as the fallback.
       if (parts.boxer) {
         try {
-          boxerBody = await loadBoxerTemplate({ body: parts.boxer.file, eyes: parts.boxer.eyes });
+          boxerBody = await loadBoxerTemplate({ body: parts.boxer.file, eyes: parts.boxer.eyes, girdle: parts.girdle ? MODEL_DIR + parts.girdle.file : undefined });
         } catch (err) {
           console.warn("[3D] textured boxer unavailable, using the Tripo body", err);
         }

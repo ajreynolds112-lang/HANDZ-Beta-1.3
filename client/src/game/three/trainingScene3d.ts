@@ -32,6 +32,10 @@ export interface BagDefense {
   slip: boolean;
   /** Arrow aiming the slip (unaimed slips go back, as in a bout). */
   aim: SlipDir | null;
+  /** Right Shift toggles, as in a bout. */
+  southpaw: boolean;
+  /** Tab cycles the three full guards (0-2), as in a bout. */
+  guardStance: number;
 }
 
 export type TrainingKind = "heavyBag" | "weights";
@@ -475,6 +479,10 @@ export class TrainingScene3D {
    * here, so it is topped back up after each slip charge.
    */
   private applyDefense(f: FighterState, d: BagDefense | undefined, dt: number): void {
+    if (d) {
+      f.boxingStance = d.southpaw ? "southpaw" : "orthodox";
+      f.guardStance = d.guardStance;
+    }
     const duck = !!d?.duck;
     f.defenseState = duck ? "duck" : "none";
     f.punchAimsHead = !duck;

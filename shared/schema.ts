@@ -24,8 +24,12 @@ export interface GearColors {
   laces?: string;
   /** Shoe soles. Optional: absent means "derive from the shoe colour". */
   soles?: string;
-  /** Trunk waist stripe. Optional: absent means "derive from the trunks colour". */
-  waistStripe?: string;
+  /** Gear Decal: the white spots on the gloves and headgear. Optional: absent means the default white. */
+  gearDecal?: string;
+  /** Sparring girdle: the outside leather. Optional so older saves load. */
+  girdle?: string;
+  /** Sparring girdle laces (the back lacing). Optional so older saves load. */
+  girdleLaces?: string;
 }
 
 export interface TrainingBonuses {
@@ -62,7 +66,27 @@ export interface SavedOutfit {
 }
 
 /** Outfit slots per career fighter. */
-export const OUTFIT_SLOT_COUNT = 5;
+export const OUTFIT_SLOT_COUNT = 50;
+
+/**
+ * A custom fighting style: base stance 0-5 (Standard/Shell/Hitman × Orthodox/
+ * Southpaw, in that order pairwise) plus which guard's defensive and punch
+ * animations it wears (0 Standard, 1 Shell, 2 Hitman).
+ */
+export interface SavedFightingStyle {
+  name: string;
+  base: number;
+  /** Source guard (0-2) per defensive animation, PB_VARIANTS order (8). */
+  defense: number[];
+  /** Source guard (0-2) per punch, PUNCH_ROLES order (6). */
+  punches: number[];
+}
+
+/** The career's fighting style: the style in use (null = none chosen) and the custom slots. */
+export interface FightingStyleSave {
+  active: { kind: "preset" | "custom"; index: number } | null;
+  custom: (SavedFightingStyle | null)[];
+}
 
 export const DEFAULT_GEAR_COLORS: GearColors = {
   gloves: "#cc2222",
@@ -71,6 +95,8 @@ export const DEFAULT_GEAR_COLORS: GearColors = {
   shoes: "#1a1a1a",
   headgear: "#2244aa",
   socks: "#f0f0f0",
+  girdle: "#2244aa",
+  girdleLaces: "#f2f2f2",
 };
 
 export const DEFAULT_TRAINING_BONUSES: TrainingBonuses = {
@@ -277,7 +303,7 @@ export interface RosterFighterState {
   customSocks?: string;
   customLaces?: string;
   customSoles?: string;
-  customWaistStripe?: string;
+  customGearDecal?: string;
   /** Wears the Spacial Color finish instead of its own gear colours. */
   /** Legacy whole-kit toggle, kept so rosters saved before per-piece picking still wear it. */
   customSpacial?: boolean;
@@ -315,6 +341,25 @@ export interface RosterFighterState {
    * band and grown weekly. Missing = no equipment.
    */
   equipmentLevel?: number;
+}
+
+export interface ChallengeRequest {
+  id: string;
+  rosterId: number;
+  kind: "spar" | "fight";
+  level: number;
+  receivedWeek: number;
+  expiresWeek: number;
+}
+
+export interface ChallengeState {
+  rev: number;
+  requests: ChallengeRequest[];
+  /** Set while the player is at the challenger's gym. */
+  away: { request: ChallengeRequest; done: boolean; won?: boolean; sessionUsed?: boolean } | null;
+  received: number;
+  accepted: number;
+  sparredRosterIds: number[];
 }
 
 export interface CareerRosterState {
@@ -401,6 +446,12 @@ export interface CareerRosterState {
    */
   doghouseUnlocked?: boolean;
   nightmareUnlocked?: boolean;
+  /**
+   * Challenges: roster fighters asking to spar or fight. Rolled in the save
+   * funnel as weeks advance; `rev` decides which copy survives a stale
+   * whole-blob write. See client/src/game/challenges.ts.
+   */
+  challengeState?: ChallengeState;
   /**
    * Set once per career, the first time it is loaded by a build that has the
    * paid unlocks. A career that got this far without them was played under the
@@ -659,6 +710,10 @@ export const fighters = pgTable("fighters", {
   gymLook: jsonb("gym_look").$type<Record<string, string>>(),
   /** Saved outfit slots (OUTFIT_SLOT_COUNT long, null = empty). Absent = all empty. */
   outfits: jsonb("outfits").$type<(SavedOutfit | null)[]>(),
+  /** Fighting style (base stance + defensive/punch animation sets, custom slots). Absent = none chosen. */
+  fightingStyle: jsonb("fighting_style").$type<FightingStyleSave>(),
+  /** Wear the sparring headgear + girdle in official bouts too. */
+  sparringGearInBouts: boolean("sparring_gear_in_bouts"),
   diamonds: integer("diamonds").default(0),
   shards: integer("shards").default(0),
   /** Levels bought with diamonds. Drives the level-up price, so XP levels never raise it. */

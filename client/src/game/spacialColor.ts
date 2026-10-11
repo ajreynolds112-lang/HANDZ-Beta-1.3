@@ -34,7 +34,7 @@ export const SPACIAL_BASE_HEX = "#0b0616";
  * It used to be a single unlock covering the whole kit; that is now legacy and
  * survives only as a grandfather rule in `spacialOwnedOf`.
  */
-export const SPACIAL_PRICE_PER_GEAR_FORCE = 500_000_000;
+export const SPACIAL_PRICE_PER_GEAR_FORCE = 100_000_000;
 
 export function isSpacial(color: string | null | undefined): boolean {
   return color === SPACIAL_COLOR;
@@ -47,7 +47,7 @@ export function cssColorOf(color: string | null | undefined): string {
 
 /** Gear fields the finish can cover. Skin is deliberately left alone. */
 export const SPACIAL_GEAR_KEYS = [
-  "gloves", "gloveTape", "trunks", "shoes", "headgear", "socks", "laces", "soles", "waistStripe",
+  "gloves", "gloveTape", "trunks", "shoes", "headgear", "socks", "laces", "soles", "gearDecal", "girdle", "girdleLaces",
 ] as const;
 
 export type SpacialGearKey = typeof SPACIAL_GEAR_KEYS[number];
@@ -64,7 +64,7 @@ export function spacialSelectionOf(
   f: { spacialColors?: boolean | null; spacialParts?: unknown } | null | undefined,
 ): SpacialSelection {
   if (!f) return null;
-  if (Array.isArray(f.spacialParts)) return f.spacialParts as string[];
+  if (Array.isArray(f.spacialParts)) return (f.spacialParts as string[]).map(renamedGearKey);
   return f.spacialColors ? true : null;
 }
 
@@ -82,7 +82,13 @@ export function spacialOwnedOf(
   if (f.spacialUnlocked) return [...SPACIAL_GEAR_KEYS];
   const owned = f.spacialOwned;
   if (!Array.isArray(owned)) return [];
-  return SPACIAL_GEAR_KEYS.filter(k => (owned as unknown[]).includes(k));
+  const keys = (owned as unknown[]).map(k => renamedGearKey(String(k)));
+  return SPACIAL_GEAR_KEYS.filter(k => keys.includes(k));
+}
+
+/** The Waist Stripe slot became Gear Decal; older saves still name it. */
+function renamedGearKey(k: string): string {
+  return k === "waistStripe" ? "gearDecal" : k;
 }
 
 /**

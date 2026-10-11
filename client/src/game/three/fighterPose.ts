@@ -32,6 +32,7 @@ import { levelScale } from "@/lib/scalingConfig";
 import { getActivePunchAnimConfig } from "@/lib/punchAnimConfig";
 import { PX_PER_UNIT } from "./worldMapping";
 import { getStandHeightConfig } from "@/lib/standHeightConfig";
+import { getPoseHipHeight } from "./poseOffsets";
 import { STANCE_FEET_M, DUCK_FEET_WIDER_M, DUCK_FEET_LONGER_M } from "../legCollision";
 
 /** 2D figure body height in px (BODY_H in renderer.ts), the unit its offsets scale with. */
@@ -372,7 +373,8 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
       mem.armBody[i] = !punchHitsHead(f, enginePunch!);
     }
     const motion = mine ? engineMotion : null;
-    const target = motion ? motion.e : 0;
+    // Retraction never sends the glove further out (a blocked punch goes home from where it stopped).
+    const target = motion ? (f.punchPhase === "retraction" ? Math.min(motion.e, mem.armExt[i]) : motion.e) : 0;
     // snapPunch with no engine punch = a profiled punch solved as the guard:
     // both arms sit exactly at the guard so only the keyframes move them.
     const snapArm = snapAll || (!!ctx.snapPunch && (mine || !enginePunch));
@@ -510,7 +512,7 @@ export function solvePose(f: FighterState, dims: RigDims, mem: PoseMemory, ctx: 
   out.pelvisOffset.set(
     swayFwdPx * PX2M + fSway.torso * swayM * 0.25 - hitSnap * 0.03,
     -bobPx * PX2M - dims.legLen * (DUCK_HIP_DROP * dp + getStandHeightConfig().standSit) - bodyDip - upperDip
-      + (ctx.hipHeight ?? 0),
+      + (ctx.hipHeight ?? 0) + getPoseHipHeight(dp),
     0,
   );
   out.pelvisRot.copy(tiltQ(0.03 + slipX * 0.35, slipZ * 0.35)).multiply(yawQ(blade * 0.75 + hipYaw, _q));

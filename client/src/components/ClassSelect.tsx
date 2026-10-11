@@ -6,7 +6,7 @@ import { ArrowLeft, Settings, Users, X, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import FighterStanceCanvas from "@/components/FighterStanceCanvas";
 import { SkinColorField } from "@/components/ColorPicker";
-import { defaultLaceColor, defaultSoleColor, defaultWaistStripeColor } from "@/game/renderer";
+import { defaultLaceColor, defaultSoleColor, defaultGearDecalColor } from "@/game/renderer";
 import { ROSTER_DATA, getRosterDisplayName, type RosterEntry } from "@/game/rosterData";
 
 interface ClassSelectProps {
@@ -447,13 +447,13 @@ export default function ClassSelect({ selected, onSelect, onConfirm, onBack, col
                 />
               </div>
               <ColorPickerRow label="Gloves" value={colors.gloves} onChange={c => onColorsChange({ ...colors, gloves: c })} testId="color-gloves" />
-              <ColorPickerRow label="Tape" value={colors.gloveTape} onChange={c => onColorsChange({ ...colors, gloveTape: c })} testId="color-tape" />
+              <ColorPickerRow label="Wrist Strap" value={colors.gloveTape} onChange={c => onColorsChange({ ...colors, gloveTape: c })} testId="color-tape" />
               <ColorPickerRow label="Trunks" value={colors.trunks} onChange={c => onColorsChange({ ...colors, trunks: c })} testId="color-trunks" />
               <ColorPickerRow label="Shoes" value={colors.shoes} onChange={c => onColorsChange({ ...colors, shoes: c })} testId="color-shoes" />
               <ColorPickerRow label="Socks" value={colors.socks || "#f0f0f0"} onChange={c => onColorsChange({ ...colors, socks: c })} testId="color-socks" />
               <ColorPickerRow label="Laces" value={colors.laces || defaultLaceColor(colors.shoes)} onChange={c => onColorsChange({ ...colors, laces: c })} testId="color-laces" />
               <ColorPickerRow label="Soles" value={colors.soles || defaultSoleColor(colors.shoes)} onChange={c => onColorsChange({ ...colors, soles: c })} testId="color-soles" />
-              <ColorPickerRow label="Waist" value={colors.waistStripe || defaultWaistStripeColor(colors.trunks)} onChange={c => onColorsChange({ ...colors, waistStripe: c })} testId="color-waist-stripe" />
+              <ColorPickerRow label="Gear Decal" value={colors.gearDecal || defaultGearDecalColor()} onChange={c => onColorsChange({ ...colors, gearDecal: c })} testId="color-gear-decal" />
             </div>
           </Card>
         </div>

@@ -5,7 +5,7 @@
 import type { CareerRosterState } from "@shared/schema";
 import {
   purePowerOf, purePowerBonusOf, PURE_POWER_MAX, PURE_POWER_PER_SESSION,
-  PURE_POWER_CRIT_RESIST_PER_STEP, PURE_POWER_FULL_STAMINA_PENALTY, PURE_POWER_FULL_SPEED_PENALTY,
+  PURE_POWER_CRIT_RESIST_PER_STEP, PURE_POWER_STUN_RESIST_PER_STEP, PURE_POWER_EMPTY_VULN, purePowerPenaltyOf,
 } from "@/game/purePower";
 import MeterHoverReadout from "@/components/MeterHoverReadout";
 
@@ -17,8 +17,13 @@ interface PurePowerMeterProps {
 export default function PurePowerMeter({ roster, className = "" }: PurePowerMeterProps) {
   const pct = purePowerOf(roster);
   const bonus = Math.round(purePowerBonusOf(roster) * 100);
-  const critCut = Math.round(Math.floor(pct / PURE_POWER_PER_SESSION) * PURE_POWER_CRIT_RESIST_PER_STEP * 100);
-  const full = pct >= PURE_POWER_MAX;
+  const steps = Math.floor(pct / PURE_POWER_PER_SESSION);
+  const critCut = Math.round(steps * PURE_POWER_CRIT_RESIST_PER_STEP * 100);
+  const stunCut = Math.round(steps * PURE_POWER_STUN_RESIST_PER_STEP * 100);
+  const pen = purePowerPenaltyOf(pct);
+  const staminaCut = Math.round(pen.stamina * 100);
+  const speedCut = Math.round(pen.speed * 100);
+  const emptyVuln = pct <= 0 ? Math.round(PURE_POWER_EMPTY_VULN * 100) : 0;
   return (
     <div className={`group relative w-52 rounded border border-rose-800/60 bg-rose-950/40 px-2 py-1 ${className}`} data-testid="pure-power-progress">
       <MeterHoverReadout
@@ -26,9 +31,10 @@ export default function PurePowerMeter({ roster, className = "" }: PurePowerMete
         testId="pure-power-readout"
         rows={[
           { label: "Power", value: `+${bonus}%`, tone: bonus > 0 ? "good" : undefined },
-          { label: "Crit chance against you", value: `-${critCut}%`, tone: critCut > 0 ? "good" : undefined },
-          { label: "Max stamina", value: full ? `-${Math.round(PURE_POWER_FULL_STAMINA_PENALTY * 100)}%` : "0%", tone: full ? "bad" : undefined },
-          { label: "Speed", value: full ? `-${Math.round(PURE_POWER_FULL_SPEED_PENALTY * 100)}%` : "0%", tone: full ? "bad" : undefined },
+          { label: "Crit chance against you", value: emptyVuln ? `+${emptyVuln}%` : `-${critCut}%`, tone: emptyVuln ? "bad" : critCut > 0 ? "good" : undefined },
+          { label: "Stun chance against you", value: emptyVuln ? `+${emptyVuln}%` : `-${stunCut}%`, tone: emptyVuln ? "bad" : stunCut > 0 ? "good" : undefined },
+          { label: "Max stamina", value: staminaCut > 0 ? `-${staminaCut}%` : "0%", tone: staminaCut > 0 ? "bad" : undefined },
+          { label: "Speed", value: speedCut > 0 ? `-${speedCut}%` : "0%", tone: speedCut > 0 ? "bad" : undefined },
         ]}
       />
       <div className="flex items-baseline justify-between gap-2 leading-none">

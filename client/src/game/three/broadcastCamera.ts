@@ -14,6 +14,7 @@
  */
 import * as THREE from "three";
 import type { GameState } from "../types";
+import { setViewCameraYaw } from "../engine";
 import {
   ENGINE_RING_CX, ENGINE_RING_CY, ENGINE_RING_HALF_W, ENGINE_RING_HALF_H,
   MAT_HEIGHT, RING_HALF_X, RING_HALF_Z, toSceneX, toSceneZ,
@@ -118,6 +119,7 @@ export class BroadcastCamera {
       this.focusZ += (tz - this.focusZ) * CAMERA_POS_LERP;
     }
 
+    setViewCameraYaw(this.yaw);
     const zoomT = (this.zoom - AUTO_ZOOM_MIN) / (AUTO_ZOOM_MAX * 0.8 - AUTO_ZOOM_MIN);
     const pitch = THREE.MathUtils.lerp(PITCH_WIDE, PITCH_CLOSE, THREE.MathUtils.clamp(zoomT, 0, 1));
     const distance = BASE_DISTANCE / this.zoom;

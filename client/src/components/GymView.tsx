@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { CareerRosterState, Fighter, SkillPoints } from "@shared/schema";
 import { ShoppingBag, Zap } from "lucide-react";
 import LockerView from "@/components/LockerView";
+import FightingStyleDialog from "@/components/FightingStyleDialog";
 import ItemStoreView from "@/components/ItemStoreView";
 import ActiveBoostsHud from "@/components/ActiveBoostsHud";
 import { hasUnseenItems, markItemsSeen } from "@/lib/itemInventory";
@@ -15,15 +16,16 @@ import PunchEnduranceMeter from "@/components/PunchEnduranceMeter";
 import DefensiveMasteryMeter from "@/components/DefensiveMasteryMeter";
 import PurePowerMeter from "@/components/PurePowerMeter";
 import DailyRewardBadge from "@/components/DailyRewardBadge";
+import FighterStanceCanvas from "@/components/FighterStanceCanvas";
 import * as localSaves from "@/lib/localSaves";
 import { createInitialState, startFight, updateGame } from "@/game/engine";
 import { useEnterKey, ENTER_PRIORITY } from "@/hooks/useEnterKey";
 import { FightScene3D } from "@/game/three/FightScene3D";
 import { setGymDressing, setGymLook } from "@/game/three/gym3d";
 import EditGymPanel from "@/components/EditGymPanel";
-import { GYM_RENAME_FORCE, type GymLook, gymLookOf } from "@/game/gymLook";
+import { AWAY_GYMS, GYM_RENAME_FORCE, type GymLook, gymLookOf } from "@/game/gymLook";
 import { ChevronLeft } from "lucide-react";
-import { GYM_PLAYER_PX, gymZoneAnchor, pickGymZone, projectGymPoint } from "@/game/three/gymLayout";
+import { GYM_PLAYER_PX, gymZoneAnchor, pickGymZone, projectGymPoint, setGymArrangement } from "@/game/three/gymLayout";
 import { ringColorsOf } from "@/game/ringColors";
 import type { GameState, FighterColors } from "@/game/types";
 import { type Archetype, SKIN_COLOR_PRESETS } from "@/game/types";
@@ -112,6 +114,24 @@ export interface GymViewProps {
    */
   onFighterChanged?: (fighter: Fighter) => void;
   overlayBanner?: React.ReactNode;
+  /** Challenges: open requests (office) and the away-gym visit, if any. */
+  challenges?: GymChallenges;
+  onChallengeDecision?: (id: string, approve: boolean) => void;
+  onChallengeSpar?: () => void;
+  onChallengeReturnHome?: () => void;
+}
+
+export interface GymChallenges {
+  requests: {
+    id: string; name: string; kind: "spar" | "fight"; level: number; weeksLeft: number;
+    rank: number | null; record: string; colors: FighterColors | null; stance?: "orthodox" | "southpaw";
+  }[];
+  /** `gym` indexes AWAY_GYMS. */
+  away: { name: string; done: boolean; gym: number } | null;
+  /** A fight is already booked. */
+  fightBlocked: boolean;
+  /** Fight week. */
+  sparBlocked: boolean;
 }
 
 /** Credit Limit Increase exchange rate. */
@@ -248,7 +268,10 @@ export default function GymView({
   onExit, onOpenPlanner, onOpenStats, onOpenRefinements, onOpenEquipment, onOpenEditColors, onOpenEditRingColors, onLevelUp, sweepStatus, onSweep,
   onStartSparring, onStartWeightLifting, onStartBagWork, onStartFreeBag, onFightNow, onForceChange,
   onForceToDiamond, roster, overlayBanner, onFighterChanged, onDailyRewardDue,
+  challenges, onChallengeDecision, onChallengeSpar, onChallengeReturnHome,
 }: GymViewProps) {
+  const away = challenges?.away ?? null;
+  const [challengesOpen, setChallengesOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
   const hoveredRef = useRef<GymZone | null>(null);
@@ -279,6 +302,7 @@ export default function GymView({
   const [hoveredZone, setHoveredZone] = useState<GymZone | null>(null);
   const [popup, setPopup] = useState<{ zone: GymZone; x: number; y: number } | null>(null);
   const [confirmingLevelUp, setConfirmingLevelUp] = useState(false);
+  const [styleOpen, setStyleOpen] = useState(false);
   const [confirmingSweep, setConfirmingSweep] = useState(false);
   useEffect(() => { setConfirmingLevelUp(false); setConfirmingSweep(false); }, [popup]);
   const [currentForce, setCurrentForce] = useState<number>(fighter.force ?? 0);
@@ -343,6 +367,8 @@ export default function GymView({
     const gl = glCanvasRef.current;
     if (!gl) return;
     let scene: FightScene3D;
+    // The parent remounts the gym (keyed) when the player travels.
+    setGymArrangement(away ? AWAY_GYMS[away.gym].layout ?? 0 : null);
     try {
       scene = new FightScene3D(gl);
     } catch (err) {
@@ -351,7 +377,7 @@ export default function GymView({
     }
     sceneRef.current = scene;
     const idle = makeGymFight();
-    idle.sparringMode = false; // no headgear on the fighter idling by the bench
+    idle.sparringMode = true; // the fighter idling by the bench wears the sparring gear
     idle.player.x = GYM_PLAYER_PX.x;
     idle.player.z = GYM_PLAYER_PX.z;
     idle.player.facingAngle = GYM_PLAYER_PX.facing;
@@ -375,8 +401,8 @@ export default function GymView({
   // Null until the player saves a palette, so an untouched career keeps the
   // stock ring (and its per-bout colour variety) exactly as before.
   const ringPalette = useMemo(
-    () => (fighter.ringColors ? ringColorsOf(fighter) : null),
-    [fighter],
+    () => (away ? AWAY_GYMS[away.gym].ring : fighter.ringColors ? ringColorsOf(fighter) : null),
+    [fighter, away?.gym], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const ringPaletteRef = useRef(ringPalette);
   ringPaletteRef.current = ringPalette;
@@ -391,7 +417,7 @@ export default function GymView({
   const [editGymOpen, setEditGymOpen] = useState(false);
   const editGymOpenRef = useRef(false);
   editGymOpenRef.current = editGymOpen;
-  useEffect(() => { if (!editGymOpen) setGymLook(savedLook); }, [savedLook, editGymOpen]);
+  useEffect(() => { if (!editGymOpen) setGymLook(away ? AWAY_GYMS[away.gym].look : savedLook); }, [savedLook, editGymOpen, away?.gym]); // eslint-disable-line react-hooks/exhaustive-deps
   const previewLook = useCallback((l: GymLook) => setGymLook(l), []);
 
   // Ring view: resting the pointer on the ring for RING_DWELL_S pans the
@@ -576,10 +602,12 @@ export default function GymView({
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const [mx, my] = getCanvasXY(e);
-    const zone = sceneRef.current ? pickGymZone(mx, my, sceneRef.current.homeCamera) : null;
+    const picked = sceneRef.current ? pickGymZone(mx, my, sceneRef.current.homeCamera) : null;
+    // A challenger's crate is just scenery.
+    const zone = away && picked === "equipCrate" ? null : picked;
     hoveredRef.current = zone;
     setHoveredZone(zone);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [away]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const closeRingView = useCallback(() => {
     ringViewOpenRef.current = false;
@@ -593,6 +621,13 @@ export default function GymView({
     if (popup) { setPopup(null); return; }
     const zone = hoveredRef.current;
     if (!zone) return;
+    if (away) {
+      // At a challenger's gym: no leaving or training until the challenge is done.
+      // Nothing of the player's own lives here: lockers, crate, trophy cases, office.
+      if (zone === "office" || zone === "lockers" || zone === "equipCrate" || zone === "trophyA" || zone === "trophyB") return;
+      if (!away.done && (zone === "door" || zone === "weights" || zone.startsWith("bag"))) return;
+      if (zone === "door") { setPopup({ zone, x: e.clientX, y: e.clientY }); return; }
+    }
     if (zone === "door") { onExit(); return; }
     if (zone === "trophyA") { onOpenStats(); return; }
     if (zone === "lockers") { openLocker(); return; }
@@ -604,7 +639,7 @@ export default function GymView({
     // A padlocked crate says so on hover and does nothing on click.
     if (zone === "equipCrate" && !equipUnlockedRef.current) return;
     setPopup({ zone, x: e.clientX, y: e.clientY });
-  }, [popup, onExit, onOpenPlanner, onOpenStats, onOpenRefinements, refinementUnlocked, openLocker]);
+  }, [popup, onExit, onOpenPlanner, onOpenStats, onOpenRefinements, refinementUnlocked, openLocker, away]);
 
   useEffect(() => { popupOpenRef.current = popup !== null; }, [popup]);
 
@@ -674,6 +709,14 @@ export default function GymView({
     const ts = trophyRef.current;
     const bonus = bonusFor(zone);
     const bonusSuffix = bonus ? ` — ★ Weekly bonus: ${bonus}` : "";
+    if (away) {
+      // A challenger's gym: plain names, none of the player's levels or menus.
+      const plain: Partial<Record<GymZone, string>> = {
+        ring: "Sparring Ring", weights: "Weightlifting", bag1: "Heavy Bag", bag2: "Heavy Bag", bag3: "Heavy Bag",
+        lockers: "Lockers", door: "Exit Gym", trophyA: "Trophy Case", trophyB: "Trophy Case", office: "Office",
+      };
+      if (zone in plain) return plain[zone]! + (zone === "ring" || zone === "weights" || zone.startsWith("bag") ? bonusSuffix : "");
+    }
     if (zone === "ring") return `Sparring Ring — Lv.${gymState.ring.level} — ${fph(BASE_FPH.ring, gymState.ring.level)} Force/HR${bonusSuffix}`;
     if (zone === "weights") return `Weightlifting — Lv.${gymState.weightRack.level} — ${fph(BASE_FPH.weightRack, gymState.weightRack.level)} Force/HR${bonusSuffix}`;
     if (zone === "bag1") return `Heavy Bag — Lv.${gymState.heavyBag1.level} — ${fph(BASE_FPH.heavyBag, gymState.heavyBag1.level)} Force/HR${bonusSuffix}`;
@@ -768,22 +811,33 @@ export default function GymView({
         style={{ left, top, maxHeight: `calc(100vh - ${top + 4}px)`, overflowY: "auto" }}
         onClick={e => e.stopPropagation()}
       >
-        {popup.zone === "ring" && <>
+        {popup.zone === "door" && away && <>
+          <button className={btnAction} onClick={() => { setPopup(null); onChallengeReturnHome?.(); }} data-testid="gym-challenge-return">🏠 Return Home</button>
+        </>}
+
+        {popup.zone === "ring" && away && !away.done && <>
+          <div className="text-white font-bold text-xs">Spar {away.name} now?</div>
+          <button className={btnAction} onClick={() => { setPopup(null); onChallengeSpar?.(); }} data-testid="gym-challenge-spar">🥊 Spar</button>
+          <button className={`${btnBase} text-white/60 bg-white/5 hover:bg-white/10`} onClick={() => setPopup(null)} data-testid="gym-challenge-spar-cancel">Not now</button>
+        </>}
+
+        {popup.zone === "ring" && !(away && !away.done) && <>
           <div className="text-white font-bold text-xs">Sparring Ring</div>
-          <div className="text-yellow-400 text-[10px] mb-1">Lv.{gymState.ring.level} · {fph(BASE_FPH.ring, gymState.ring.level)} Force/HR</div>
+          {!away && <div className="text-yellow-400 text-[10px] mb-1">Lv.{gymState.ring.level} · {fph(BASE_FPH.ring, gymState.ring.level)} Force/HR</div>}
           {trainingLocked ? <LockedNote /> : <button className={btnAction} onClick={() => { setPopup(null); onStartSparring(); }} data-testid="gym-ring-spar">🥊 Spar</button>}
-          {gymState.ring.level < 500
+          {away ? null : gymState.ring.level < 500
             ? <button className={btnUpgrade(upgradeCostFor(BASE_UPGRADE_COST.ring, gymState.ring.level))}
                 onClick={() => handleUpgrade("ring", BASE_UPGRADE_COST.ring)} data-testid="gym-ring-upgrade">
                 ⬆ Upgrade — {upgradeCostFor(BASE_UPGRADE_COST.ring, gymState.ring.level).toLocaleString()} Force</button>
             : <div className="text-yellow-400 text-xs text-center py-1">★ MAX LEVEL 500</div>}
-          <button className={btnAction} onClick={() => { setPopup(null); onOpenEditRingColors(); }} data-testid="gym-ring-colors">🎨 Ring Colors</button>
+          {!away && <button className={btnAction} onClick={() => { setPopup(null); onOpenEditRingColors(); }} data-testid="gym-ring-colors">🎨 Ring Colors</button>}
         </>}
 
         {popup.zone === "office" && <>
           <div className="text-white font-bold text-xs">Office</div>
           <button className={btnAction} onClick={() => { setPopup(null); onOpenPlanner(); }} data-testid="gym-office-enter">🚪 Enter</button>
           <button className={btnAction} onClick={() => { setPopup(null); closeRingView(); setEditGymOpen(true); }} data-testid="gym-office-edit">🎨 Edit Gym</button>
+          {challenges && <button className={btnAction} onClick={() => { setPopup(null); setChallengesOpen(true); }} data-testid="gym-office-challenges">📨 Challenges ({challenges.requests.length})</button>}
         </>}
 
         {popup.zone === "equipCrate" && <>
@@ -794,7 +848,7 @@ export default function GymView({
 
         {popup.zone === "weights" && <>
           <div className="text-white font-bold text-xs">Weightlifting</div>
-          <div className="text-yellow-400 text-[10px]">Lv.{gymState.weightRack.level} · {fph(BASE_FPH.weightRack, gymState.weightRack.level)} Force/HR</div>
+          {!away && <div className="text-yellow-400 text-[10px]">Lv.{gymState.weightRack.level} · {fph(BASE_FPH.weightRack, gymState.weightRack.level)} Force/HR</div>}
           <RepProgress fighter={fighter} activity="weightLifting" />
           {confirmingSweep ? <>
             <div className="text-cyan-300 text-[10px] font-bold text-center">
@@ -803,7 +857,7 @@ export default function GymView({
             <button className={btnAction} onClick={() => { setConfirmingSweep(false); setPopup(null); onSweep("weightLifting"); }} data-testid="gym-weights-sweep-confirm">🧹 Confirm</button>
             <button className={`${btnBase} text-white/60 bg-white/5 hover:bg-white/10`} onClick={() => setConfirmingSweep(false)} data-testid="gym-weights-sweep-cancel">Cancel</button>
           </> : <>
-          {gymState.weightRack.level < 500
+          {away ? null : gymState.weightRack.level < 500
             ? <button className={btnUpgrade(upgradeCostFor(BASE_UPGRADE_COST.weightRack, gymState.weightRack.level))}
                 onClick={() => handleUpgrade("weightRack", BASE_UPGRADE_COST.weightRack)} data-testid="gym-weights-upgrade">
                 ⬆ Upgrade — {upgradeCostFor(BASE_UPGRADE_COST.weightRack, gymState.weightRack.level).toLocaleString()} Force</button>
@@ -819,7 +873,7 @@ export default function GymView({
           const cost = upgradeCostFor(BASE_UPGRADE_COST.heavyBag, level);
           return <>
             <div className="text-white font-bold text-xs">Heavy Bag</div>
-            <div className="text-yellow-400 text-[10px]">Lv.{level} · {fph(BASE_FPH.heavyBag, level)} Force/HR</div>
+            {!away && <div className="text-yellow-400 text-[10px]">Lv.{level} · {fph(BASE_FPH.heavyBag, level)} Force/HR</div>}
             <RepProgress fighter={fighter} activity="heavyBag" />
             {confirmingSweep ? <>
               <div className="text-cyan-300 text-[10px] font-bold text-center">
@@ -828,7 +882,7 @@ export default function GymView({
               <button className={btnAction} onClick={() => { setConfirmingSweep(false); setPopup(null); onSweep("heavyBag"); }} data-testid="gym-bag-sweep-confirm">🧹 Confirm</button>
               <button className={`${btnBase} text-white/60 bg-white/5 hover:bg-white/10`} onClick={() => setConfirmingSweep(false)} data-testid="gym-bag-sweep-cancel">Cancel</button>
             </> : <>
-            {level < 500
+            {away ? null : level < 500
               ? <button className={btnUpgrade(cost)} onClick={() => handleUpgrade(key as "heavyBag1" | "heavyBag2" | "heavyBag3", BASE_UPGRADE_COST.heavyBag)} data-testid="gym-bag-upgrade">
                   ⬆ Upgrade — {cost.toLocaleString()} Force</button>
               : <div className="text-yellow-400 text-xs text-center py-1">★ MAX LEVEL 500</div>}
@@ -848,7 +902,7 @@ export default function GymView({
           <div className="text-white/70 text-[10px]" data-testid="gym-player-stats">
             PWR {sp.power} · SPD {sp.speed} · DEF {sp.defense} · STA {sp.stamina} · FOC {sp.focus}
           </div>
-          <div className="text-cyan-300 text-[10px] mb-1">Looking sharp. Want a new look?</div>
+          {!away && <div className="text-cyan-300 text-[10px] mb-1">Looking sharp. Want a new look?</div>}
           {confirmingLevelUp ? <>
             <div className="text-cyan-300 text-[10px] font-bold text-center">Spend {levelUpCost.toLocaleString()} diamond{levelUpCost === 1 ? "" : "s"} to level up?</div>
             {/* Confirming drops back to the panel's normal buttons — showing the
@@ -859,7 +913,8 @@ export default function GymView({
             {(fighter.diamonds ?? 0) >= levelUpCost
               ? <button className={btnAction} onClick={() => setConfirmingLevelUp(true)} data-testid="gym-player-levelup">⬆ Level Up — {levelUpCost.toLocaleString()} 💎</button>
               : <button className={`${btnBase} text-white/40 bg-white/5 cursor-not-allowed`} disabled data-testid="gym-player-levelup">⬆ Level Up — needs {levelUpCost.toLocaleString()} 💎</button>}
-            <button className={btnAction} onClick={() => { setPopup(null); onOpenEditColors(); }} data-testid="gym-player-edit-colors">🎨 Edit Colors</button>
+            <button className={btnAction} onClick={() => { setPopup(null); setStyleOpen(true); }} data-testid="gym-player-fighting-style">🥊 Fighting Style</button>
+            {!away && <button className={btnAction} onClick={() => { setPopup(null); onOpenEditColors(); }} data-testid="gym-player-edit-colors">🎨 Edit Colors</button>}
             <button className={`${btnBase} text-white/60 bg-white/5 hover:bg-white/10`} onClick={() => setPopup(null)} data-testid="gym-player-cancel">Not now</button>
           </>}
           </>;
@@ -901,6 +956,44 @@ export default function GymView({
             onClick={closeRingView}
             data-testid="gym-ring-back"
           ><ChevronLeft className="h-6 w-6" />Back</button>
+        )}
+
+        {challengesOpen && challenges && (
+          <div className="absolute inset-0 z-[80] flex items-center justify-center bg-black/60" onClick={() => setChallengesOpen(false)}>
+            <div className="bg-[#1a1a1a] border border-white/20 rounded-lg p-4 w-[400px] max-h-[80vh] overflow-y-auto space-y-2" onClick={e => e.stopPropagation()} data-testid="gym-challenges-panel">
+              <div className="flex items-center justify-between">
+                <div className="text-white font-bold text-sm">Challenges ({challenges.requests.length}/20)</div>
+                <button className="text-white/60 hover:text-white text-xs" onClick={() => setChallengesOpen(false)} data-testid="gym-challenges-close">✕</button>
+              </div>
+              {challenges.requests.length === 0 && <div className="text-white/50 text-xs">No requests</div>}
+              {challenges.requests.map(r => {
+                const blocked = r.kind === "fight" ? challenges.fightBlocked : challenges.sparBlocked;
+                return (
+                  <div key={r.id} className="flex items-center gap-2 bg-white/5 rounded px-2 py-1.5" data-testid={`gym-challenge-${r.id}`}>
+                    <div className="w-12 h-16 shrink-0">
+                      {r.colors && <FighterStanceCanvas colors={r.colors} width={120} height={144} stance={r.stance} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-[10px] font-black uppercase tracking-wide ${r.kind === "fight" ? "text-yellow-400" : "text-sky-300"}`}>{r.kind === "fight" ? "🏆 Bout Request" : "🥊 Sparring"}</div>
+                      <div className="text-white text-xs font-bold truncate">{r.name}</div>
+                      <div className="text-white/60 text-[10px]">{r.rank != null ? `#${r.rank} · ` : ""}{r.record} · Lv.{r.level} · {r.weeksLeft}w</div>
+                    </div>
+                    <button
+                      className={`rounded px-2 py-1 text-[11px] font-bold ${blocked ? "bg-white/5 text-white/30 cursor-not-allowed" : "bg-green-700 hover:bg-green-600 text-white"}`}
+                      disabled={blocked}
+                      onClick={() => { setChallengesOpen(false); onChallengeDecision?.(r.id, true); }}
+                      data-testid={`gym-challenge-approve-${r.id}`}
+                    >Approve</button>
+                    <button
+                      className="rounded px-2 py-1 text-[11px] font-bold bg-red-800 hover:bg-red-700 text-white"
+                      onClick={() => onChallengeDecision?.(r.id, false)}
+                      data-testid={`gym-challenge-deny-${r.id}`}
+                    >Deny</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {editGymOpen && (
@@ -953,6 +1046,7 @@ export default function GymView({
           {/* Gym conditioning — stacks under the refinement meter, and takes its
               place in the column once that one has nothing left to show. */}
           <PunchEnduranceMeter roster={roster} fighterId={fighter.id} className="pointer-events-auto" />
+          <FightingStyleDialog open={styleOpen} onOpenChange={setStyleOpen} fighter={fighter} onSaved={onFighterChanged} />
           {/* Defensive Mastery — mastery bar and the diamond ladder. */}
           <DefensiveMasteryMeter fighter={fighter} roster={roster} onFighterChanged={onFighterChanged} className="pointer-events-auto" />
           <PurePowerMeter roster={roster} className="pointer-events-auto" />
@@ -1026,7 +1120,7 @@ export default function GymView({
         )}
 
         {/* Refinement unlocked but never opened — red dot over the Skill Refinement case */}
-        {refinementUnseen && (
+        {!away && refinementUnseen && (
           <div
             className="absolute z-[58] pointer-events-none"
             style={{
@@ -1044,8 +1138,27 @@ export default function GymView({
           </div>
         )}
 
+        {/* Open challenge requests — red dot over the office */}
+        {!away && !challengesOpen && (challenges?.requests.length ?? 0) > 0 && (
+          <div
+            className="absolute z-[58] pointer-events-none"
+            style={{
+              left: `${(tagPos("office").x / CW) * 100}%`,
+              top: `${(tagPos("office").y / CH) * 100}%`,
+              transform: "translate(-50%,-100%)",
+            }}
+            {...anchorAttrs("office")}
+            data-testid="gym-office-challenges-dot"
+          >
+            <span className="relative flex h-3.5 w-3.5">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75 animate-ping" />
+              <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-red-600 border border-red-300 shadow-[0_0_8px_rgba(255,60,60,0.9)]" />
+            </span>
+          </div>
+        )}
+
         {/* Newly unlocked equipment the player hasn't seen — red dot over the crate */}
-        {equipUnlocked && equipPending.length > 0 && (
+        {!away && equipUnlocked && equipPending.length > 0 && (
           <div
             className="absolute z-[58] pointer-events-none"
             style={{

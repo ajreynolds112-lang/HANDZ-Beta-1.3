@@ -27,7 +27,7 @@ export function outfitSlotsOf(raw: unknown): (SavedOutfit | null)[] {
 }
 
 /** Swatch order shown on a slot card. */
-const SWATCH_KEYS: (keyof GearColors)[] = ["gloves", "gloveTape", "trunks", "shoes", "socks", "headgear"];
+const SWATCH_KEYS: (keyof GearColors)[] = ["gloves", "gloveTape", "trunks", "shoes", "socks", "headgear", "girdle"];
 
 function Swatches({ outfit }: { outfit: SavedOutfit }) {
   return (
@@ -48,10 +48,9 @@ function Swatches({ outfit }: { outfit: SavedOutfit }) {
 }
 
 /**
- * The five named outfit slots in the career colour editor, behind a button that
+ * The named outfit slots (OUTFIT_SLOT_COUNT) in the career colour editor, behind a button that
  * opens them as a popup card. Slot edits persist at once through `onChange`;
- * loading only fills the editor (and closes the card), which still needs Save
- * Colors to be worn.
+ * loading only fills the editor (and closes the card); leaving the editor saves it.
  */
 export default function OutfitSlots({ outfits, current, onChange, onLoad }: {
   outfits: (SavedOutfit | null)[];
@@ -106,6 +105,7 @@ export default function OutfitSlots({ outfits, current, onChange, onLoad }: {
       <DialogHeader>
         <DialogTitle className="text-yellow-400 font-black italic uppercase">Outfits</DialogTitle>
       </DialogHeader>
+      <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1" data-testid="list-outfits">
       {outfits.map((o, i) => (
         <div
           key={i}
@@ -141,19 +141,19 @@ export default function OutfitSlots({ outfits, current, onChange, onLoad }: {
           <div className="flex items-center gap-1 shrink-0">
             <Button
               size="icon" variant="ghost" className="h-7 w-7 text-white/70 hover:text-white"
-              title="Save" aria-label="Save"
-              onClick={() => (o ? setConfirm({ kind: "overwrite", slot: i }) : saveInto(i))}
-              data-testid={`button-outfit-save-${i}`}
-            >
-              <Save className="w-3.5 h-3.5" />
-            </Button>
-            <Button
-              size="icon" variant="ghost" className="h-7 w-7 text-white/70 hover:text-white"
               title="Load" aria-label="Load" disabled={!o}
               onClick={() => { if (o) { onLoad(o); setOpen(false); } }}
               data-testid={`button-outfit-load-${i}`}
             >
               <Download className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              size="icon" variant="ghost" className="h-7 w-7 text-white/70 hover:text-white"
+              title="Save" aria-label="Save"
+              onClick={() => (o ? setConfirm({ kind: "overwrite", slot: i }) : saveInto(i))}
+              data-testid={`button-outfit-save-${i}`}
+            >
+              <Save className="w-3.5 h-3.5" />
             </Button>
             <Button
               size="icon" variant="ghost" className="h-7 w-7 text-white/70 hover:text-white"
@@ -182,6 +182,7 @@ export default function OutfitSlots({ outfits, current, onChange, onLoad }: {
           </div>
         </div>
       ))}
+      </div>
 
       <AlertDialog open={!!confirm} onOpenChange={open => { if (!open) setConfirm(null); }}>
         <AlertDialogContent className="bg-[#1a1a1a] border-white/15 text-white">

@@ -16,6 +16,7 @@ import { getAiDecisionStats, initAiBrain, updateAI as updateAIBrain, notifyAiHit
 import { soundEngine, type PunchSoundType } from "./sound";
 import { setSpacialMotionBoost } from "./spacialColor";
 import { getActivePunchAnimConfig } from "../lib/punchAnimConfig";
+import { gloveGapM } from "./gloveContact";
 import { levelScale, levelT as scalingLevelT, pointCoef, getScaling, levelGapAdj, clampGapMult, speedPunchAt } from "../lib/scalingConfig";
 import { isDirectionalPerfectBlockEnabled, getMaxStamConfig, activeMaxStamAmounts, isMaxStamEnabled, getTurnConfig, getStoppageConfig, getFatigueConfig, getPunchCounterConfig, type MaxStamAmounts } from "@/components/NeuralNetworkView";
 import {
@@ -33,6 +34,7 @@ import { punchActionToken, feintActionToken, PATTERN_TOKEN_CHARGE, PATTERN_TOKEN
 import { cappedStartMaxStamina, equipmentEffects, hasEquipment, type EquipmentLevels } from "./equipmentConfig";
 import { MAX_ACTIVE_REFINEMENTS, maxActiveRefinementsFor } from "@shared/schema";
 import { SLIP_TRAINING_RANGE_PX } from "./slipTraining";
+import { aiOpeningStance, pbTriggersCounter } from "./three/poseOffsets";
 
 let recordingAccumulator = 0;
 const RECORD_MOVE_INTERVAL = 0.1;
@@ -536,6 +538,7 @@ function triggerSlipCounter(slipper: FighterState, puncher: FighterState): void 
   if (slipper.defenseState === "fullGuard") return;
   puncher.slipSlowTimer = SLIP_COUNTER_SLOW_SEC();
   slipper.slipCounterTimer = SLIP_COUNTER_SLOW_SEC();
+  soundEngine.counterWindow();
 }
 
 function tickSlipCounter(f: FighterState, dt: number): void {
@@ -907,12 +910,19 @@ function clearFatigueSway(fighter: FighterState): void {
  * The Reset action itself. Returns false when it was refused, so the caller can
  * leave the input unconsumed rather than silently eating it.
  */
-export function tryReset(fighter: FighterState, state: GameState): boolean {
+export function tryReset(fighter: FighterState, state: GameState, granted = false): boolean {
   const f = fighter.fatigue;
   const fc = getFatigueConfig();
   if (fighter.isKnockedDown || state.knockdownActive) return false;
+  // A banked free Reset (from a landed counterpunch) is spent by the next press.
+  if (!granted && fighter.freeResetBanked) {
+    granted = true;
+    fighter.freeResetBanked = false;
+  }
+  // A granted Reset clears the stun and every lockout first.
+  if (granted) dispelStun(fighter);
   // No Reset while an auto slip is still sliding into place.
-  if (autoSlipSliding(fighter)) return false;
+  if (!granted && autoSlipSliding(fighter)) return false;
   // No cooldown and no in-window refusal: pressing Reset again mid-snap starts
   // a fresh snap (and a fresh window), so the button is always live outside a
   // knockdown or a stun lock. This is also how a window a punch has stripped
@@ -934,7 +944,7 @@ export function tryReset(fighter: FighterState, state: GameState): boolean {
   // panicked at, so it costs nothing at all. The flinch that bait was fishing
   // for is refused below like any other one following a Reset.
   const readingBait = flinchBaitBeingRead(fighter, state);
-  if (!readingBait && fighter.timeSinceLastDamageTaken < fc.resetPanicWindow) {
+  if (!granted && !readingBait && fighter.timeSinceLastDamageTaken < fc.resetPanicWindow) {
     const panic = maxStamAmount(fighter, "resetPanic");
     if (panic < 0) {
       const base = fighter.maxStamina + f.maxStaminaPenalty;
@@ -1036,6 +1046,25 @@ export function tryReset(fighter: FighterState, state: GameState): boolean {
   return true;
 }
 
+/** Clears every stun effect and lockout on a fighter (used by granted Resets). */
+function dispelStun(f: FighterState): void {
+  f.stunPunchDisableTimer = 0;
+  f.stunPunchSlowTimer = 0;
+  f.stunPunchSlowMult = 1;
+  f.stunBlockDisableTimer = 0;
+  f.stunBlockWeakenTimer = 0;
+  f.stunMoveFreezeTimer = 0;
+  f.stunFacingSlowTimer = 0;
+  f.stunFacingTurnDelay = 0;
+  f.stunHeadTurnTimer = 0;
+  f.miniStunTimer = 0;
+  f.moveSlowTimer = 0;
+  f.moveSlowMult = 1;
+  f.chargeMeterLockoutTimer = 0;
+  f.blinkQueueTimer = 0;
+  f.fatigue.resetLockTimer = 0;
+}
+
 /**
  * How far this arm is still held out in its pre-Reset pose, in units of full
  * sway distance. The torso snaps immediately, the lead arm one stagger later
@@ -1080,6 +1109,11 @@ export function resetHeadDuckOffset(fighter: FighterState): number {
  * it. Career bouts, the Doghouse and quick fights are untouched — the single
  * gate for every AI Reset path, so neither one can drift from the other.
  */
+/** Gym sparring waves knockdowns off; a challenge spar fights under the career KD rules. */
+function sparKdWaived(state: GameState): boolean {
+  return state.sparringMode && !state.challengeSparMode;
+}
+
 export function aiResetAllowed(state: GameState): boolean {
   if (state.nightmareMode) return false;
   if (!state.sparringMode || state.doghouseMode) return true;
@@ -1452,6 +1486,14 @@ function chargeSlip(f: FighterState): void {
   f.stamina = Math.max(0, f.stamina - Math.ceil(f.maxStamina * costPct));
 }
 
+/** The 3D fight camera's orbit yaw (0 = default front view), published each frame by the camera. */
+let viewCameraYaw = 0;
+export function setViewCameraYaw(yaw: number): void { viewCameraYaw = yaw; }
+/** Facing within 45° of the camera (a quarter of the turn): the player's left/right punch keys swap. */
+function facesCamera(f: FighterState): boolean {
+  return Math.sin(f.facingAngle - viewCameraYaw) > Math.SQRT1_2;
+}
+
 export function startSlip(f: FighterState, dir: SlipDir): void {
   if (f.slipDisabledTimer > 0 || f.isKnockedDown) return;
   // An auto slip has to finish its slide before another slip can be input.
@@ -1565,6 +1607,37 @@ function tickAutoStep(f: FighterState, dt: number, opp?: FighterState): void {
   f.autoStepAppliedX += f.x - bx;
   f.autoStepAppliedZ += f.z - bz;
   if (f.autoStepTimer <= 0) cancelAutoStep(f);
+}
+
+/** Landed-punch walk back: half a small step (HIT_STEP_PX), taken in this long (s). */
+const HIT_STEP_SEC = 0.25;
+
+/** A landed (unblocked) punch walks the defender straight back, away from the thrower. */
+function startHitStep(defender: FighterState, attacker: FighterState): void {
+  const dx = defender.x - attacker.x, dz = defender.z - attacker.z;
+  const len = Math.hypot(dx, dz);
+  if (len < 0.01) return;
+  defender.hitStepPx = HIT_STEP_PX;
+  defender.hitStepDirX = dx / len;
+  defender.hitStepDirZ = dz / len;
+}
+
+/** Walk a hit step along at one step per HIT_STEP_SEC, feet stepping (not footwork: no rhythm). */
+function tickHitStep(f: FighterState, dt: number): void {
+  if (!((f.hitStepPx ?? 0) > 0)) return;
+  if (f.isKnockedDown || f.critStaggerMoveTimer > 0) { f.hitStepPx = 0; return; }
+  const d = Math.min(f.hitStepPx!, HIT_STEP_PX / HIT_STEP_SEC * dt);
+  const bx = f.x, bz = f.z;
+  f.x += (f.hitStepDirX ?? 0) * d;
+  f.z += (f.hitStepDirZ ?? 0) * d;
+  clampToDiamond(f);
+  noteLegExemptMove(f, bx, bz);
+  // Pinned on the ropes: the walk back is over.
+  f.hitStepPx = Math.hypot(f.x - bx, f.z - bz) > d * 0.25 ? f.hitStepPx! - d : 0;
+  const walked = f.walkedThisTick;
+  advanceWalkCycle(f, d, HIT_STEP_PX / STEP_PX_PER_M);
+  f.walkedThisTick = walked;
+  f.stepIdle = 0;
 }
 
 /** Auto slip from Defense: none below 500, 1% at 500 rising to 5% at 1000. */
@@ -1708,6 +1781,7 @@ export function cancelPendingSlip(f: FighterState): void {
 /** Per-frame slip bookkeeping: the hold budget, the lockout, and the eased lean. */
 export function tickSlip(f: FighterState, dt: number, opp?: FighterState): void {
   tickAutoStep(f, dt, opp);
+  tickHitStep(f, dt);
   if (f.slipDisabledTimer > 0) {
     f.slipDisabledTimer -= dt;
     if (f.slipDisabledTimer < 0) f.slipDisabledTimer = 0;
@@ -1883,6 +1957,13 @@ function getHitPunchConfig(punchType: PunchType): PunchConfig {
 // Real hit-detection reach of one punch for one fighter, in pixels. Mirrors the
 // gate tryHit() applies, minus the transient rhythm range buff. Exported so the AI
 // can tell whether a punch it is about to throw can physically land.
+/** 3D contact gate: the punching glove's gap to the opponent's head/torso is inside this punch's hit box (null = no 3D view, use the distance reach). */
+function gloveInHitBox(f: FighterState): boolean | null {
+  const gap = gloveGapM(f, PUNCH_CONFIGS[f.currentPunch!].isLeft);
+  if (gap == null) return null;
+  return gap <= 0;
+}
+
 export function getPunchReachPx(fighter: FighterState, punchType: PunchType): number {
   // Reach follows the punch's role (southpaw mirrors orthodox), not the literal arm.
   const config = getHitPunchConfig(punchRole(punchType, fighter.boxingStance));
@@ -3319,6 +3400,7 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
 
   const enemy = createFighter(enemyName, enemyArchetype, enemyLevel, ENEMY_START_X, ENEMY_START_Z, -1, false, randomEnemyColors, enemyArmLength, enemyBoxingStance);
   enemy.punchProfileRosterId = enemyRosterId;
+  enemy.guardStance = aiOpeningStance(enemyRosterId);
 
   {
     player.autoGuardDuration = levelScale(playerLevel, 10, 45, "autoGuardBase");
@@ -3790,6 +3872,7 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
     directionalPerfectBlock: isDirectionalPerfectBlockEnabled(),
     staticCamera: false,
     doghouseMode: doghouseMode,
+    challengeSparMode: false,
     towelActive: false,
     towelTimer: 0,
     towelStartX: 0,
@@ -3897,6 +3980,13 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
       newState.playerAiBrain.adaptiveMemory = createAdaptiveMemory(newState.playerAiBrain);
     }
   }
+  // Every bout opens in full guard (the player's holds until Space is first pressed).
+  for (const f of [newState.player, newState.enemy]) {
+    f.defenseState = "fullGuard";
+    f.guardBlend = 1;
+    f.handsDown = false;
+  }
+  newState.player.openingGuard = true;
   startIntroAnimForFighter(newState.player, newState.playerSavedRhythmLevel);
   startIntroAnimForFighter(newState.enemy, newState.enemySavedRhythmLevel);
   return newState;
@@ -4223,6 +4313,7 @@ function buildDoghouseEnemy(state: GameState): { fighter: FighterState; brain: A
   fighter.defenseState = "none";
   fighter.guardBlend = 0;
   fighter.punchProfileRosterId = pick?.rosterId;
+  fighter.guardStance = aiOpeningStance(pick?.rosterId);
   const brain = initAiBrain(state.aiDifficulty, archetype, level, false, pick?.rosterId);
   inheritPunchEnduranceFromCurrentEnemy(state, fighter);
   // Every opponent in the queue wears the same equipment the bout was set up with.
@@ -4330,6 +4421,7 @@ function startCosmeticPunch(fighter: FighterState, punchType: PunchType): void {
   fighter.punchPhase = "launchDelay";
   fighter.punchPhaseTimer = 0;
   fighter.punchHitResolved = false;
+  fighter.punchCutU = undefined;
   fighter.isRePunch = false;
   fighter.retractionProgress = 0;
   fighter.isFeinting = false;
@@ -5031,36 +5123,21 @@ export function rhythmExposure(f: FighterState): number {
   return 1 - 2 * Math.min(p, 1 - p);
 }
 
-function isHoldingFeint(f: FighterState): boolean {
-  return !!f.isFeinting && !!f.isPunching && f.punchPhase === "linger";
-}
-
 /**
  * Limb contact: once the guards touch, the fighter whose rhythm is the more
- * exposed is pinned (can't walk in, can't jab); if the other is holding a
- * feint into the contact, the pinned fighter's straights fail too. Stamped
+ * exposed is pinned (can't walk in). Contact never refuses a punch. Stamped
  * once per tick before either corner moves or punches.
  */
 export function updateLimbContact(state: GameState): void {
   const a = state.player, b = state.enemy;
   a.limbContactPinned = b.limbContactPinned = false;
-  a.limbContactStraightsLocked = b.limbContactStraightsLocked = false;
   a.legContact = b.legContact = false;
   if (a.isKnockedDown || b.isKnockedDown) return;
   a.legContact = b.legContact = legsTouching(a, b, MIN_DISTANCE);
   if (getDistance(a, b) > LIMB_CONTACT_DIST) return;
   const ea = rhythmExposure(a), eb = rhythmExposure(b);
   if (ea === eb) return;
-  const [pinned, other] = ea > eb ? [a, b] : [b, a];
-  pinned.limbContactPinned = true;
-  pinned.limbContactStraightsLocked = isHoldingFeint(other);
-}
-
-/** Does limb contact refuse this punch input? Feints are never refused. */
-export function isPunchContactLocked(f: FighterState, punchType: PunchType, isFeint: boolean): boolean {
-  if (isFeint) return false;
-  if (f.limbContactPinned && punchType === "jab") return true;
-  return !!f.limbContactStraightsLocked && (punchType === "jab" || punchType === "cross");
+  (ea > eb ? a : b).limbContactPinned = true;
 }
 
 /** Removes the component of a move direction that points at the opponent. */
@@ -5077,7 +5154,6 @@ export function stripMoveTowardOpponent(self: FighterState, opp: FighterState, m
 function startTelegraph(fighter: FighterState, punchType: PunchType, isFeint: boolean, isCharged: boolean, telegraphMult: number, opponent: FighterState): boolean {
   if ((fighter.counterHitLockTimer ?? 0) > 0) return false;
   if ((fighter.stunHeadTurnTimer ?? 0) > 0) return false;
-  if (isPunchContactLocked(fighter, punchType, isFeint)) return false;
   if (isFeint && isPerfectBlockEngaged(fighter)) return false;
   // Snap-punch zones: scale with rawPower — 90% shorter telegraph, damage scales with power
   fighter.punchLaunchDamageMult = 1;
@@ -5660,8 +5736,9 @@ function attemptPunch(fighter: FighterState, punchType: PunchType, isFeint: bool
   // No feinting while an auto slip is still sliding into place.
   if (isFeint && autoSlipSliding(fighter)) return false;
   if (fighter.isKnockedDown) return false;
-  if (isPunchContactLocked(fighter, punchType, isFeint)) return false;
   if (fighter.telegraphIsLockout) return false;
+  // No punches or feints while shoulder rolling.
+  if (fighter.shoulderRolling) return false;
 
   // Technician L20+: a real punch input while holding a feint cancels the feint
   // with a fast retraction, firing the new punch halfway through that retraction.
@@ -5860,6 +5937,9 @@ function attemptPunch(fighter: FighterState, punchType: PunchType, isFeint: bool
   if (fighter.slipCounterPunch) {
     fighter.slipCounterTimer = 0;
     fighter.slipCounterQueued = false;
+    // Throwing the counter banks a free Reset (landed, blocked or missed), so a
+    // fighter countering out of a stun can always Reset after it.
+    fighter.freeResetBanked = true;
   }
   // The one thing the opponent AI is allowed to read directly. Consumed on the
   // next tick, where the state is in hand, and used for nothing but slipping.
@@ -5868,6 +5948,7 @@ function attemptPunch(fighter: FighterState, punchType: PunchType, isFeint: bool
   fighter.punchPhase = "launchDelay";
   fighter.punchPhaseTimer = 0;
   fighter.punchHitResolved = false;
+  fighter.punchCutU = undefined;
   fighter.punchTravelStartTime = gameElapsedTime;
   fighter.isRePunch = isRePunch;
   fighter.retractionProgress = 0;
@@ -5895,7 +5976,6 @@ function attemptPunch(fighter: FighterState, punchType: PunchType, isFeint: bool
   if (isFeint) {
     fighter.feintTelegraphDisableTimer = 0.5;
   }
-  if (!isFeint) soundEngine.punchWhoosh();
   if (isCharged) {
     // Remember the armed window before it is spent: a Technician-forgiven whiff
     // has to restore it exactly, and the disarm below zeroes it.
@@ -5971,7 +6051,7 @@ function tryHit(
   const armReachBonus = (attacker.armLength - 65) * PX_PER_INCH;
   const effectiveRange = (config.range + 20 + armReachBonus + (attacker.precisionStrikerRangeBonus ?? 0)) * rhythmBuffs.rangeMult;
   // Out of range: a true whiff, one of only two ways a punch cannot land at all.
-  if (dist > effectiveRange) { soundEngine.whiff(); return { hit: false, damage: 0, blocked: false, isWhiff: true }; }
+  if (!(gloveInHitBox(attacker) ?? dist <= effectiveRange)) return { hit: false, damage: 0, blocked: false, isWhiff: true };
   if (defender.isKnockedDown) return { hit: false, damage: 0, blocked: false };
 
   // How square the attacker is decides whether the punch reaches the opponent at
@@ -5982,7 +6062,6 @@ function tryHit(
   const turnPct = turnPercentTo(attacker, defender.x, defender.z);
   const turnAccuracy = facingAccuracy(turnPct);
   if (turnAccuracy <= 0 || Math.random() >= turnAccuracy) {
-    soundEngine.whiff();
     // Turned too far away to connect: the other true whiff.
     return { hit: false, damage: 0, blocked: false, isWhiff: true };
   }
@@ -6008,7 +6087,6 @@ function tryHit(
   // in the fighter, not the distance. Returned unflagged rather than as a whiff
   // so it never reaches the AI's range learning as a range mistake.
   if (attacker.fatigue.swayPunch && Math.random() < getFatigueConfig().swayMissAdd * fatigueEffectMult(attacker)) {
-    soundEngine.whiff();
     return { hit: false, damage: 0, blocked: false };
   }
   if (!inPerfectRange && effectiveWhiffChance > 0 && Math.random() < effectiveWhiffChance) {
@@ -6020,7 +6098,6 @@ function tryHit(
       text: "MISS",
       attackerColor: attacker.colors.trunks,
     });
-    soundEngine.whiff();
     return { hit: false, damage: 0, blocked: false };
   }
 
@@ -6074,7 +6151,6 @@ function tryHit(
     const evadeBase = isDucking ? defender.defenseT * 0.60 : defender.defenseT * 0.65;
     const evadeChance = Math.max(0, Math.min(1, evadeBase + evadeLevelAdj));
     if (Math.random() < evadeChance) {
-      soundEngine.whiff();
       // Evaded, not whiffed: the defender's stat is what made it miss, so this
       // is a dodge as far as the turn-delay events are concerned, even though it
       // carries none of the DODGE popup's accounting.
@@ -6333,6 +6409,11 @@ function tryHit(
   // the AI's by its perfectBlockTimer hold (Defense-scaled, same ceiling). While the window
   // is open it negates every punch that lands inside it; the owner closes it, not the hit.
   if (isPerfectBlock) {
+    blocked = true;
+    blockReduction = 1.0;
+  }
+  // Shoulder roll: fully blocks straights (not hooks or uppercuts).
+  if (defender.shoulderRolling && !/Hook|Uppercut/.test(attacker.currentPunch)) {
     blocked = true;
     blockReduction = 1.0;
   }
@@ -6626,6 +6707,7 @@ function tryHit(
   stunChance *= Math.max(0, defender.critResistMult);
   // Iron Chin: a flat share of the stun chance comes straight off the top.
   stunChance *= Math.max(0, 1 - (defender.ironChinStunResist ?? 0));
+  stunChance *= Math.max(0, 1 - (defender.purePowerStunResist ?? 0));
   stunChance *= attacker.stunMult;
   // Ducking attacker: stun chance reduced by 20%
   if (attackerDucking) {
@@ -6897,6 +6979,8 @@ export const STEP_PACE = 0.5;
 /** Held this long the step grows big (only while the first foot is still in the air). */
 const STEP_BIG_HOLD = 0.1;
 const STEP_PX_PER_M = 50;
+/** Landed-punch walk back: half a small step (px). */
+const HIT_STEP_PX = STEP_SMALL_M * STEP_PX_PER_M / 2;
 
 /**
  * One step cycle = the first foot travels the stride, then the other is dragged
@@ -7004,6 +7088,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
       attacker.chargedPunchesMissed = (attacker.chargedPunchesMissed ?? 0) + 1;
     }
     if (result.isDodge) {
+      soundEngine.dodge(defender.slipActive && (defender.slipDir === "left" || defender.slipDir === "right") ? defender.slipDir : Math.random() < 0.5 ? "left" : "right");
       state.hitEffects.push({
         x: defender.x + defender.facing * 10,
         y: defender.z - 25 + (Math.random() - 0.5) * 15,
@@ -7022,7 +7107,6 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
       // and having one slipped moves the thrower's own delay too.
       applyTurnDelayEvent(defender, getTurnConfig().dodge);
       applyTurnDelayEvent(attacker, getTurnConfig().punchDodged);
-      soundEngine.whiff();
       // Rhythm Attacking, ending 2. A slip returns here, well before the whiff
       // notifier further down, so the avoided-shot count has to be taken on this
       // path too — otherwise the most common way to beat a sequence, actually
@@ -7225,6 +7309,13 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
         // ...and for the second that follows, the blocker turns with no delay at
         // all — on top of the standing reduction the event above hands them.
         defender.turnDelayZeroTimer = Math.max(defender.turnDelayZeroTimer, PERFECT_BLOCK_TURN_ZERO_DURATION);
+        // A perfect block pose marked "trigger counterpunch" opens the counter window
+        // (the same slow-motion window a guard-down slip opens).
+        if (pbTriggersCounter(attacker.currentPunch, defender.boxingStance === "southpaw", defender.guardStance ?? 0, defender.defenseStance)) {
+          attacker.slipSlowTimer = SLIP_COUNTER_SLOW_SEC();
+          defender.slipCounterTimer = SLIP_COUNTER_SLOW_SEC();
+          soundEngine.counterWindow();
+        }
       }
     } else {
       attacker.cleanPunchesLanded++;
@@ -7352,7 +7443,9 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
       }
     }
 
-    if (attacker.slipCounterPunch && !result.blocked) applyCounterHit(defender, attacker);
+    if (attacker.slipCounterPunch && !result.blocked) {
+      applyCounterHit(defender, attacker);
+    }
     // A crit or stun to the head snaps it (3D pose reads the timer) on the frame it lands.
     if ((result.isCrit || result.isStun) && result.isHeadHit && !result.blocked && attacker.currentPunch) {
       startHeadSnap(defender, attacker.currentPunch);
@@ -7361,6 +7454,12 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
     if (result.isHeadHit && !result.blocked && attacker.currentPunch?.includes("Hook")) {
       defender.hookHeadTurnTimer = HOOK_HEAD_TURN_DURATION;
       defender.hookHeadTurnDir = PUNCH_CONFIGS[attacker.currentPunch]?.isLeft ? 1 : -1;
+    }
+    // Any landed punch walks the defender back (a stagger owns the movement instead);
+    // walking forward into it negates the step, unless it stunned or crit.
+    if (!result.blocked && attacker.currentPunch && defender.critStaggerMoveTimer <= 0
+      && (defender.currentMoveDir !== "forward" || result.isStun || result.isCrit)) {
+      startHitStep(defender, attacker);
     }
 
     if (result.isStun && !result.blocked) {
@@ -7425,6 +7524,15 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
 
     if (result.blocked) {
       defender.blockRegenPenaltyTimer = defender.blockRegenPenaltyDuration;
+      // The blocked punch stops where it met the guard and goes home.
+      if (attacker.isPunching && attacker.punchPhase !== "retraction" && attacker.currentPunch) {
+        attacker.punchCutU = attacker.punchProgress;
+        attacker.punchPhase = "retraction";
+        attacker.punchPhaseTimer = 0;
+        attacker.retractionProgress = 0;
+        const lockoutBase = (getActivePunchAnimConfig()[attacker.currentPunch].lockoutMs ?? 200) / 1000;
+        attacker.postPunchLockoutTimer = lockoutBase * (1 - Math.min(100, attacker.fastTwitchRank) / 100);
+      }
       if (defender.isPlayer) {
         state.roundStats.playerPunchesBlocked++;
         if (state.tutorialMode) {
@@ -7735,7 +7843,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
       const landed = result.hit && !result.isPerfectBlock;
       if (heldShot && landed && !state.practiceMode) {
         let rocker = result.isCrit || result.isStun;
-        const gymSparring = state.sparringMode && !state.doghouseMode && !state.nightmareMode;
+        const gymSparring = sparKdWaived(state) && !state.doghouseMode && !state.nightmareMode;
         if (result.isCrit && result.isStun && !result.blocked && !gymSparring) {
           const bigShotNegate = Math.min(1, Math.max(0, defender.equipmentBigShotNegate ?? 0));
           if (bigShotNegate > 0 && Math.random() < bigShotNegate) {
@@ -7901,7 +8009,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
       return;
     }
 
-    if ((defender.stamina <= 1 || bigShotKd) && state.sparringMode && !state.doghouseMode && !(state.nightmareMode && defender.isPlayer) && !(state.tutorialMode && !state.tutorialFightUnlocked)) {
+    if ((defender.stamina <= 1 || bigShotKd) && sparKdWaived(state) && !state.doghouseMode && !(state.nightmareMode && defender.isPlayer) && !(state.tutorialMode && !state.tutorialFightUnlocked)) {
       defender.isKnockedDown = true;
       clearSlipCounter(defender); clearSlipCounter(attacker);
       for (const ne of state.nightmareEnemies ?? []) clearSlipCounter(ne);
@@ -7968,7 +8076,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
       state.xpGained = calculateXP(state);
       state.refereeVisible = false;
       return;
-    } else if ((defender.stamina <= 1 || bigShotKd) && !state.practiceMode && (!state.sparringMode || state.doghouseMode || (state.nightmareMode && defender.isPlayer)) && !(state.tutorialMode && !state.tutorialFightUnlocked)) {
+    } else if ((defender.stamina <= 1 || bigShotKd) && !state.practiceMode && (!sparKdWaived(state) || state.doghouseMode || (state.nightmareMode && defender.isPlayer)) && !(state.tutorialMode && !state.tutorialFightUnlocked)) {
       // A Big Shot drops them whatever was left in the tank, so empty it here.
       // Every other knockdown starts from an exhausted bar and the count plays
       // out the same way, so a Big Shot leaving the bar half full read as a
@@ -8068,7 +8176,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
           f.defenseState = "none";
         }
         return;
-      } else if (kdCount >= 4 && defender.isPlayer && !state.practiceMode && (!state.sparringMode || state.doghouseMode)) {
+      } else if (kdCount >= 4 && defender.isPlayer && !state.practiceMode && (!sparKdWaived(state) || state.doghouseMode)) {
         finalizeRoundRecording(state);
         rollNextRingCanvasColor();
       state.phase = "fightEnd";
@@ -8089,7 +8197,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
         const chances = state.doghouseMode ? AI_KD_CHANCES.elite : AI_KD_CHANCES[state.aiDifficulty];
         const rawGetUpChance = kdCount === 1 ? chances.kd1 : kdCount === 2 ? chances.kd2 : chances.kd3;
         const getUpChance = Math.max(0, rawGetUpChance - (state.aiKdChancePenalty ?? 0));
-        state.aiKdWillGetUp = state.doghouseMode ? aiRNG.chance(getUpChance) : (state.practiceMode || state.sparringMode) ? true : aiRNG.chance(getUpChance);
+        state.aiKdWillGetUp = state.doghouseMode ? aiRNG.chance(getUpChance) : (state.practiceMode || sparKdWaived(state)) ? true : aiRNG.chance(getUpChance);
         if (state.aiDifficulty === "champion") {
           state.aiKdGetUpTime = kdCount === 1 ? aiRNG.range(1, 3) : kdCount === 2 ? aiRNG.range(3, 6) : aiRNG.range(6, 9.9);
         } else {
@@ -8097,7 +8205,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
         }
         maybeArmEarlyBlitzKo(state, defender);
         // A fourth knockdown is a TKO — the AI does not get back up for it.
-        if (kdCount >= 4 && !state.practiceMode && !state.sparringMode && !state.doghouseMode) {
+        if (kdCount >= 4 && !state.practiceMode && !sparKdWaived(state) && !state.doghouseMode) {
           state.aiKdWillGetUp = false;
         }
         // The AI is not beating this count. Rather than cutting to the victory
@@ -8106,7 +8214,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
         state.aiKoPendingResult = null;
         state.aiKoStopTime = -1;
         if (!state.aiKdWillGetUp && !state.earlyBlitzKoActive
-            && !state.practiceMode && !state.sparringMode && !state.doghouseMode) {
+            && !state.practiceMode && !sparKdWaived(state) && !state.doghouseMode) {
           state.aiKoPendingResult = kdCount >= 4 ? "TKO" : "KO";
           state.aiKoStopTime = 2 + Math.random() * 8;
         }
@@ -8299,7 +8407,8 @@ function updatePunch(fighter: FighterState, opponent: FighterState, state: GameS
     const t = currentPhaseDuration > 0 ? Math.min(1, fighter.punchPhaseTimer / currentPhaseDuration) : 1;
     const ext = 1 - (1 - t) * (1 - t);
     const reach = getPunchReachPx(fighter, fighter.currentPunch!) * getRhythmBuffs(fighter).rangeMult;
-    if (getDistance(fighter, opponent) <= reach * ext) {
+    // With the 3D view the glove itself must touch; headless, the distance reach decides.
+    if (gloveInHitBox(fighter) ?? getDistance(fighter, opponent) <= reach * ext) {
       fighter.punchHitResolved = true;
       applyHit(fighter, opponent, state);
       // The hit can end or re-phase the punch (KD, forced retraction): stop here.
@@ -8321,11 +8430,14 @@ function updatePunch(fighter: FighterState, opponent: FighterState, state: GameS
       // are still being paid for with real ones out of the same stance.
       const stillSelling = noteFlinchPunchRatio(fighter, opponent, !!fighter.isFeinting);
       if (fighter.isFeinting && stillSelling) triggerFlinch(opponent, fighter, state);
+      // The hit ended or re-phased the punch (blocked → retraction): don't step it on.
+      if (!fighter.isPunching || fighter.punchPhase !== "contact") return;
     }
 
     if (currentIdx < phases.length - 1) {
       fighter.punchPhase = phases[currentIdx + 1];
       fighter.punchPhaseTimer = 0;
+      if (fighter.punchPhase === "armSpeed" && !fighter.isFeinting) soundEngine.punchWhoosh(fighter.currentPunch, fighter.isPlayer, fighter.isCharging, !!(state.menuBackground && state.staticCamera));
       if (fighter.punchPhase === "retraction") {
         const animCfg = getActivePunchAnimConfig();
         const lockoutBase = (animCfg[fighter.currentPunch!].lockoutMs ?? 200) / 1000;
@@ -8382,7 +8494,7 @@ function updateRhythm(fighter: FighterState, dt: number): void {
  * ropes or shoved by a punch doesn't read as footwork.
  */
 function isFighterWalking(fighter: FighterState, _state?: GameState): boolean {
-  return (fighter.walkStride ?? 0) > 0;
+  return (fighter.walkStride ?? 0) > 0 && !((fighter.hitStepPx ?? 0) > 0);
 }
 
 /**
@@ -9221,9 +9333,9 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
       // Auto slip: no input slip until it has slid into place. Once there it
       // holds until the player moves or slips again.
       if (!autoSlipSliding(player)) {
-        if (slipHeld && player.slipKeyWasUp) {
+        if (slipHeld && aimed && player.slipKeyWasUp) {
           endSlip(player);
-          if (player.slipDisabledTimer <= 0) startSlip(player, aimed ?? "back");
+          if (player.slipDisabledTimer <= 0) startSlip(player, aimed);
           player.slipKeyWasUp = false;
         } else if (moveHeld) {
           endSlip(player);
@@ -9238,9 +9350,9 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
       // rather than teleporting it, and that crossover has to complete before
       // the slip is dodging anything again.
       else if (aimed) redirectSlip(player, aimed);
-    } else if (slipHeld && player.slipKeyWasUp && player.slipDisabledTimer <= 0) {
-      // Unaimed slips go backwards — off the punch line and out of range.
-      startSlip(player, aimed ?? "back");
+    } else if (slipHeld && aimed && player.slipKeyWasUp && player.slipDisabledTimer <= 0) {
+      // C alone does nothing: a slip needs C + an arrow.
+      startSlip(player, aimed);
       player.slipKeyWasUp = false;
     }
   }
@@ -9422,6 +9534,7 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
     if (player.autoGuardActive) {
       player.defenseState = "fullGuard";
     } else if (spaceHeld) {
+      player.openingGuard = false;
       if (player.defenseState !== "fullGuard" && player.defenseState !== "duck") {
         player.defenseState = "fullGuard";
         if (state.tutorialMode) {
@@ -9429,7 +9542,7 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
         }
       }
     } else {
-      if (player.defenseState === "fullGuard") {
+      if (player.defenseState === "fullGuard" && !player.openingGuard) {
         player.defenseState = "none";
         player.handsDown = false;
       }
@@ -9441,6 +9554,21 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
       player.defenseState = "fullGuard";
       player.guardBlend = 1;
       player.handsDown = false;
+    }
+  }
+
+  // Shoulder roll (X key): full guard only, held up to 1s, no cooldown (release and re-press to roll again).
+  {
+    const xHeld = !!keys["x"];
+    if (!xHeld) player.shoulderRollKeyWasUp = true;
+    const canRoll = player.defenseState === "fullGuard" && !player.isKnockedDown;
+    if (player.shoulderRolling) {
+      player.shoulderRollTimer = (player.shoulderRollTimer ?? 0) - dt;
+      if (!xHeld || !canRoll || player.shoulderRollTimer <= 0) player.shoulderRolling = false;
+    } else if (xHeld && player.shoulderRollKeyWasUp !== false && canRoll && !player.isPunching) {
+      player.shoulderRolling = true;
+      player.shoulderRollTimer = 1;
+      player.shoulderRollKeyWasUp = false;
     }
   }
 
@@ -9567,6 +9695,8 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
   // launched inside FEINT_ARM_WINDOW goes out as a feint instead of a real shot.
   // Launching it spends the arm on the spot with no cooldown, so F can be tapped
   // again straight away. Tapping F while already armed restarts the window.
+  // Tab cycles the full-guard stance (Full → Secondary → Third Full Guard).
+  if (consumePress("tab") && !player.guardStanceLocked) player.guardStance = ((player.guardStance ?? 0) + 1) % 3;
   if (consumePress("f")) {
     player.feintArmed = true;
     player.feintArmTimer = FEINT_ARM_WINDOW;
@@ -9650,7 +9780,15 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
   // Same keys in both stances: the left-side keys (W/Q/S) always throw the
   // LEFT glove and the right-side keys (E/R/D) the right glove. For a southpaw
   // that puts the lead (right) hand on E and the rear (left) hand on W.
-  const punchKeys: [string, PunchType][] = [
+  // Facing the camera, the screen's left is the boxer's right, so the sides swap.
+  const punchKeys: [string, PunchType][] = facesCamera(player) ? [
+    ["w", "cross"],
+    ["e", "jab"],
+    ["q", "rightHook"],
+    ["r", "leftHook"],
+    ["s", "rightUppercut"],
+    ["d", "leftUppercut"],
+  ] : [
     ["w", "jab"],
     ["e", "cross"],
     ["q", "leftHook"],
@@ -9937,11 +10075,11 @@ function declareAiKo(state: GameState, result: "KO" | "TKO"): void {
 }
 
 function checkMercyStoppage(state: GameState): boolean {
-  if (!state.mercyStoppageEnabled || state.practiceMode || state.sparringMode) return false;
+  if (!state.mercyStoppageEnabled || state.practiceMode || sparKdWaived(state)) return false;
   const cfg = getStoppageConfig();
   if (state.totalEnemyKDs < cfg.mercyMinKds || state.totalEnemyKDs > cfg.mercyMaxKds) return false;
   const stats = getTotalPunchStats(state);
-  const isCareer = !state.isQuickFight && !state.practiceMode && !state.sparringMode;
+  const isCareer = !state.isQuickFight && !state.practiceMode && !sparKdWaived(state);
   const threshold = isCareer ? cfg.mercyRatioCareer : cfg.mercyRatioQuick;
   if (stats.enemyLanded === 0) return stats.playerLanded > 0;
   return stats.playerLanded >= stats.enemyLanded * threshold;
@@ -10219,8 +10357,8 @@ function updateTutorial(state: GameState, dt: number): void {
       case 7:
         // Two parts in one step: perfect block against a live opponent, then
         // auto guard with the opponent idle.
-        if (t.perfectBlockCount < 3) {
-          state.tutorialPrompt = `Execute a Perfect Block with V (${t.perfectBlockCount}/3)`;
+        if (t.perfectBlockCount < 1) {
+          state.tutorialPrompt = "Execute a Perfect Block with V";
           state.tutorialAiIdle = false;
           // Only an auto guard triggered after the blocks counts for part two.
           t.autoGuardActivated = false;
@@ -10612,7 +10750,29 @@ function updateMaxStaminaDeltaTexts(state: GameState, dt: number): void {
   });
 }
 
+/**
+ * Tutorial: until the fight is unlocked ("Beat/Defeat Your Opponent!") nobody
+ * loses current or max stamina. Scripted staging on a Continue (step change)
+ * is left alone.
+ */
 export function updateGame(state: GameState, dt: number): GameState {
+  if (!state.tutorialMode || state.tutorialFightUnlocked) return updateGameTick(state, dt);
+  const stage = state.tutorialStage, step = state.tutorialStep;
+  const snap = [state.player, state.enemy].map(f => ({ s: f.stamina, m: f.maxStamina, p: f.fatigue?.maxStaminaPenalty ?? 0 }));
+  const out = updateGameTick(state, dt);
+  if (!out.tutorialFightUnlocked && out.tutorialStage === stage && out.tutorialStep === step) {
+    [out.player, out.enemy].forEach((f, i) => {
+      if (f.maxStamina < snap[i].m) {
+        f.maxStamina = snap[i].m;
+        if (f.fatigue) f.fatigue.maxStaminaPenalty = snap[i].p;
+      }
+      if (f.stamina < snap[i].s) f.stamina = Math.min(snap[i].s, f.maxStamina);
+    });
+  }
+  return out;
+}
+
+function updateGameTick(state: GameState, dt: number): GameState {
   gameElapsedTime += dt;
   // Snapshot the pool each corner walked in with, once per bout. Taken on the
   // first tick rather than in createFighter because every setup multiplier
@@ -10880,6 +11040,7 @@ export function updateGame(state: GameState, dt: number): GameState {
         f.critHitTimer = 0;
         f.stunHeadTurnTimer = 0;
         f.hookHeadTurnTimer = 0;
+        f.hitStepPx = 0;
         clearCritStagger(f);
       }
     }
@@ -11100,6 +11261,7 @@ export function updateGame(state: GameState, dt: number): GameState {
         f.critHitTimer = 0;
         f.stunHeadTurnTimer = 0;
         f.hookHeadTurnTimer = 0;
+        f.hitStepPx = 0;
         clearCritStagger(f);
         // Drilled timers are armed for a second and nothing ticks while a
         // fighter is down, so an unspent one would resume after the count.
@@ -11113,6 +11275,8 @@ export function updateGame(state: GameState, dt: number): GameState {
       knockedFighter.rhythmProgress = 0;
       standingFighter.rhythmLevel = state.kdSavedStandingRhythmLevel;
       standingFighter.rhythmProgress = 0;
+      // The fighter left standing gets a full free Reset when the action resumes.
+      standingFighter.kdFreeResetPending = true;
 
       state.knockdownActive = false;
       state.player.kdRegenBoostActive = false;
@@ -11196,7 +11360,7 @@ export function updateGame(state: GameState, dt: number): GameState {
           f.isCharging = false;
           f.defenseState = "none";
         }
-      } else if (state.practiceMode || state.sparringMode) {
+      } else if (state.practiceMode || sparKdWaived(state)) {
         // Practice and sparring wave the count off instead of ending the bout,
         // but the fighter still got dropped — same permanent stamina cost.
         applyKnockdownStaminaDebuff(knockedFighter);
@@ -11253,6 +11417,7 @@ export function updateGame(state: GameState, dt: number): GameState {
           f.critHitTimer = 0;
           f.stunHeadTurnTimer = 0;
           f.hookHeadTurnTimer = 0;
+          f.hitStepPx = 0;
           clearCritStagger(f);
           // Same as the normal get-up: nothing ticked while they were down.
           f.drilledDodgeTimer = 0;
@@ -11265,6 +11430,8 @@ export function updateGame(state: GameState, dt: number): GameState {
         knockedFighter.rhythmProgress = 0;
         standingFighter.rhythmLevel = state.kdSavedStandingRhythmLevel;
         standingFighter.rhythmProgress = 0;
+        // The fighter left standing gets a full free Reset when the action resumes.
+        standingFighter.kdFreeResetPending = true;
 
         state.knockdownActive = false;
         state.player.kdRegenBoostActive = false;
@@ -11313,6 +11480,14 @@ export function updateGame(state: GameState, dt: number): GameState {
   const slipSlowLive = slipFighters.some(f => (f.slipSlowTimer ?? 0) > 0);
   const timerMult = (state.timerSpeed === "double" ? 2 : 1) * (slipSlowLive ? SLIP_COUNTER_CLOCK_MULT() : 1);
   for (const f of slipFighters) tickSlipCounter(f, dt);
+  // After a get-up: free Reset for the fighter left standing, all stun cleared incl. turn delay.
+  for (const f of [state.player, state.enemy]) {
+    if (f.kdFreeResetPending && !state.knockdownActive && !state.kdFaceRefActive) {
+      f.kdFreeResetPending = false;
+      tryReset(f, state, true);
+      f.facingTurnDelay = 0;
+    }
+  }
   if (!state.tutorialMode || state.tutorialFightUnlocked) {
     state.roundTimer -= dt * timerMult;
   }
@@ -11397,7 +11572,7 @@ export function updateGame(state: GameState, dt: number): GameState {
         const chances = AI_KD_CHANCES[state.aiDifficulty] ?? AI_KD_CHANCES.contender;
         const rawGetUpChance = kdCount === 1 ? chances.kd1 : kdCount === 2 ? chances.kd2 : chances.kd3;
         const getUpChance = Math.max(0, rawGetUpChance - (state.aiKdChancePenalty ?? 0));
-        state.aiKdWillGetUp = (state.practiceMode || state.sparringMode) ? true : aiRNG.chance(getUpChance);
+        state.aiKdWillGetUp = (state.practiceMode || sparKdWaived(state)) ? true : aiRNG.chance(getUpChance);
         state.aiKdGetUpTime = kdCount === 1 ? aiRNG.range(2, 5) : kdCount === 2 ? aiRNG.range(4, 7) : aiRNG.range(6, 9);
       }
       maybeArmEarlyBlitzKo(state, knocked);
@@ -11407,7 +11582,7 @@ export function updateGame(state: GameState, dt: number): GameState {
       if (state.aiKoPendingResult === null) {
         state.aiKoStopTime = -1;
         if (!state.aiKdWillGetUp && !state.earlyBlitzKoActive
-            && !state.practiceMode && !state.sparringMode && !state.doghouseMode) {
+            && !state.practiceMode && !sparKdWaived(state) && !state.doghouseMode) {
           state.aiKoPendingResult = kdCount >= 4 ? "TKO" : "KO";
           state.aiKoStopTime = 2 + Math.random() * 8;
         }
@@ -12168,6 +12343,15 @@ export function startNextRound(state: GameState): GameState {
     f.movingTime = 0;
   }
 
+  // An AI's guard stance: a 5% roll at each round bell to switch to another
+  // stance, at most once per fight.
+  for (const f of state.playerAiBrain ? [state.enemy, state.player] : [state.enemy]) {
+    if (!f.guardStanceChanged && Math.random() < 0.05) {
+      f.guardStance = ((f.guardStance ?? 0) + 1 + Math.floor(Math.random() * 2)) % 3;
+      f.guardStanceChanged = true;
+    }
+  }
+
   // Held AI perfect blocks never carry across the bell
   if (state.aiBrain) resetAiPerfectBlockHold(state.aiBrain, state.enemy);
   if (state.playerAiBrain) resetAiPerfectBlockHold(state.playerAiBrain, state.player);
@@ -12350,6 +12534,8 @@ export function startNextRound(state: GameState): GameState {
   state.enemy.feintWhiffPenaltyCooldown = 0;
   state.player.facingTurnDelay = 0;
   state.enemy.facingTurnDelay = 0;
+  state.player.kdFreeResetPending = false;
+  state.enemy.kdFreeResetPending = false;
   state.player.facingPendingTimer = 0;
   state.enemy.facingPendingTimer = 0;
   state.player.stunFacingSlowTimer = 0;

@@ -29,8 +29,9 @@ const FACE_Z = 0, FACE_PX = Math.PI / 2, FACE_NX = -Math.PI / 2;
 /** Glass office booth in the far wall's middle (x from the wall, z span). */
 export const GYM_OFFICE = { x0: GYM_ROOM.minX, x1: -13.4, z0: -0.6, z1: 1.9, h: 2.7 };
 
+interface Spot { x: number; z: number; rotY: number }
 /** Every prop spot. rotY turns the prop's front (+z) to face the room. */
-export const GYM_SPOTS = {
+const HOME_SPOTS = {
   // Far wall (x = minX), left to right as seen from the home camera.
   lockers: { x: GYM_ROOM.minX + 0.26, z: 3.4, rotY: FACE_PX },
   desk: { x: -14.8, z: 0.65, rotY: FACE_PX },
@@ -58,7 +59,59 @@ export const GYM_SPOTS = {
   /** The player's fighter idles in front of the bench, close to the camera. */
   player: { x: -6.9, z: 5.75, rotY: 0 },
   equipCrate: { x: -4.4, z: 2.6, rotY: 0.55 },
-} as const;
+};
+type SpotKey = keyof typeof HOME_SPOTS;
+type V3 = [number, number, number];
+/** A challenger's gym: the same kit rearranged, optionally shot from its own home camera. */
+interface Arrangement { spots: Partial<Record<SpotKey, Spot>>; cam?: { pos: V3; target: V3 } }
+const AWAY_LAYOUTS: Arrangement[] = [
+  // Bags out on the floor, weights along the side wall.
+  { spots: {
+    bag1: { x: -8.2, z: -2.4, rotY: 0.2 },
+    bag2: { x: -10.2, z: -2.0, rotY: -0.6 },
+    bag3: { x: -12.2, z: -2.4, rotY: 0.7 },
+    plateRack: { x: -11.4, z: -7.0, rotY: 0.1 },
+    benchPress: { x: -9.4, z: -6.5, rotY: -0.2 },
+    dumbbells: { x: -7.4, z: -7.3, rotY: 0.1 },
+    // Lockers on the side wall behind the ring (seen in the ring view).
+    lockers: { x: 8.4, z: GYM_ROOM.minZ + 0.26, rotY: FACE_Z },
+    trophyB: { x: GYM_ROOM.minX + 0.24, z: 3.4, rotY: FACE_PX },
+  } },
+  // Turned round: shot from the office corner back toward the ring, door on the side wall.
+  { spots: {
+    door: { x: -3.9, z: GYM_ROOM.minZ + 0.1, rotY: FACE_Z },
+    speedBag: { x: -2.4, z: GYM_ROOM.minZ + 0.45, rotY: FACE_Z },
+    bag1: { x: -6.6, z: 0.2, rotY: 0.3 },
+    bag2: { x: -7.0, z: 2.2, rotY: -0.5 },
+    bag3: { x: -7.4, z: 4.2, rotY: 0.8 },
+    lockers: { x: -9.4, z: GYM_ROOM.minZ + 0.26, rotY: FACE_Z },
+    trophyA: { x: -7.5, z: GYM_ROOM.minZ + 0.24, rotY: FACE_Z },
+    trophyB: { x: -5.8, z: GYM_ROOM.minZ + 0.24, rotY: FACE_Z },
+    plateRack: { x: -2.6, z: 6.4, rotY: 2.4 },
+    benchPress: { x: -3.6, z: 4.6, rotY: 2.0 },
+    dumbbells: { x: -2.2, z: 3.8, rotY: 1.9 },
+    woodBench: { x: -13.0, z: 4.2, rotY: -0.4 },
+    player: { x: -12.0, z: 3.2, rotY: 0 },
+    equipCrate: { x: -10.4, z: -5.4, rotY: 0.3 },
+    gloveRack: { x: -11.4, z: GYM_ROOM.minZ + 0.14, rotY: FACE_Z },
+  }, cam: { pos: [-14.4, 2.5, 7.4], target: [-2, 0.9, -7] } },
+  // Up on the mezzanine: a high shot down over the floor, door at the front of the far wall.
+  { spots: {
+    door: { x: GYM_ROOM.minX + 0.1, z: 5.6, rotY: FACE_PX },
+    lockers: { x: GYM_ROOM.minX + 0.26, z: -6.4, rotY: FACE_PX },
+    trophyB: { x: GYM_ROOM.minX + 0.24, z: 3.4, rotY: FACE_PX },
+    bag1: { x: -7.0, z: -5.4, rotY: 0.5 },
+    bag2: { x: -9.0, z: -4.4, rotY: -0.3 },
+    bag3: { x: -11.0, z: -3.4, rotY: 0.9 },
+    plateRack: { x: -9.8, z: 1.6, rotY: 0.9 },
+    benchPress: { x: -8.0, z: 2.4, rotY: 0.7 },
+    dumbbells: { x: -6.6, z: 1.0, rotY: 0.4 },
+  }, cam: { pos: [-3.4, 6.2, 8.8], target: [-12.4, 0.2, -1.0] } },
+];
+/** Live spots (mutated in place by setGymArrangement before a scene is built). */
+export const GYM_SPOTS: Record<SpotKey, Spot> = Object.fromEntries(
+  Object.entries(HOME_SPOTS).map(([k, v]) => [k, { ...v }]),
+) as Record<SpotKey, Spot>;
 
 /** Wall glove pairs: model scale, and the hang height of the pair's lowest point. */
 export const GYM_GLOVES = { scale: 0.42, y: 1.45, ringY: 2.3 };
@@ -69,13 +122,8 @@ export const GYM_BAG_HANG = { bottom: 0.55, beamY: 5.6 };
 /** Trophy case cabinet (code-built): outer size and shelf heights, top shelf first. */
 export const TROPHY_CASE = { w: 1.5, d: 0.45, h: 2.05, shelves: [1.52, 1.0, 0.48], perShelf: 8, rows: 2 };
 
-/** Engine-px floor point for the idle player (fed to the rig through a FighterState). */
-export const GYM_PLAYER_PX = {
-  x: ENGINE_RING_CX + GYM_SPOTS.player.x * PX_PER_UNIT,
-  z: ENGINE_RING_CY + GYM_SPOTS.player.z * PX_PER_UNIT,
-  /** Engine facing (atan2 in px): three-quarters toward the home camera. */
-  facing: Math.atan2(2.4, 3.4),
-};
+/** Engine-px floor point for the idle player (fed to the rig through a FighterState); set by setGymArrangement. */
+export const GYM_PLAYER_PX = { x: 0, z: 0, facing: 0 };
 
 interface Box { min: [number, number, number]; max: [number, number, number] }
 const box = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): Box => ({ min: [x0, y0, z0], max: [x1, y1, z1] });
@@ -83,15 +131,28 @@ const around = (s: { x: number; z: number }, hw: number, h: number, hd = hw): Bo
 
 /** Click boxes (world AABBs). The ring is a rhombus, handled separately. */
 const O = GYM_OFFICE;
-const wall = (s: { x: number; z: number }, halfAlongZ: number, h: number, depth = 0.5): Box =>
-  box(GYM_ROOM.minX, 0, s.z - halfAlongZ, GYM_ROOM.minX + depth, h, s.z + halfAlongZ);
+/** A prop standing against whichever wall its facing puts its back to. */
+const wall = (s: Spot, half: number, h: number, depth = 0.5): Box => {
+  if (Math.abs(Math.sin(s.rotY)) > 0.7) {
+    const x0 = Math.sin(s.rotY) > 0 ? GYM_ROOM.minX : GYM_ROOM.maxX - depth;
+    return box(x0, 0, s.z - half, x0 + depth, h, s.z + half);
+  }
+  const z0 = Math.cos(s.rotY) > 0 ? GYM_ROOM.minZ : GYM_ROOM.maxZ - depth;
+  return box(s.x - half, 0, z0, s.x + half, h, z0 + depth);
+};
+/** Lockers stand against a wall or, mid-floor, as a free block. */
+const lockerBox = (s: Spot): Box => {
+  const nearWall = s.x < GYM_ROOM.minX + 1 || s.x > GYM_ROOM.maxX - 1 || s.z < GYM_ROOM.minZ + 1 || s.z > GYM_ROOM.maxZ - 1;
+  if (nearWall) return wall(s, 1.15, 2.1);
+  return Math.abs(Math.sin(s.rotY)) > 0.7 ? around(s, 0.3, 2.1, 1.15) : around(s, 1.15, 2.1, 0.3);
+};
 const hangingBag = (s: { x: number; z: number }): Box => box(s.x - 0.45, GYM_BAG_HANG.bottom, s.z - 0.45, s.x + 0.45, GYM_BAG_HANG.bottom + 1.75, s.z + 0.45);
-export const GYM_ZONE_BOXES: Record<Exclude<GymZone3D, "ring">, Box[]> = {
+const zoneBoxes = (): Record<Exclude<GymZone3D, "ring">, Box[]> => ({
   weights: [around(GYM_SPOTS.benchPress, 1.0, 1.3), around(GYM_SPOTS.plateRack, 0.55, 1.3), around(GYM_SPOTS.dumbbells, 0.85, 1.0)],
   bag1: [hangingBag(GYM_SPOTS.bag1)],
   bag2: [hangingBag(GYM_SPOTS.bag2)],
   bag3: [hangingBag(GYM_SPOTS.bag3)],
-  lockers: [wall(GYM_SPOTS.lockers, 1.15, 2.1)],
+  lockers: [lockerBox(GYM_SPOTS.lockers)],
   door: [wall(GYM_SPOTS.door, 0.65, 2.3, 0.3)],
   trophyA: [wall(GYM_SPOTS.trophyA, TROPHY_CASE.w / 2, TROPHY_CASE.h)],
   trophyB: [wall(GYM_SPOTS.trophyB, TROPHY_CASE.w / 2, TROPHY_CASE.h)],
@@ -99,7 +160,8 @@ export const GYM_ZONE_BOXES: Record<Exclude<GymZone3D, "ring">, Box[]> = {
   // The fighter only — the bench behind them is scenery, not a target.
   player: [around(GYM_SPOTS.player, 0.36, 1.95)],
   equipCrate: [around(GYM_SPOTS.equipCrate, 0.5, 0.65, 0.4)],
-};
+});
+export const GYM_ZONE_BOXES = zoneBoxes();
 
 /** World point a zone's floating tag / dot hangs over (top of its first box). */
 export function gymZoneAnchor(zone: GymZone3D, lift = 0.25): THREE.Vector3 {
@@ -117,8 +179,10 @@ export function gymZoneAnchor(zone: GymZone3D, lift = 0.25): THREE.Vector3 {
  * handheld drift), so picking and tag placement must use the live camera.
  */
 export const GYM_HOME_FOV = 56;
-const HOME_POS = new THREE.Vector3(-2.6, 2.4, 7.8);
-const HOME_TARGET = new THREE.Vector3(-14, 0.8, -5);
+const HOME_CAM = { pos: [-2.6, 2.4, 7.8] as V3, target: [-14, 0.8, -5] as V3 };
+/** Live home-camera pose (set by setGymArrangement). */
+const HOME_POS = new THREE.Vector3(...HOME_CAM.pos);
+const HOME_TARGET = new THREE.Vector3(...HOME_CAM.target);
 const SCREEN_W = 800;
 const SCREEN_H = 600;
 
@@ -177,6 +241,23 @@ export function poseGymCamera(cam: THREE.PerspectiveCamera, t: number, k: number
 
 const restCam = makeGymHomeCamera();
 const _v = new THREE.Vector3();
+
+/** Home gym (null) or a challenger's gym layout. Call before building the scene. */
+export function setGymArrangement(layout: number | null): void {
+  const a = layout == null ? null : AWAY_LAYOUTS[layout] ?? AWAY_LAYOUTS[0];
+  for (const k of Object.keys(HOME_SPOTS) as SpotKey[]) Object.assign(GYM_SPOTS[k], a?.spots[k] ?? HOME_SPOTS[k]);
+  Object.assign(GYM_ZONE_BOXES, zoneBoxes());
+  const cam = a?.cam ?? HOME_CAM;
+  HOME_POS.set(...cam.pos);
+  HOME_TARGET.set(...cam.target);
+  poseGymHomeCamera(restCam, 0);
+  const p = GYM_SPOTS.player;
+  GYM_PLAYER_PX.x = ENGINE_RING_CX + p.x * PX_PER_UNIT;
+  GYM_PLAYER_PX.z = ENGINE_RING_CY + p.z * PX_PER_UNIT;
+  // Three-quarters toward the home camera.
+  GYM_PLAYER_PX.facing = Math.atan2(HOME_POS.z - p.z, HOME_POS.x - p.x) + 0.17;
+}
+setGymArrangement(null);
 
 /** World point → 800x600 screen point through the home camera (live one if given). */
 export function projectGymPoint(p: THREE.Vector3, cam: THREE.Camera = restCam): { x: number; y: number } {
