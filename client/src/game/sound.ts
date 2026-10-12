@@ -22,6 +22,23 @@ import stunUrl from "@assets/Stun_1791662097304.mp3";
 import dodgeLeftUrl from "@assets/Dodge_1_1791662121931.mp3";
 import dodgeRightUrl from "@assets/Dodge_2_1791662124450.mp3";
 import counterWindowUrl from "@assets/Counter_window_1791662127358.mp3";
+import refCount1Url from "@assets/referee/ref_count_01.mp3";
+import refCount2Url from "@assets/referee/ref_count_02.mp3";
+import refCount3Url from "@assets/referee/ref_count_03.mp3";
+import refCount4Url from "@assets/referee/ref_count_04.mp3";
+import refCount5Url from "@assets/referee/ref_count_05.mp3";
+import refCount6Url from "@assets/referee/ref_count_06.mp3";
+import refCount7Url from "@assets/referee/ref_count_07.mp3";
+import refCount8Url from "@assets/referee/ref_count_08.mp3";
+import refCount9Url from "@assets/referee/ref_count_09.mp3";
+import refCount10Url from "@assets/referee/ref_count_10.mp3";
+import refOver1Url from "@assets/referee/ref_over_1.mp3";
+import refOver2Url from "@assets/referee/ref_over_2.mp3";
+import refKd1Url from "@assets/referee/ref_kd_1.mp3";
+import refKd2Url from "@assets/referee/ref_kd_2.mp3";
+import refKd3StopUrl from "@assets/referee/ref_kd_3_stop.mp3";
+import refKd3Url from "@assets/referee/ref_kd_3.mp3";
+import refIntroUrl from "@assets/referee/ref_intro.mp3";
 import { EQ_BANDS, getSoundEqConfig, type SoundEq } from "@/lib/soundEqConfig";
 
 export type PunchSoundType = "jab" | "hook" | "uppercut";
@@ -29,6 +46,8 @@ export type PunchSoundType = "jab" | "hook" | "uppercut";
 const FIGHT_FX = {
   usss1: usss1Url, usss2: usss2Url, usss3: usss3Url, usss5: usss5Url, usss6: usss6Url, usss7: usss7Url,
   usssCharge: usssChargeUrl, crit: critUrl, stun: stunUrl, dodgeLeft: dodgeLeftUrl, dodgeRight: dodgeRightUrl, counterWindow: counterWindowUrl,
+  refCount1: refCount1Url, refCount2: refCount2Url, refCount3: refCount3Url, refCount4: refCount4Url, refCount5: refCount5Url, refCount6: refCount6Url, refCount7: refCount7Url, refCount8: refCount8Url, refCount9: refCount9Url, refCount10: refCount10Url,
+  refOver1: refOver1Url, refOver2: refOver2Url, refKd1: refKd1Url, refKd2: refKd2Url, refKd3Stop: refKd3StopUrl, refKd3: refKd3Url, refIntro: refIntroUrl,
 };
 type FightFx = keyof typeof FIGHT_FX;
 
@@ -39,6 +58,8 @@ export const SOUND_LABELS = {
   crit: "Crit", stun: "Stun", dodgeLeft: "Dodge Left", dodgeRight: "Dodge Right", counterWindow: "Counterpunch Window",
   bell: "Bell", crowdAmbient: "Crowd Ambient", cheer1: "Cheer 1", cheer2: "Cheer 2", cheer3: "Cheer 3",
   uiForward: "UI Forward", uiBack: "UI Back", uiStart: "UI Start", uiStats: "UI Stats",
+  refCount1: "Ref Count 1", refCount2: "Ref Count 2", refCount3: "Ref Count 3", refCount4: "Ref Count 4", refCount5: "Ref Count 5", refCount6: "Ref Count 6", refCount7: "Ref Count 7", refCount8: "Ref Count 8", refCount9: "Ref Count 9", refCount10: "Ref Count 10",
+  refOver1: "Ref That's It", refOver2: "Ref It's Over", refKd1: "Ref KD 1 Good To Go", refKd2: "Ref KD 2 Able To Continue", refKd3Stop: "Ref KD 3 Stopping Fight", refKd3: "Ref KD 3 Fight Back", refIntro: "Ref Instructions",
 } as const;
 export type SoundId = keyof typeof SOUND_LABELS;
 const pick = <T,>(a: T[]): T => a[Math.floor(Math.random() * a.length)];
@@ -472,6 +493,20 @@ class SoundEngine {
       osc.start();
       osc.stop(ctx.currentTime + 1.6);
     });
+  }
+
+  /** Referee's knockdown count voice line, 1-10. */
+  refCount(n: number): void {
+    if (n < 1 || n > 10) return;
+    this.playFx(`refCount${n}` as FightFx, 0.9);
+  }
+
+  /** Plays a referee voice line; returns its length in seconds (0 when it can't be heard). */
+  refLine(key: "refOver1" | "refOver2" | "refKd1" | "refKd2" | "refKd3Stop" | "refKd3" | "refIntro"): number {
+    const buf = this.bufferOf(key);
+    if (!buf || this.getVolume("sfx") <= 0) return 0;
+    this.playFx(key, 0.9);
+    return buf.duration / this.rate(key);
   }
 
   knockdown(): void {
