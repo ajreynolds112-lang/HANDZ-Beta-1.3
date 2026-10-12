@@ -247,7 +247,7 @@ console.log("9. reps buy buffer weeks");
 
 console.log("10. the sharpness cap and the mastery tier agree");
 {
-  check("the cap is 3000", cfg.sharpnessCap === 3000, String(cfg.sharpnessCap));
+  check("the cap is 1000", cfg.sharpnessCap === 1000, String(cfg.sharpnessCap));
   check("mastery sits exactly on the cap", cfg.masterySharpness === cfg.sharpnessCap,
     `${cfg.masterySharpness} vs ${cfg.sharpnessCap}`);
   check("so mastery is reachable", cfg.masterySharpness <= cfg.sharpnessCap);

@@ -10,6 +10,7 @@ import fs from "fs";
 import express from "express";
 import { createHash } from "crypto";
 import { writeTunedDefaults } from "./tuningDefaults";
+import { initLiveTuning, liveSound, liveTrainingText, liveTuningRev, publishLiveSound, publishLiveTraining, publishLiveTuning } from "./liveTuning";
 import { githubStatus, pushSourceToGithub, importFromGithub, GithubPushError } from "./githubPush";
 
 const updateFighterSchema = z.object({
@@ -216,6 +217,7 @@ export async function registerRoutes(
     }
     try {
       writeTunedDefaults(body);
+      publishLiveTuning(body);
       res.json({ ok: true, sections: Object.keys(body.params as object).length });
     } catch {
       res.status(500).json({ error: "Failed to write tuned defaults" });
@@ -228,6 +230,36 @@ export async function registerRoutes(
    */
   const SOUND_DIR = path.resolve(process.cwd(), "data", "sounds");
   app.use("/sound-files", express.static(SOUND_DIR, { immutable: true, maxAge: "1y" }));
+  // Live: sounds uploaded in the workspace since the last Publish come from the shared bucket.
+  app.get("/sound-files/:name", async (req, res, next) => {
+    try {
+      const body = await liveSound(req.params.name);
+      if (!body) return res.status(404).end();
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      res.type(path.extname(req.params.name)).send(body);
+    } catch (error) { next(error); }
+  });
+
+  // Neural Network live update: which tuning bundle the live server is on.
+  await initLiveTuning();
+  app.get("/api/live-tuning/status", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ rev: liveTuningRev() });
+  });
+  // AI Training state (fundamentals run + RL checkpoint): the workspace publishes, live serves.
+  app.post("/api/live-tuning/training", (req, res) => {
+    if (process.env.NODE_ENV === "production") return res.status(403).json({ error: "Only available in the workspace" });
+    const params = (req.body as { params?: unknown } | undefined)?.params;
+    if (!params || typeof params !== "object" || Array.isArray(params)) return res.status(400).json({ error: "Expected training sections" });
+    publishLiveTraining(params);
+    res.json({ ok: true });
+  });
+  app.get("/api/live-tuning/training", (_req, res) => {
+    const text = liveTrainingText();
+    if (!text) return res.status(404).json({ error: "Nothing published" });
+    res.setHeader("Cache-Control", "no-store");
+    res.type("json").send(text);
+  });
   app.post("/api/sound-files", (req, res) => {
     if (process.env.NODE_ENV === "production") return res.status(403).json({ error: "Sounds ship with the build and can't be changed here" });
     const id = String(req.query.id ?? "");
@@ -239,6 +271,7 @@ export async function registerRoutes(
     const name = `${id}-${createHash("sha1").update(body).digest("hex").slice(0, 12)}.${ext}`;
     fs.mkdirSync(SOUND_DIR, { recursive: true });
     fs.writeFileSync(path.join(SOUND_DIR, name), body);
+    publishLiveSound(name, body);
     res.json({ url: `/sound-files/${name}` });
   });
 

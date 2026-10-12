@@ -31,9 +31,13 @@ const PURE_POWER_PENALTIES: { at: number; stamina: number; speed: number }[] = [
   { at: 60, stamina: 0.04, speed: 0.02 },
 ];
 
-/** Max stamina / speed cost (fractions) at this meter value. */
-export function purePowerPenaltyOf(pct: number): { stamina: number; speed: number } {
-  return PURE_POWER_PENALTIES.find(t => pct >= t.at) ?? { stamina: 0, speed: 0 };
+/** At this Power stat the meter's max-stamina cost is waived. */
+export const PURE_POWER_STAMINA_WAIVE_POWER = 1000;
+
+/** Max stamina / speed cost (fractions) at this meter value; Power 1000 waives the stamina cost. */
+export function purePowerPenaltyOf(pct: number, power = 0): { stamina: number; speed: number } {
+  const pen = PURE_POWER_PENALTIES.find(t => pct >= t.at) ?? { stamina: 0, speed: 0 };
+  return power >= PURE_POWER_STAMINA_WAIVE_POWER ? { ...pen, stamina: 0 } : pen;
 }
 
 export function clampPurePower(v: unknown): number {
@@ -70,12 +74,14 @@ export function applyPurePower(state: GameState, roster: CareerRosterState | nul
     p.critResistMult = Math.max(0, p.critResistMult * (1 - steps * PURE_POWER_CRIT_RESIST_PER_STEP));
     p.purePowerStunResist = steps * PURE_POWER_STUN_RESIST_PER_STEP;
   }
-  const pen = purePowerPenaltyOf(pct);
-  if (pen.stamina > 0 || pen.speed > 0) {
+  const pen = purePowerPenaltyOf(pct, p.rawPower);
+  if (pen.stamina > 0) {
     const st = 1 - pen.stamina;
     p.maxStamina *= st;
     p.maxStaminaCap *= st;
     p.stamina = p.maxStamina;
+  }
+  if (pen.speed > 0) {
     const sp = 1 - pen.speed;
     p.punchSpeedMult *= sp;
     p.moveSpeed *= sp;

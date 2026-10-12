@@ -35,7 +35,6 @@ import {
   applyParameterFile,
   buildParameterFile,
   pushTuningDefaults,
-  startTuningDefaultsWatcher,
   validateTuningBundle,
   TUNING_BUNDLE_KIND,
   type TuningBundle,
@@ -211,7 +210,7 @@ const DEFAULT_MAX_STAM_POINTS: MaxStamAmounts = {
   perfectBlock: 2,
   rhythmCutHit: -2.5,
   rhythmCutFightCap: 125,
-  rockerShotTaken: -87.5,
+  rockerShotTaken: -25,
   ringMileage: -2,
   chargedPunchThrown: -3,
   chargedCritRefund: 8,
@@ -231,7 +230,7 @@ const DEFAULT_MAX_STAM_PERCENT: MaxStamAmounts = {
   perfectBlock: 0.8,
   rhythmCutHit: -1,
   rhythmCutFightCap: 50,
-  rockerShotTaken: -35,
+  rockerShotTaken: -10,
   ringMileage: -0.8,
   chargedPunchThrown: -1.2,
   chargedCritRefund: 3.2,
@@ -309,6 +308,28 @@ function loadMaxStamFlags(raw: unknown, fallback: boolean | MaxStamFlags): MaxSt
   return flags;
 }
 
+/** One-time move of a saved Rocker Shot chunk still on the old 35% default to
+ *  the new 10%. Stamped so a value deliberately set back to 35 later stays. */
+const LS_ROCKER_10_STAMP = "handz_rocker_chunk_10_migrated";
+function rockerChunkMigrated(percent: MaxStamAmounts): MaxStamAmounts {
+  try {
+    if (localStorage.getItem(LS_ROCKER_10_STAMP)) return percent;
+    localStorage.setItem(LS_ROCKER_10_STAMP, "1");
+    if (percent.rockerShotTaken === -35) {
+      percent.rockerShotTaken = -10;
+      const raw = localStorage.getItem(LS_MAX_STAM_CONFIG_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.percent) {
+          parsed.percent.rockerShotTaken = -10;
+          localStorage.setItem(LS_MAX_STAM_CONFIG_KEY, JSON.stringify(parsed));
+        }
+      }
+    }
+  } catch { /* storage unavailable: nothing to migrate */ }
+  return percent;
+}
+
 function loadMaxStamConfig(): MaxStamConfig {
   const def = cloneMaxStamDefaults();
   try {
@@ -326,7 +347,7 @@ function loadMaxStamConfig(): MaxStamConfig {
       usePoints: loadMaxStamFlags(parsed.usePoints, defaultUsePointsFlags()),
       enabled: loadMaxStamFlags(parsed.enabled, true),
       points: { ...def.points, ...legacy, ...(parsed.points ?? {}) },
-      percent: { ...def.percent, ...(parsed.percent ?? {}) },
+      percent: rockerChunkMigrated({ ...def.percent, ...(parsed.percent ?? {}) }),
       cleanHitChance: numOr(parsed.cleanHitChance, def.cleanHitChance),
       cleanStreakPunches: numOr(parsed.cleanStreakPunches, def.cleanStreakPunches),
       ringMileageInterval: numOr(parsed.ringMileageInterval, def.ringMileageInterval),
@@ -1747,10 +1768,6 @@ export default function NeuralNetworkView({ onBack, onRosterRegenerated, careerF
     };
     reader.readAsText(file);
   };
-
-  // A tweak anywhere on this screen becomes the default the next build ships.
-  // Nothing to press: the watcher pushes the bundle whenever a value changes.
-  useEffect(() => startTuningDefaultsWatcher(), []);
 
   const downloadSourceCode = () => {
     const a = document.createElement("a");

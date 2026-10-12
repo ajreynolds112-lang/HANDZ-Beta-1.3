@@ -408,6 +408,14 @@ function drawMaxStaminaDeltaTexts(ctx: CanvasRenderingContext2D, state: GameStat
 }
 
 function drawStaminaBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fighter: FighterState, isPlayer: boolean, glowBlue = false): void {
+  // The whole bar shrinks with max-stamina losses (anchored at the outer edge),
+  // so a smaller tank reads as smaller rather than as a fuller bar.
+  const start = fighter.boutStartMaxStamina;
+  const poolFrac = start && start > 0 ? Math.min(1, Math.max(0, fighter.maxStamina / start)) : 1;
+  const fullW = w;
+  w = fullW * poolFrac;
+  if (!isPlayer) x += fullW - w;
+
   ctx.fillStyle = COLORS.staminaBg;
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, 3);
@@ -671,7 +679,7 @@ const CONTROLS_COLUMNS: ControlsGroup[][] = [
       rows: [
         ["Move", "Arrow Keys"],
         ["Duck", "Shift"],
-        ["Slip", "Hold C + Arrow Keys"],
+        ["Slip", "Hold X + Arrow Keys"],
         ["Reset", "B"],
         ["Toggle Guard", "Space"],
         ["Full Guard", "Space x2"],

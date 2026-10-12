@@ -65,6 +65,52 @@ export interface SavedOutfit {
   spacialParts: string[];
 }
 
+/** One layer of a custom gear decal (design space is DECAL_W × DECAL_H px). */
+export interface CustomDecalLayer {
+  id: string;
+  kind: "shape" | "text";
+  /** Shape kind (shape layers). */
+  shape?: string;
+  /** Text layers. */
+  text?: string;
+  /** Built-in family name, or "upload:<fontId>" for an uploaded font. */
+  font?: string;
+  fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  /** Text bend, -100..100 (0 = straight). */
+  arc?: number;
+  /** Centre and box size in design px. */
+  x: number; y: number; w: number; h: number;
+  /** Degrees. */
+  rotation: number;
+  skewX: number; skewY: number;
+  flipX?: boolean; flipY?: boolean;
+  color: string;
+  opacity: number;
+  strokeColor?: string;
+  strokeWidth?: number;
+  hidden?: boolean;
+}
+
+/** A player-made gear decal. `background` null = transparent (the item's own colour shows). */
+export interface CustomDecal {
+  id: string;
+  name: string;
+  background: string | null;
+  layers: CustomDecalLayer[];
+  updatedAt: number;
+  /** Paid for (once, the first time it's worn). Copies and uploads start unpaid. */
+  purchased?: boolean;
+}
+
+/** A font the player uploaded for decal text. `data` is a data: URL. */
+export interface CustomDecalFont {
+  id: string;
+  name: string;
+  data: string;
+}
+
 /** Outfit slots per career fighter. */
 export const OUTFIT_SLOT_COUNT = 50;
 
@@ -350,6 +396,8 @@ export interface ChallengeRequest {
   level: number;
   receivedWeek: number;
   expiresWeek: number;
+  /** Fight requests: the week the bout would be fought. */
+  fightWeek?: number;
 }
 
 export interface ChallengeState {
@@ -360,6 +408,8 @@ export interface ChallengeState {
   received: number;
   accepted: number;
   sparredRosterIds: number[];
+  /** An accepted bout request, booked once no other fight is booked. */
+  contract?: { rosterId: number; fightWeek: number; bookAfterFights: number } | null;
 }
 
 export interface CareerRosterState {
@@ -710,6 +760,10 @@ export const fighters = pgTable("fighters", {
   gymLook: jsonb("gym_look").$type<Record<string, string>>(),
   /** Saved outfit slots (OUTFIT_SLOT_COUNT long, null = empty). Absent = all empty. */
   outfits: jsonb("outfits").$type<(SavedOutfit | null)[]>(),
+  /** Custom gear decals made in the Decal Editor (max 50). Absent = none. */
+  customDecals: jsonb("custom_decals").$type<CustomDecal[]>(),
+  /** Fonts uploaded for decal text. Absent = none. */
+  decalFonts: jsonb("decal_fonts").$type<CustomDecalFont[]>(),
   /** Fighting style (base stance + defensive/punch animation sets, custom slots). Absent = none chosen. */
   fightingStyle: jsonb("fighting_style").$type<FightingStyleSave>(),
   /** Wear the sparring headgear + girdle in official bouts too. */

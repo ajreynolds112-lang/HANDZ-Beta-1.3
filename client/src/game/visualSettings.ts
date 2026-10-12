@@ -84,16 +84,26 @@ export function getVisualSettings(): VisualSettings {
     parsed = null;
   }
   cached = sanitize(parsed);
+  // One-time: settings saved before the enhancer became default-on start ON; later toggles stick.
+  if (parsed && (parsed as { onV?: number }).onV !== ENABLED_DEFAULT_V) {
+    cached = { ...cached, enabled: true };
+    persist();
+  }
   return cached;
+}
+
+const ENABLED_DEFAULT_V = 1;
+function persist(): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ ...cached, onV: ENABLED_DEFAULT_V }));
+  } catch {
+    /* storage full or blocked: the setting still applies for this session */
+  }
 }
 
 export function setVisualSettings(patch: Partial<VisualSettings>): VisualSettings {
   cached = sanitize({ ...getVisualSettings(), ...patch });
-  try {
-    localStorage.setItem(KEY, JSON.stringify(cached));
-  } catch {
-    /* storage full or blocked: the setting still applies for this session */
-  }
+  persist();
   return cached;
 }
 

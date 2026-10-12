@@ -121,7 +121,7 @@ export const DRILLED_ACTION_CONFIG: DrilledActionConfig = {
   observeRangePx: 90,
   listThreshold: 2,
   listCap: 1000,
-  sharpnessCap: 3000,
+  sharpnessCap: 1000,
   buffSharpness: 20,
   sharpTierSharpness: 100,
   stunPerSuccess: 0.0005,
@@ -130,12 +130,12 @@ export const DRILLED_ACTION_CONFIG: DrilledActionConfig = {
   critBonusCap: 0.30,
   freeStaminaSharpness: 200,
   staminaPenaltyPauseSec: 1.0,
-  dodgeSharpness: 3000,
+  dodgeSharpness: 1000,
   dodgeChance: 0.50,
   dodgeWindowSec: 1.0,
   // Mastery sits exactly ON the cap on purpose: the top tier is "this string is
   // as sharp as a string can get". It moves whenever sharpnessCap moves.
-  masterySharpness: 3000,
+  masterySharpness: 1000,
   masteryPunchSpeedMult: 1.5,
   masteryCritBonus: 0.30,
   masteryOpenerPowerBonus: 0.2,

@@ -12,6 +12,7 @@ import Game from "@/pages/Game";
 import FullscreenToggle from "@/components/FullscreenToggle";
 import { CloudSaveProvider, useCloudSaves } from "@/lib/cloudSaves";
 import CloudAccountPanel from "@/components/CloudAccountPanel";
+import LiveTuningUpdater from "@/components/LiveTuningUpdater";
 import { SignInPage, SignUpPage } from "@/components/AuthPages";
 import { clerkAppearance, clerkLocalization } from "@/components/clerkAppearance";
 
@@ -133,6 +134,7 @@ function App() {
         {/* Sits above every screen so the corner works in the menu too. */}
         <FullscreenToggle />
         <CloudAccountPanel />
+        <LiveTuningUpdater />
       </TooltipProvider>
       </CloudSaveProvider>
     </QueryClientProvider>

@@ -64,6 +64,7 @@ function buildRing(southpaw: boolean): GameState {
     "orthodox",
   );
   state.dummyEnemy = true;
+  state.player.autoGuardDuration = 9999;
   state.phase = "fighting";
   state.countdownTimer = 0;
   state.introAnimActive = false;

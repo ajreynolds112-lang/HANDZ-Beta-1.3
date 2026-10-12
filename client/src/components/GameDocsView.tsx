@@ -235,7 +235,7 @@ const SECTIONS: DocSection[] = [
           ["Space (double-tap within 0.3s)", "Auto-guard — holds the guard for you until cancelled"],
           ["Space (while auto-guarding)", "Cancel auto-guard"],
           ["Shift (hold)", "Duck — cannot be started while punching; restores your previous guard on release"],
-          ["C (hold)", "Slip. Direction comes from the arrow key you are holding, or straight back if none"],
+          ["X (hold)", "Slip. Direction comes from the arrow key you are holding, or straight back if none"],
           ["V (hold)", "Perfect block"],
         ],
       },
@@ -362,7 +362,7 @@ const SECTIONS: DocSection[] = [
           ["Good", "20", "The closing punch starts earning stun and crit"],
           ["Sharp", "100", "Nothing new switches on — the closing bonuses are simply becoming noticeable by here"],
           ["Effortless", "200", "The closing punch costs no stamina at all, and pauses the burst penalty for a second"],
-          ["Mastered", "3000", "The closing punch hits for 1.5× damage and the opening punch for 1.2×. The opener is also 50% faster and +30% crit, and finishing the combination opens a one-second window with a 50% chance to slip the next punch outright"],
+          ["Mastered", "1000", "The closing punch hits for 1.5× damage and the opening punch for 1.2×. The opener is also 50% faster and +30% crit, and finishing the combination opens a one-second window with a 50% chance to slip the next punch outright"],
         ],
       },
       { t: "h", text: "What the closing punch earns" },
@@ -450,11 +450,11 @@ const SECTIONS: DocSection[] = [
           "A stun does not stop you ducking. Almost everything else a stun touches is slowed or disabled, but the duck stays available — it is the one answer you always have while hurt.",
         ],
       },
-      { t: "h", text: "Slip (C)" },
+      { t: "h", text: "Slip (X)" },
       {
         t: "ul",
         items: [
-          "Hold C to slip; the held arrow key aims it.",
+          "Hold X to slip; the held arrow key aims it.",
           "Only the completed slip evades. There is a 0.15 second window once you arrive — get hit during the entry, or after the window closes, and the punch lands normally.",
           "You can hold a slip for at most 2 seconds.",
           "Taking a head shot locks slipping out for 0.75 seconds.",
@@ -499,7 +499,6 @@ const SECTIONS: DocSection[] = [
       {
         t: "ul",
         items: [
-          "X raises your rhythm level, Z lowers it. The range is 0 to 4.",
           "A marker moves continuously at a constant speed — not a sine wave, so the edges are worth exactly as much real time as they look like they are.",
           "Tab + Left/Right changes how fast the marker travels.",
         ],
@@ -628,7 +627,7 @@ const SECTIONS: DocSection[] = [
       {
         t: "p",
         text:
-          "A Rocker Shot is a charged punch held for half a second that crits or stuns. If it lands, even through a normal or perfect block, it takes 35% of the opponent's max stamina. The screen shows \"HE'S HURT\" and the hurt fighter can't slip or duck for 5 seconds. Punch Rolling gives a chance to roll with it and lose nothing.",
+          "A Rocker Shot is a charged punch held for half a second that crits or stuns. If it lands, even through a normal or perfect block, it takes 10% of the opponent's max stamina. The screen shows \"HE'S HURT\" and the hurt fighter can't slip or duck for 5 seconds. Punch Rolling gives a chance to roll with it and lose nothing.",
       },
       { t: "h", text: "Knockdowns and the count" },
       {

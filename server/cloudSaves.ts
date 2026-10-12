@@ -3,6 +3,7 @@ import { getAuth } from "@clerk/express";
 import { pool } from "./db";
 import { cloudWriteSchema } from "@shared/cloudSave";
 import { getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
+import { mirrorCareer, readOtherCareer } from "./careerMirror";
 
 /** No client-supplied owner: every query scopes directly to the verified Clerk user. */
 export async function registerCloudSaves(app: Express): Promise<void> {
@@ -57,6 +58,13 @@ export async function registerCloudSaves(app: Express): Promise<void> {
     } catch (error) { next(error); }
   });
 
+  // The other build's (workspace ↔ live) career for this account's verified email.
+  app.get("/api/cloud-save/other", requireAccount, async (req, res, next) => {
+    try {
+      res.json(await readOtherCareer(getAuth(req).userId!) ?? { save: null });
+    } catch (error) { next(error); }
+  });
+
   app.put("/api/cloud-save", requireAccount, writeGuard, async (req, res, next) => {
     const parsed = cloudWriteSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -80,6 +88,7 @@ export async function registerCloudSaves(app: Express): Promise<void> {
       }
       const row = result.rows[0];
       res.json({ revision: row.revision, updatedAt: row.updated_at });
+      if (save) mirrorCareer(getAuth(req).userId!, save, new Date(row.updated_at).toISOString());
     } catch (error) { next(error); }
   });
 }

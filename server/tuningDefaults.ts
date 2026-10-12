@@ -43,10 +43,17 @@ export function writeTunedDefaults(bundle: unknown): void {
  * Put the bundle in the page ahead of the app's own script. Every `<` is
  * escaped, so a parameter whose value contains `</script>` can't end the tag.
  */
-export function injectTunedDefaults(html: string): string {
-  const bundle = readTunedDefaults();
-  if (!bundle) return html;
-  const json = JSON.stringify(bundle).replace(/</g, "\\u003c");
-  const tag = `<script>window.__HANDZ_TUNED__=${json};</script>`;
+export function injectTunedDefaults(
+  html: string,
+  override?: Record<string, unknown> | null,
+  /** Extra window globals (live update stamps); null entries are skipped. */
+  globals: Record<string, string | null> = {},
+): string {
+  const bundle = override ?? readTunedDefaults();
+  const vars: Record<string, unknown> = { ...(bundle ? { __HANDZ_TUNED__: bundle } : {}) };
+  for (const [k, v] of Object.entries(globals)) if (v !== null) vars[k] = v;
+  if (Object.keys(vars).length === 0) return html;
+  const tag = `<script>${Object.entries(vars)
+    .map(([k, v]) => `window.${k}=${JSON.stringify(v).replace(/</g, "\\u003c")};`).join("")}</script>`;
   return html.includes("</head>") ? html.replace("</head>", `${tag}</head>`) : tag + html;
 }

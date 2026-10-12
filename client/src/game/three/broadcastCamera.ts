@@ -14,7 +14,6 @@
  */
 import * as THREE from "three";
 import type { GameState } from "../types";
-import { setViewCameraYaw } from "../engine";
 import {
   ENGINE_RING_CX, ENGINE_RING_CY, ENGINE_RING_HALF_W, ENGINE_RING_HALF_H,
   MAT_HEIGHT, RING_HALF_X, RING_HALF_Z, toSceneX, toSceneZ,
@@ -49,6 +48,11 @@ const KD_LOOK_HEIGHT = 0.3;
 const KD_SWING = 0.55;
 const KD_MIN_DISTANCE = 2.0;
 const KD_BODY_OFFSET_PX = 30;
+/** Inside the ropes (no corner post or rope in shot): wider lens, waist-up framing. */
+const FACEOFF_ZOOM = BASE_DISTANCE / 3.0;
+const FACEOFF_FOV = 50;
+const FACEOFF_PITCH = THREE.MathUtils.degToRad(6);
+const FACEOFF_LOOK_HEIGHT = 1.05;
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
 
 export class BroadcastCamera {
@@ -84,7 +88,19 @@ export class BroadcastCamera {
     const p = state.player;
     const e = state.enemy;
 
-    if (state.staticCamera) {
+    if (state.faceoff) {
+      // Ring walk face-off: close and side-on, fighters held in the top half.
+      this.yaw = 0;
+      this.zoom = FACEOFF_ZOOM;
+      this.focusX = toSceneX((p.x + e.x) / 2);
+      this.focusZ = toSceneZ((p.z + e.z) / 2);
+    } else if (state.ceremony) {
+      // Result ceremony: a fixed, closer shot centred on the referee.
+      this.yaw = 0;
+      this.zoom = 2.1;
+      this.focusX = toSceneX(state.refX);
+      this.focusZ = toSceneZ(state.refZ);
+    } else if (state.staticCamera) {
       this.yaw = 0;
       this.zoom = AUTO_ZOOM_MIN;
       this.focusX = 0;
@@ -119,11 +135,10 @@ export class BroadcastCamera {
       this.focusZ += (tz - this.focusZ) * CAMERA_POS_LERP;
     }
 
-    setViewCameraYaw(this.yaw);
     const zoomT = (this.zoom - AUTO_ZOOM_MIN) / (AUTO_ZOOM_MAX * 0.8 - AUTO_ZOOM_MIN);
-    const pitch = THREE.MathUtils.lerp(PITCH_WIDE, PITCH_CLOSE, THREE.MathUtils.clamp(zoomT, 0, 1));
+    const pitch = state.faceoff ? FACEOFF_PITCH : THREE.MathUtils.lerp(PITCH_WIDE, PITCH_CLOSE, THREE.MathUtils.clamp(zoomT, 0, 1));
     const distance = BASE_DISTANCE / this.zoom;
-    const target = new THREE.Vector3(this.focusX, MAT_HEIGHT + LOOK_HEIGHT, this.focusZ);
+    const target = new THREE.Vector3(this.focusX, MAT_HEIGHT + (state.faceoff ? FACEOFF_LOOK_HEIGHT : LOOK_HEIGHT), this.focusZ);
     // From the target back to the camera. With this orbit the camera's screen-
     // right axis is (cos yaw, 0, sin yaw), exactly the 2D renderer's rotateY.
     const horiz = Math.cos(pitch) * distance;
@@ -204,6 +219,8 @@ export class BroadcastCamera {
       // hold
     } else this.kickAmt = 0;
 
+    const fov = state.faceoff ? FACEOFF_FOV : CAMERA_FOV;
+    if (this.camera.fov !== fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
     this.camera.position.copy(pos);
     this.camera.lookAt(target);
     this.camera.updateMatrixWorld();

@@ -7,6 +7,7 @@ import { PROFILE_VIEW_OPP_PX } from "@/game/three/punchProfiles";
 import { BONE_NAMES, type BoneName, ensureFighterAssets, fighterAssetEpoch } from "@/game/three/fighterRig";
 import { type HitBoxFaceKey, gloveHitBox, hitBoxFaceKey, hitBoxFaceMinCm, newGloveHitBox } from "@/game/three/gloveHitBox";
 import type { PunchAnimParams } from "@/lib/punchAnimConfig";
+import { HURT_FACES, HURT_PARTS, type HurtFaceKey, type HurtPart, getHurtBoxes, hurtBoxFaceMinCm } from "@/game/three/hurtBox";
 
 export const JOINT_LABEL: Record<BoneName, string> = {
   Hips: "Hips", Spine: "Lower Spine", Spine1: "Mid Spine", Spine2: "Chest", Neck: "Neck", Head: "Head",
@@ -37,6 +38,10 @@ export interface PoseStageFrame {
   colors?: FighterColors;
   /** Show the punching glove's hit box (this punch's config, glove `side`). Undefined = hidden. */
   hitBox?: { params: PunchAnimParams | undefined; side: 0 | 1 };
+  /** Show the head and body hurt boxes (face drags edit them). */
+  hurtBoxes?: boolean;
+  /** Arms may pass into the front of their own torso (never out the back). */
+  selfCollideBackOnly?: boolean;
   /** Last word on the posed fighter each frame (e.g. drive a punch). */
   pose?: (fighter: FighterState, state: GameState) => void;
 }
@@ -47,7 +52,7 @@ export interface PoseStageFrame {
  * Returns the disposer.
  */
 export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, onPick: (b: BoneName) => void, onContextPick?: (b: BoneName) => void,
-  onHitBoxFace?: (key: HitBoxFaceKey, cm: number) => void): () => void {
+  onHitBoxFace?: (key: HitBoxFaceKey, cm: number) => void, onHurtBoxFace?: (part: HurtPart, key: HurtFaceKey, cm: number) => void): () => void {
   let disposed = false;
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
@@ -84,11 +89,22 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
   hitBoxMesh.matrixAutoUpdate = false;
   hitBoxMesh.visible = false;
   scene.add(hitBoxMesh);
+  // Hurt boxes (head, body): same face drags, in blue.
+  const hurt = HURT_PARTS.map(part => {
+    const mats = [0, 1, 2, 3, 4, 5].map(() => new THREE.MeshBasicMaterial({ color: "#3b82f6", transparent: true, opacity: 0.15, depthWrite: false }));
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), mats);
+    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color: "#60a5fa", transparent: true, opacity: 0.8 })));
+    mesh.renderOrder = 8;
+    mesh.matrixAutoUpdate = false;
+    mesh.visible = false;
+    scene.add(mesh);
+    return { part, mesh, mats };
+  });
   const box = newGloveHitBox(), boxLocal = new THREE.Matrix4(), boxPos = new THREE.Vector3();
   let boxFrame: PoseStageFrame["hitBox"];
   let boxSouthpaw = false;
   /** Face drag: screen px per metre along the face normal, from where it was grabbed. */
-  let faceDrag: { face: number; key: HitBoxFaceKey; x0: number; y0: number; dx: number; dy: number; start: number; min: number } | null = null;
+  let faceDrag: { face: number; key: HitBoxFaceKey | HurtFaceKey; part?: HurtPart; x0: number; y0: number; dx: number; dy: number; start: number; min: number } | null = null;
   const nlO = new THREE.Vector3(), nlD = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
   const NOSE_FROM = 0.1, NOSE_TO = 1.4;
 
@@ -137,6 +153,7 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
       a.currentPunch = null;
       v.pose?.(a, st);
       fig.aimHead = !v.noseLine;
+      fig.selfCollideBackOnly = !!v.selfCollideBackOnly;
       fig.update(a, v.colors ?? st.playerColors, d, st, 1);
       fig.root.position.set(0, 0, 0);
       fig.root.updateMatrixWorld(true);
@@ -153,7 +170,12 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
         hitBoxMesh.matrix.multiplyMatrices((side ? fig.rig.gloveCenter.right : fig.rig.gloveCenter.left).matrixWorld, boxLocal);
         hitBoxMesh.updateMatrixWorld(true);
       }
-      boxMats.forEach((m, i) => { m.opacity = faceDrag?.face === i ? 0.45 : 0.15; });
+      boxMats.forEach((m, i) => { m.opacity = !faceDrag?.part && faceDrag?.face === i ? 0.45 : 0.15; });
+      for (const h of hurt) {
+        h.mesh.visible = !!v.hurtBoxes && !!fig.hurtBoxMatrix(h.part, h.mesh.matrix);
+        if (h.mesh.visible) h.mesh.updateMatrixWorld(true);
+        h.mats.forEach((m, i) => { m.opacity = faceDrag?.part === h.part && faceDrag.face === i ? 0.45 : 0.15; });
+      }
       noseLine.visible = !!v.noseLine;
       if (v.noseLine) {
         fig.noseRay(nlO, nlD);
@@ -177,17 +199,30 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   const toScreen = (p: THREE.Vector3) => { const r = el.getBoundingClientRect(); p.project(camera); return [(p.x * 0.5 + 0.5) * r.width, (-p.y * 0.5 + 0.5) * r.height]; };
   const grabFace = (e: PointerEvent): boolean => {
-    if (!fig || !boxFrame || !onHitBoxFace || e.button !== 0) return false;
+    if (!fig || e.button !== 0) return false;
     const r = el.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    const hit = ray.intersectObject(hitBoxMesh, false)[0];
+    const targets: THREE.Mesh[] = [];
+    if (boxFrame && onHitBoxFace && hitBoxMesh.visible) targets.push(hitBoxMesh);
+    if (onHurtBoxFace) for (const h of hurt) if (h.mesh.visible) targets.push(h.mesh);
+    const hit = ray.intersectObjects(targets, false)[0];
     const face = hit?.face?.materialIndex;
     if (face == null) return false;
-    const n = new THREE.Vector3().setComponent(face >> 1, face & 1 ? -1 : 1).transformDirection(hitBoxMesh.matrixWorld);
+    const mesh = hit.object as THREE.Mesh;
+    const n = new THREE.Vector3().setComponent(face >> 1, face & 1 ? -1 : 1).transformDirection(mesh.matrixWorld);
     const [ax, ay] = toScreen(hit.point.clone()), [bx, by] = toScreen(hit.point.clone().addScaledVector(n, 0.1));
     const dx = (bx - ax) / 0.1, dy = (by - ay) / 0.1;
     if (Math.hypot(dx, dy) < 20) return false; // face seen edge-on: no usable drag direction
+    const h = hurt.find(x => x.mesh === mesh);
+    if (h) {
+      const p = getHurtBoxes()[h.part], half = fig.hurtBaseHalf(h.part);
+      if (!half) return false;
+      const key = HURT_FACES[face];
+      faceDrag = { face, key, part: h.part, x0: e.clientX, y0: e.clientY, dx, dy, start: p[key], min: hurtBoxFaceMinCm(p, half, face) };
+      return true;
+    }
+    if (!boxFrame) return false;
     const key = hitBoxFaceKey(face, boxSouthpaw);
     faceDrag = { face, key, x0: e.clientX, y0: e.clientY, dx, dy, start: boxFrame.params?.[key] ?? 0,
       min: hitBoxFaceMinCm(boxFrame.params, fig.gloveHalf[boxFrame.side], face, boxSouthpaw) };
@@ -202,7 +237,9 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
     if (faceDrag) {
       const f = faceDrag;
       const m = ((e.clientX - f.x0) * f.dx + (e.clientY - f.y0) * f.dy) / (f.dx * f.dx + f.dy * f.dy);
-      onHitBoxFace!(f.key, Math.round(Math.max(f.min, f.start + m * 100) * 10) / 10);
+      const cm = Math.round(Math.max(f.min, f.start + m * 100) * 10) / 10;
+      if (f.part) onHurtBoxFace!(f.part, f.key as HurtFaceKey, cm);
+      else onHitBoxFace!(f.key as HitBoxFaceKey, cm);
       return;
     }
     if (!drag) return;
@@ -258,6 +295,7 @@ export function createPoseStage(host: HTMLElement, read: () => PoseStageFrame, o
     for (const m of [floor, marker, noseLine]) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
     hitBoxMesh.geometry.dispose();
     boxMats.forEach(m => m.dispose());
+    for (const h of hurt) { h.mesh.geometry.dispose(); h.mats.forEach(m => m.dispose()); }
     grid.dispose();
     renderer.dispose();
     el.remove();

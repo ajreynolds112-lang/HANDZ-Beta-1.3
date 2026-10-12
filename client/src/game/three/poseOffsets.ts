@@ -51,7 +51,9 @@ export interface PbPose { pose?: PoseOffsets; enabled: boolean; counter: boolean
 export type PbSet = Record<PbVariant, PbPose>;
 /** perfectBlocks[i] = full guard i's own eight perfect block poses. */
 /** hipHeight / duckHipHeight: hips raised (+) or lowered (-) in cm; the duck's adds on by crouch depth. */
-export type StancePoses = Record<PoseLayer, PoseOffsets> & { noseLine?: JointRot; perfectBlocks: PbSet[]; hipHeight?: number; duckHipHeight?: number };
+/** handLocks[guard]: hand joints (orthodox names) held at that guard's pose through every punch, over any punch-profile keys. */
+export type StancePoses = Record<PoseLayer, PoseOffsets> & { noseLine?: JointRot; perfectBlocks: PbSet[]; hipHeight?: number; duckHipHeight?: number; handLocks?: BoneName[][] };
+export const HAND_LOCK_JOINTS: BoneName[] = ["LeftHand", "RightHand"];
 export const HIP_HEIGHT_MAX = 40;
 const cleanCm = (v: unknown): number => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(-HIP_HEIGHT_MAX, Math.min(HIP_HEIGHT_MAX, n)) : 0; };
 export const POSE_LAYERS: PoseLayer[] = ["stance", "duck", "fullGuard", "fullGuard2", "fullGuard3"];
@@ -115,7 +117,16 @@ export function cleanPoses(v: unknown): StancePoses {
   const nl = cleanRot(o.noseLine);
   if (nl) out.noseLine = nl;
   for (const k of ["hipHeight", "duckHipHeight"] as const) { const h = cleanCm(o[k]); if (h) out[k] = h; }
+  const hl = Array.isArray(o.handLocks) ? o.handLocks : [];
+  const handLocks = [0, 1, 2].map(i => HAND_LOCK_JOINTS.filter(b => Array.isArray(hl[i]) && hl[i].includes(b)));
+  if (handLocks.some(l => l.length)) out.handLocks = handLocks;
   return out;
+}
+
+const NO_LOCKS: BoneName[] = [];
+/** Guard `guard`'s locked hand joints (orthodox names; draft while editing). */
+export function getHandLocks(guard: number): BoneName[] {
+  return (draft ?? getSavedStancePoses()).handLocks?.[Math.max(0, Math.min(2, Math.round(guard)))] ?? NO_LOCKS;
 }
 
 function cleanPb(v: unknown, seed: PoseOffsets, guard: number): PbSet {
@@ -211,7 +222,7 @@ export function pickPbVariant(punch: PunchType | null | undefined, defenderSouth
   if ((role === "jab" || role === "cross") && ok("shoulderRoll")) return "shoulderRoll";
   return "standard";
 }
-/** Whether guard `stance` has its Shoulder Roll slot active (X plays it). */
+/** Whether guard `stance` has its Shoulder Roll slot active (C plays it). */
 export function shoulderRollEnabled(stance: number, src?: readonly number[]): boolean {
   return !!pbSet(pbSrc("shoulderRoll", stance, src))?.shoulderRoll?.enabled;
 }

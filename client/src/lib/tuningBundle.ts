@@ -20,19 +20,21 @@
  *
  *  - The downloaded file also carries the AI Training state (the fundamentals
  *    run in localStorage and the RL trainer's IndexedDB checkpoint). Those are
- *    file-only: never shipped as defaults or seeded, and an upload without
- *    them leaves the browser's training where it is.
+ *    never shipped as build defaults; they reach live only through the Neural
+ *    Network live update, and an upload without them leaves training alone.
  *
  *  - `startTuningDefaultsWatcher` pushes the current bundle back to the dev
  *    server whenever any of those keys changes, so "tweaked" and "uploaded"
  *    both become the new default with nothing to press.
  */
 import { reloadScaling } from "./scalingConfig";
+import { getScreenKind } from "./uiChrome";
 import { invalidatePunchAnimCache } from "./punchAnimConfig";
+import { invalidateHurtBoxCache } from "@/game/three/hurtBox";
 import { invalidateSoundEqCache } from "./soundEqConfig";
 import { reloadRefinementTuning } from "@/game/refinementTuning";
 import { reloadChampionFundamentals } from "@/game/championStates";
-import { deserializeRlRun, loadRlCheckpointRaw, saveRlCheckpoint } from "@/game/rlRun";
+import { deserializeRlRun, loadRlCheckpointRaw, rlCheckpointVersion, saveRlCheckpoint } from "@/game/rlRun";
 
 /**
  * Every parameter key the Neural Network screen exposes, against the shape its
@@ -49,6 +51,7 @@ const PARAM_SHAPES = {
   // Punch animation editor
   handz_punch_anim: "object",
   handz_pose_offsets: "object",
+  handz_hurtboxes: "object",
   handz_punch_profiles: "object",
   handz_punch_profile_assign: "object",
   handz_guard_stance_assign: "object",
@@ -99,6 +102,17 @@ const PARAM_SHAPES = {
   // Fundamentals training output: the champion's parameters + remembered
   // situations, published each time a fundamental closes.
   handz_champion_fundamental_states: "object",
+  // Edit Roster: name/colour/gear/skill customisations by roster id, skill
+  // edits by rank, per-rank refinement defaults and the cascade tools
+  handz_roster_customizations: "object",
+  handz_roster_rank_edits: "object",
+  handz_ranking_ref_defaults: "object",
+  handz_cascade_params: "object",
+  handz_cascade_custom: "boolean",
+  handz_cascade_params_user_default: "object",
+  handz_sp_cascade_params: "object",
+  handz_sp_cascade_custom: "boolean",
+  handz_sp_cascade_params_user_default: "object",
 } as const satisfies Record<string, "object" | "array" | "boolean">;
 
 export type TuningParamKey = keyof typeof PARAM_SHAPES;
@@ -123,6 +137,7 @@ export const TUNING_BUNDLE_VERSION = 1;
 
 /** Stamp of the shipped bundle this browser has already taken. */
 const TUNED_REV_KEY = "handz_tuned_rev";
+const RANK_EDITS_KEY = "handz_roster_rank_edits";
 
 const DEFAULTS_ENDPOINT = "/api/tuning-defaults";
 
@@ -238,6 +253,7 @@ function writeParams(params: Record<string, unknown>, dropMissing: boolean): voi
 export function invalidateTuningCaches(): void {
   try { reloadScaling(); } catch { /* nothing to reload */ }
   try { invalidatePunchAnimCache(); } catch { /* nothing to reload */ }
+  invalidateHurtBoxCache();
   try { reloadRefinementTuning(); } catch { /* nothing to reload */ }
   try { reloadChampionFundamentals(); } catch { /* nothing to reload */ }
   invalidateSoundEqCache();
@@ -279,23 +295,39 @@ function trainingSectionProblem(params: Record<string, unknown>): string | null 
 /** The download: every tunable plus the AI Training state. */
 export async function buildParameterFile(): Promise<TuningBundle> {
   const bundle = buildTuningBundle();
+  Object.assign(bundle.params, await buildTrainingParams());
+  return bundle;
+}
+
+/** The AI Training sections as they stand: fundamentals run + RL checkpoint. */
+export async function buildTrainingParams(): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
   const training = readRaw(AI_TRAINING_SECTION);
   if (training !== null) {
-    try { bundle.params[AI_TRAINING_SECTION] = JSON.parse(training); } catch { /* unreadable scratch state */ }
+    try { out[AI_TRAINING_SECTION] = JSON.parse(training); } catch { /* unreadable scratch state */ }
   }
   try {
     const cp = await loadRlCheckpointRaw();
-    if (cp) bundle.params[RL_CHECKPOINT_SECTION] = cp;
+    if (cp) out[RL_CHECKPOINT_SECTION] = cp;
   } catch (err) {
     console.warn("[tuning] RL checkpoint not included:", err);
   }
-  return bundle;
+  return out;
+}
+
+/** Cheap fingerprint of the AI Training state, for spotting a change. */
+export function trainingSignature(): string {
+  return `${hashString(readRaw(AI_TRAINING_SECTION) ?? "\u0000").toString(16)}:${rlCheckpointVersion()}`;
 }
 
 /** The upload. Validate first; training sections the file lacks are left alone. */
 export async function applyParameterFile(bundle: TuningBundle): Promise<void> {
   applyTuningBundle(bundle);
-  const p = bundle.params;
+  await applyTrainingSections(bundle.params);
+}
+
+/** Just the AI Training sections (fundamentals run + RL checkpoint) the params carry. */
+export async function applyTrainingSections(p: Record<string, unknown>): Promise<void> {
   if (has(p, AI_TRAINING_SECTION)) {
     try { localStorage.setItem(AI_TRAINING_SECTION, JSON.stringify(p[AI_TRAINING_SECTION])); } catch { /* storage full */ }
   }
@@ -343,7 +375,10 @@ export function seedTunedDefaults(): void {
   const rev = hashString(serialized).toString(16);
   try {
     if (localStorage.getItem(TUNED_REV_KEY) === rev) return;
+    const rankEdits = localStorage.getItem(RANK_EDITS_KEY);
     writeParams(params as Record<string, unknown>, false);
+    // New Edit Roster rank edits reach the next career loaded.
+    if (localStorage.getItem(RANK_EDITS_KEY) !== rankEdits) localStorage.setItem("liveRankEditsPending", "true");
     localStorage.setItem(TUNED_REV_KEY, rev);
   } catch {
     /* no storage: the app still runs on its built-in defaults */
@@ -406,6 +441,8 @@ export function startTuningDefaultsWatcher(intervalMs = 1500): () => void {
 
   const flush = () => {
     if (pushRefused) return;
+    // Hashing every section mid-fight costs frames; the change waits for the bell.
+    if (getScreenKind() === "play") return;
     if (inFlight) {
       queued = true;
       return;
@@ -418,4 +455,36 @@ export function startTuningDefaultsWatcher(intervalMs = 1500): () => void {
     window.clearInterval(id);
     flush();
   };
+}
+
+/**
+ * Workspace: publish the AI Training state (fundamentals run + RL checkpoint)
+ * to the live build whenever it changes, at most once per `minGapMs` — an RL
+ * run rewrites its checkpoint every update.
+ */
+export function startLiveTrainingWatcher(intervalMs = 5000, minGapMs = 30_000): () => void {
+  let last = "";
+  let lastSent = 0;
+  let busy = false;
+  let refused = false;
+  const id = window.setInterval(() => {
+    if (busy || refused || getScreenKind() === "play" || Date.now() - lastSent < minGapMs) return;
+    const sig = trainingSignature();
+    if (sig === last) return;
+    busy = true;
+    void (async () => {
+      try {
+        const params = await buildTrainingParams();
+        const res = await fetch("/api/live-tuning/training", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ params }),
+        });
+        if (res.status === 403) refused = true;
+        if (res.ok) { last = sig; lastSent = Date.now(); }
+      } catch { /* retried next tick */ }
+      finally { busy = false; }
+    })();
+  }, intervalMs);
+  return () => window.clearInterval(id);
 }

@@ -1141,6 +1141,7 @@ export function initAiBrain(difficulty: AIDifficulty, archetype: Archetype, leve
   // a cycle scores one seed's fixed parameters, so a seed that re-derived its
   // knobs part-way through a bout would not be the seed being measured.
   brain.fundamentalSwitching = neuralDiffKey === "champion" && !isTrainingRosterId(brainRosterId);
+  brain.champFootwork = neuralDiffKey === "champion" && !cpuVsCpu && !isTrainingRosterId(brainRosterId);
   brain.situationTracker = null;
   brain.situationReadAcc = 0;
   brain.activeFundKey = null;
@@ -2549,6 +2550,65 @@ function updateLateralDir(brain: AiBrainState, dt: number): void {
   }
 }
 
+// ===== CHAMPION FOOTWORK AROUND PUNCHES =====
+// The Champion likes to step sideways or zig-zag just before a punch and just
+// after one -- often, not always. Rolls use Math.random so the seeded AI draw
+// order is untouched.
+const CHAMP_FOOT_PRE_CHANCE = 0.6;
+const CHAMP_FOOT_POST_CHANCE = 0.7;
+const CHAMP_FOOT_PRE_SEC: [number, number] = [0.25, 0.45];
+const CHAMP_FOOT_POST_SEC: [number, number] = [0.35, 0.6];
+/** A throw this soon after the last one is mid-sequence: no setup before it. */
+const CHAMP_FOOT_SEQ_GAP_SEC = 0.6;
+/** After a burst (or a declined roll), throws go out freely for this long. */
+const CHAMP_FOOT_READY_SEC = 0.6;
+const CHAMP_FOOT_ZIG_FLIP_SEC = 0.18;
+
+function armChampFootwork(brain: AiBrainState, pre: boolean): void {
+  const [lo, hi] = pre ? CHAMP_FOOT_PRE_SEC : CHAMP_FOOT_POST_SEC;
+  brain.champFootTimer = lo + Math.random() * (hi - lo);
+  brain.champFootPre = pre;
+  brain.champFootDir = Math.random() < 0.5 ? 1 : -1;
+  brain.champFootZig = Math.random() < 0.5;
+  brain.champFootFlipTimer = CHAMP_FOOT_ZIG_FLIP_SEC;
+}
+
+/** Once per live tick: count the burst down and catch the end of a punch. */
+function tickChampFootwork(brain: AiBrainState, enemy: FighterState, dt: number): void {
+  if (!brain.champFootwork) return;
+  if ((brain.champFootTimer ?? 0) > 0) {
+    brain.champFootTimer = (brain.champFootTimer ?? 0) - dt;
+    brain.champFootFlipTimer = (brain.champFootFlipTimer ?? 0) - dt;
+    if (brain.champFootZig && (brain.champFootFlipTimer ?? 0) <= 0) {
+      brain.champFootDir = -(brain.champFootDir ?? 1);
+      brain.champFootFlipTimer = CHAMP_FOOT_ZIG_FLIP_SEC;
+    }
+    if ((brain.champFootTimer ?? 0) <= 0) {
+      brain.champFootTimer = 0;
+      brain.champFootPre = false;
+      brain.champFootReadyUntil = brain.gameTime + CHAMP_FOOT_READY_SEC;
+    }
+  }
+  if (brain.champFootWasPunching && !enemy.isPunching && Math.random() < CHAMP_FOOT_POST_CHANCE) {
+    armChampFootwork(brain, false);
+  }
+  brain.champFootWasPunching = enemy.isPunching;
+}
+
+/** True while a real throw should wait for a pre-punch footwork setup. */
+function champFootworkHoldsThrow(brain: AiBrainState): boolean {
+  if (!brain.champFootwork) return false;
+  if ((brain.champFootTimer ?? 0) > 0) return !!brain.champFootPre;
+  if (brain.gameTime < (brain.champFootReadyUntil ?? 0)) return false;
+  if (brain.gameTime - (brain.champFootLastThrow ?? -99) < CHAMP_FOOT_SEQ_GAP_SEC) return false;
+  if (Math.random() < CHAMP_FOOT_PRE_CHANCE) {
+    armChampFootwork(brain, true);
+    return true;
+  }
+  brain.champFootReadyUntil = brain.gameTime + CHAMP_FOOT_READY_SEC;
+  return false;
+}
+
 function tryRopeEscape(brain: AiBrainState, enemy: FighterState, player: FighterState, state: GameState): boolean {
   if (brain.playerCornerCamping || brain.playerIdleTime > 1.5) return false;
 
@@ -2863,6 +2923,23 @@ function applyMovement(brain: AiBrainState, enemy: FighterState, player: Fighter
         moveX = clamp((dx / len) * Math.abs(brain.stepOutDesiredMove), -1, 1);
         moveZ = clamp((dz / len) * Math.abs(brain.stepOutDesiredMove), -1, 1);
       }
+    }
+  }
+
+  // Champion footwork burst: sideways, or zig-zagging in (before a punch) or
+  // out (after one). The base defense step below still takes priority.
+  if ((brain.champFootTimer ?? 0) > 0 && !(brain.perfectReactActive && Math.abs(brain.stepOutDesiredMove) > 0.01)) {
+    const fdx = player.x - enemy.x;
+    const fdz = player.z - enemy.z;
+    const fLen = Math.sqrt(fdx * fdx + fdz * fdz);
+    if (fLen > 0.01) {
+      const ux = fdx / fLen;
+      const uz = fdz / fLen;
+      const side = brain.champFootDir ?? 1;
+      const radial = brain.champFootZig ? (brain.champFootPre ? 0.55 : -0.55) : 0;
+      const lat = brain.champFootZig ? 0.85 : 1;
+      moveX = clamp(ux * radial - uz * side * lat, -1, 1);
+      moveZ = clamp(uz * radial + ux * side * lat, -1, 1);
     }
   }
 
@@ -3369,6 +3446,16 @@ function adaptPerfectBlockHold(brain: AiBrainState, enemy: FighterState): void {
   const stepMs = clamp(Math.abs(gapMs) * 0.5, PERFECT_BLOCK_HOLD_STEP_MIN_MS, PERFECT_BLOCK_HOLD_STEP_MAX_MS) * (gapMs > 0 ? 1 : -1);
   brain.perfectBlockHoldMs = clamp(brain.perfectBlockHoldMs + stepMs, PERFECT_BLOCK_MIN_HOLD_MS, maxHoldMs);
 }
+
+/** Share of finished combos the AI follows with 1-3 blocks/slips instead of standing idle. */
+const AI_POST_COMBO_DEFENSE_CHANCE: Record<DifficultyBand, number> = {
+  Easy: 0.65,
+  Medium: 0.75,
+  Hard: 0.85,
+  Hardcore: 0.90,
+};
+/** Give up on owed post-combo actions after this long (KD, bell, ropes). */
+const AI_POST_COMBO_DEFENSE_TIMEOUT = 4;
 
 /** How often the AI answers a punch it read with a slip, by difficulty. This is
  *  the slip's share of the base defense reaction below, kept as the rate it was
@@ -5981,6 +6068,8 @@ export function updateAI(state: GameState, dt: number, attemptPunchFn: (fighter:
       // not paying for. Returning false is the existing refuse handshake, so
       // callers unwind the same way they do for an out-of-range throw.
       if (!isFeint && isAiGasHeld(brain, enemy)) return false;
+      // Champion stepping off before the shot: refused like the gas veto.
+      if (!isFeint && champFootworkHoldsThrow(brain)) return false;
       return innerAttemptPunchFn(fighter, punchType, isFeint, isCharged);
     };
   }
@@ -5997,7 +6086,10 @@ export function updateAI(state: GameState, dt: number, attemptPunchFn: (fighter:
     attemptPunchFn = (fighter, punchType, isFeint, isCharged) => {
       const thrown = beforeBudget(fighter, punchType, isFeint, isCharged);
       // Feints cost nothing here: a feint is not the aggression, it sets it up.
-      if (thrown && !isFeint) notifyAiPunchThrown(brain);
+      if (thrown && !isFeint) {
+        notifyAiPunchThrown(brain);
+        brain.champFootLastThrow = brain.gameTime;
+      }
       return thrown;
     };
   }
@@ -6028,6 +6120,7 @@ export function updateAI(state: GameState, dt: number, attemptPunchFn: (fighter:
   }
 
   brain.gameTime += dt;
+  tickChampFootwork(brain, enemy, dt);
 
   // Reset (b) once gassed. Only reached on a live fighting tick — the knockdown
   // and non-fighting return above already sits between this and the bell — so
@@ -6231,6 +6324,10 @@ export function updateAI(state: GameState, dt: number, attemptPunchFn: (fighter:
       }
       const _sctx = buildStringContext(brain, enemy, player);
       const _stick = updateAiStringRunner(brain, enemy, player, dt, _sctx);
+      if (_stick.finished && rng.chance(AI_POST_COMBO_DEFENSE_CHANCE[brain.difficultyBand])) {
+        brain.postComboDefLeft = 1 + Math.floor(rng.next01() * 3);
+        brain.postComboDefUntil = brain.gameTime + AI_POST_COMBO_DEFENSE_TIMEOUT;
+      }
 
       if (_stick.armPerfectBlock) armBlockSync(brain, enemy, player, true);
 
@@ -6255,6 +6352,10 @@ export function updateAI(state: GameState, dt: number, attemptPunchFn: (fighter:
         // time the burst window takes to lapse. Cover up while it waits, so the
         // pause reads as a boxer catching his breath instead of an idle fighter.
         enemy.defenseState = "fullGuard";
+        holdAiStringThrow(brain);
+      } else if (_stick.punch && champFootworkHoldsThrow(brain)) {
+        // Champion footwork before the shot: a known-length wait, so hold the
+        // beat rather than spend retry budget.
         holdAiStringThrow(brain);
       } else if (_stick.punch && shouldWaitForPowerSway(brain, enemy, dt)) {
         // Hold the shot for a fraction of a beat so it leaves at the edge of the
@@ -6298,6 +6399,28 @@ export function updateAI(state: GameState, dt: number, attemptPunchFn: (fighter:
         applyMovement(brain, enemy, player, dt, state.ringLeft, state.ringRight, state.ringTop, state.ringBottom, state);
         return;
       }
+    }
+  }
+
+  // ===== POST-COMBO DEFENCE =====
+  // After a string ends, work 1-3 blocks/slips before the next decision. Each
+  // waits for the last punch, slip or block to finish; owns the tick meanwhile.
+  if ((brain.postComboDefLeft ?? 0) > 0) {
+    if (brain.gameTime > (brain.postComboDefUntil ?? 0)) {
+      brain.postComboDefLeft = 0;
+    } else {
+      if (!enemy.isPunching && !enemy.slipActive && !brain.perfectReactActive) {
+        if (rng.next01() < 0.5) {
+          startSlip(enemy, rng.next01() < 0.5 ? "left" : "right");
+          if (enemy.slipActive) enemy.slipHoldTimer = AI_SLIP_HOLD;
+        } else {
+          armAiPerfectBlock(brain, enemy, player, false);
+        }
+        brain.postComboDefLeft = (brain.postComboDefLeft ?? 1) - 1;
+      }
+      thinkMovement(brain, enemy, player, state);
+      applyMovement(brain, enemy, player, dt, state.ringLeft, state.ringRight, state.ringTop, state.ringBottom, state);
+      return;
     }
   }
 

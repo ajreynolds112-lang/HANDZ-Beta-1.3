@@ -112,7 +112,7 @@ export class TrainingScene3D {
   private frame = 0;
   private raf = 0;
   private lastFrameMs = 0;
-  /** Engine rule: a held C only starts one slip; it must come up before the next. */
+  /** Engine rule: a held X only starts one slip; it must come up before the next. */
   private slipKeyWasUp = true;
   private disposed = false;
   // Heavy bag
@@ -141,6 +141,8 @@ export class TrainingScene3D {
 
     this.state = createInitialState();
     this.fighter = this.state.player;
+    // Heavy bag sessions are worn in sparring gear (headgear + girdle).
+    this.fighter.wearsSparringGear = kind === "heavyBag";
     // Same pace the HUD times bag punches at, so contact lands on the same frame.
     applySoftCapPunchSpeed(this.fighter);
     this.opponent = this.state.enemy;

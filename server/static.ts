@@ -2,6 +2,7 @@ import express, { type Express, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
 import { injectTunedDefaults } from "./tuningDefaults";
+import { liveTrainingRev, liveTunedBundle, liveTuningRev } from "./liveTuning";
 
 export function serveStatic(app: Express) {
   const distPath = path.resolve(__dirname, "public");
@@ -11,12 +12,19 @@ export function serveStatic(app: Express) {
     );
   }
 
-  // The page carries the tuned parameter defaults inline. Built once: nothing
-  // can rewrite them on a published server.
+  // The page carries the tuned parameter defaults inline: the workspace's
+  // newest live bundle when one is published, else the build's. Rebuilt only
+  // when that bundle changes.
   let page: string | null = null;
+  let pageRev: string | null = null;
   const sendIndex = (_req: Request, res: Response) => {
-    if (page === null) {
-      page = injectTunedDefaults(fs.readFileSync(path.resolve(distPath, "index.html"), "utf-8"));
+    const rev = liveTuningRev();
+    if (page === null || rev !== pageRev) {
+      page = injectTunedDefaults(fs.readFileSync(path.resolve(distPath, "index.html"), "utf-8"), liveTunedBundle(), {
+        __HANDZ_TUNED_LIVE_REV__: rev,
+        __HANDZ_TRAINING_REV__: liveTrainingRev(),
+      });
+      pageRev = rev;
     }
     res.status(200).type("html").send(page);
   };

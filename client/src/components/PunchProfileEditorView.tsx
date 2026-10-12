@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Copy, Pause, Play, Redo2, RotateCcw, Save, Star, Swords, Undo2 } from "lucide-react";
+import { ArrowLeft, ClipboardPaste, Copy, Pause, Play, Redo2, RotateCcw, Save, Star, Swords, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,7 @@ import {
   PROFILE_SLOTS, PUNCH_ROLES, PUNCH_ROLE_LABEL, type AxisTracks, type Key, type PunchProfile,
   copyProfileSlot, enginePunchForRole, fighterAtPunchTime, loadProfileStore, saveProfile, setDefaultSlot,
   evalSpeed, realTimeOf, setPunchProfileDraft, validLoopStart, SPEED_MIN, speedSlowdown, warpTime, PROFILE_TIME_SCALE,
-  ROT_MAX, boneLimits, type AxisLimits, HEIGHT_MAX, GUARD_LOCK_JOINTS, isGuardLocked, lockKey, LOCK_KEYS, profileBones, onBones, ON_KEYS, DUCK_KEYS, type BoneTracks, loopOf, withLoop,
+  ROT_MAX, boneLimits, type AxisLimits, HEIGHT_MAX, GUARD_LOCK_JOINTS, isGuardLocked, lockKey, LOCK_KEYS, profileBones, onBones, offBones, ON_KEYS, OFF_KEYS, DUCK_KEYS, type BoneTracks, loopOf, withLoop,
 } from "@/game/three/punchProfiles";
 
 const AXIS_LANES = [
@@ -55,6 +55,8 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   const [draft, setDraft] = useState<PunchProfile>(() => clone(loadProfileStore().slots.jab[0] ?? blank()));
   const [savedSnap, setSavedSnap] = useState(() => JSON.stringify(loadProfileStore().slots.jab[0] ?? blank()));
   const [selected, setSelected] = useState<BoneName>("LeftArm");
+  // A copied joint timeline (all 3 axes); pastes onto the same joint in any guard / mode / slot.
+  const [jointClip, setJointClip] = useState<{ bone: BoneName; tracks: AxisTracks } | null>(null);
   const [southpaw, setSouthpaw] = useState(false);
   const [playing, setPlaying] = useState(true);
   const [rate, setRate] = useState(1);
@@ -271,8 +273,8 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   const toggleSelfCollide = () => {
     checkpoint();
     setDraft(d => {
-      const { noSelfCollide: _n, ...rest } = d;
-      return d.noSelfCollide ? rest : { ...rest, noSelfCollide: true };
+      const { selfCollide: _n, ...rest } = d;
+      return d.selfCollide ? rest : { ...rest, selfCollide: true };
     });
   };
   const toggleAutoMotion = () => {
@@ -286,11 +288,12 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   // ── editing ──
   // Full guard On edits the selected guard's On animation (bones / bones2 / bones3;
   // the Secondary and Third play the Full Guard's until their first edit copies it
-  // in); Off edits the Off animation (bonesOff), which plays the On keys likewise.
+  // in); Off edits the selected guard's Off animation (bonesOff / bonesOff2 / bonesOff3; the
+  // Secondary and Third play the Full Guard's Off until their first edit), which plays the On keys while absent.
   // Duck edits the selected guard's duck animation; its first edit copies in the standing keys shown.
   const viewBones = profileBones(draft, fullGuard, guard, duck);
-  const editSet = (d: PunchProfile): { key: (typeof ON_KEYS)[number] | (typeof DUCK_KEYS)[number] | "bonesOff"; bones: BoneTracks } =>
-    duck ? { key: DUCK_KEYS[guard], bones: { ...profileBones(d, fullGuard, guard, true) } } : fullGuard ? { key: ON_KEYS[guard], bones: { ...onBones(d, guard) } } : { key: "bonesOff", bones: { ...(d.bonesOff ?? onBones(d, guard)) } };
+  const editSet = (d: PunchProfile): { key: (typeof ON_KEYS)[number] | (typeof DUCK_KEYS)[number] | (typeof OFF_KEYS)[number]; bones: BoneTracks } =>
+    duck ? { key: DUCK_KEYS[guard], bones: { ...profileBones(d, fullGuard, guard, true) } } : fullGuard ? { key: ON_KEYS[guard], bones: { ...onBones(d, guard) } } : { key: OFF_KEYS[guard], bones: { ...profileBones(d, false, guard) } };
   const tracks = viewBones[selected] ?? EMPTY_TRACKS();
   const setAxis = (axis: number, keys: Key[]) => {
     setDraft(d => {
@@ -304,14 +307,18 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
   };
   const copyOnToOff = () => {
     checkpoint();
-    setDraft(d => ({ ...d, bonesOff: { ...onBones(d, guard) } }));
+    setDraft(d => ({ ...d, [OFF_KEYS[guard]]: { ...onBones(d, guard) } }));
   };
-  // Secondary/Third: take the Full Guard's punch (keys, loop/slide, isolate); locked joints still show this guard.
-  const copyFullGuard = () => {
+  // Copy from another guard what it shows in this view: Duck → its duck keys; Full guard Off → its Off keys; Full guard On → its On punch (keys, loop/slide, isolate). Locks stay this guard's.
+  const copyFromGuard = (src: number) => {
+    if (src === guard) return;
     checkpoint();
     setDraft(d => {
-      const next = withLoop({ ...d, [ON_KEYS[guard]]: JSON.parse(JSON.stringify(d.bones)) }, guard, () => loopOf(d, 0));
-      const iso = [0, 1, 2].map(i => !!d.isolate?.[i === guard ? 0 : i]);
+      const keys = JSON.parse(JSON.stringify(profileBones(d, fullGuard, src, duck)));
+      if (duck) return { ...d, [DUCK_KEYS[guard]]: keys };
+      if (!fullGuard) return { ...d, [OFF_KEYS[guard]]: keys };
+      const next = withLoop({ ...d, [ON_KEYS[guard]]: keys }, guard, () => loopOf(d, src));
+      const iso = [0, 1, 2].map(i => !!d.isolate?.[i === guard ? src : i]);
       const { isolate: _i, ...rest } = next;
       return iso.some(Boolean) ? { ...rest, isolate: iso } : rest;
     });
@@ -338,8 +345,22 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
       };
       const { limits: _l, ...rest } = d;
       const sets: Partial<PunchProfile> = { bones: clampSet(d.bones) };
-      for (const k of ["bonesOff", "bones2", "bones3", ...DUCK_KEYS] as const) if (d[k]) sets[k] = clampSet(d[k]!);
+      for (const k of ["bones2", "bones3", ...OFF_KEYS, ...DUCK_KEYS] as const) if (d[k]) sets[k] = clampSet(d[k]!);
       return Object.keys(all).length ? { ...rest, ...sets, limits: all } : { ...rest, ...sets };
+    });
+  };
+  const copyJoint = () => {
+    const t = viewBones[selected];
+    if (t) setJointClip({ bone: selected, tracks: JSON.parse(JSON.stringify(t)) });
+  };
+  const pasteJoint = () => {
+    if (!jointClip || jointClip.bone !== selected) return;
+    checkpoint();
+    setDraft(d => {
+      const { key, bones } = editSet(d);
+      const lim = boneLimits(d, selected);
+      bones[selected] = jointClip.tracks.map((keys, i) => keys.map(k => ({ t: k.t, v: Math.max(-lim[i], Math.min(lim[i], k.v)) }))) as AxisTracks;
+      return { ...d, [key]: bones };
     });
   };
   const clearJoint = () => {
@@ -383,9 +404,9 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
             </Button>
           ))}
         </div>
-        <Button size="sm" variant={!draft.noSelfCollide ? "default" : "outline"} onClick={toggleSelfCollide}
-          aria-pressed={!draft.noSelfCollide} data-testid="button-punchanim-selfcollide">
-          Self-collision: {draft.noSelfCollide ? "Off" : "On"}
+        <Button size="sm" variant={draft.selfCollide ? "default" : "outline"} onClick={toggleSelfCollide}
+          aria-pressed={!!draft.selfCollide} data-testid="button-punchanim-selfcollide">
+          Self-collision: {draft.selfCollide ? "On" : "Off"}
         </Button>
         <Button variant="outline" size="sm" onClick={() => setRingTest(true)} data-testid="button-punchanim-ringtest">
           <Swords className="w-4 h-4 mr-1" /> Test in ring
@@ -574,14 +595,16 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
                 aria-pressed={duck} data-testid="button-punchanim-duck">
                 Duck: {duck ? "On" : "Off"}
               </Button>
-              {!duck && fullGuard && guard > 0 && (
-                <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={copyFullGuard} data-testid="button-punchanim-copy-fullguard">
-                  Copy Full Guard punch
-                </Button>
-              )}
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] text-muted-foreground">Copy from:</span>
+                <Select value="" onValueChange={v => copyFromGuard(Number(v))}>
+                  <SelectTrigger className="h-7 text-[11px] w-44" data-testid="select-punchanim-copy-from"><SelectValue placeholder="Choose guard" /></SelectTrigger>
+                  <SelectContent>{GUARD_STANCE_LABELS.map((l, i) => i === guard ? null : <SelectItem key={i} value={String(i)}>{l}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
               {!duck && !fullGuard && (
                 <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={copyOnToOff}
-                  disabled={!draft.bonesOff || JSON.stringify(draft.bonesOff) === JSON.stringify(onBones(draft, guard))} data-testid="button-punchanim-copy-on">
+                  disabled={!offBones(draft, guard) || JSON.stringify(offBones(draft, guard)) === JSON.stringify(onBones(draft, guard))} data-testid="button-punchanim-copy-on">
                   Copy On animation
                 </Button>
               )}
@@ -597,6 +620,12 @@ export default function PunchProfileEditorView({ onBack }: { onBack: () => void 
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground pl-[88px]">
               <span className="font-semibold text-foreground mr-auto">{JOINT_LABEL[selected]}</span>
               <span>Right-click adds or removes a point · drag a point to move it · Shift-click copies a point · Shift-right-click pastes · right-click the playback bar sets Loop Start or Full Guard Slide</span>
+              <Button size="sm" variant="ghost" className="h-6 text-[11px]" disabled={!viewBones[selected]} onClick={copyJoint} data-testid="button-punchanim-copy-joint">
+                <Copy className="w-3 h-3 mr-1" /> Copy joint
+              </Button>
+              <Button size="sm" variant="ghost" className="h-6 text-[11px]" disabled={jointClip?.bone !== selected} onClick={pasteJoint} data-testid="button-punchanim-paste-joint">
+                <ClipboardPaste className="w-3 h-3 mr-1" /> Paste joint
+              </Button>
               <Button size="sm" variant="ghost" className="h-6 text-[11px]" disabled={!viewBones[selected]} onClick={clearJoint} data-testid="button-punchanim-clear-joint">
                 <RotateCcw className="w-3 h-3 mr-1" /> Clear joint
               </Button>

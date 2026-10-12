@@ -519,6 +519,15 @@ const SLIP_COUNTER_BONUS = (): number => getPunchCounterConfig().directionalSlip
 /* All tunable on the Neural Network screen (Punch Speed & Counters card). */
 export const SLIP_COUNTER_SLOW_SEC = (): number => getPunchCounterConfig().counterWindowSec;
 /** The slowed thrower and the round clock both run at 10% by default. */
+/** At 1000 points: the counterer's Focus widens the window this much, the thrower's Speed narrows it this much. Linear from 0. */
+const COUNTER_WINDOW_FOCUS_SEC = 0.3;
+const COUNTER_WINDOW_SPEED_SEC = 0.25;
+/** The counter window `counterer` gets on `thrower`'s punch, and the span the thrower is slowed. */
+export function counterWindowSec(counterer: FighterState, thrower: FighterState): number {
+  const maxSp = getScaling().caps.maxSp;
+  const speedT = Math.min(1, Math.max(0, (thrower.rawSpeed ?? 0) / maxSp));
+  return Math.max(0, SLIP_COUNTER_SLOW_SEC() + counterer.focusT * COUNTER_WINDOW_FOCUS_SEC - speedT * COUNTER_WINDOW_SPEED_SEC);
+}
 export const SLIP_COUNTER_SLOW_MULT = (): number => getPunchCounterConfig().counterSlowMult;
 export const SLIP_COUNTER_CLOCK_MULT = (): number => getPunchCounterConfig().counterClockMult;
 export const SLIP_COUNTER_DAMAGE_MULT = (): number => getPunchCounterConfig().counterDamageMult;
@@ -536,8 +545,9 @@ const COUNTER_HIT_STAGGER_SEC = (): number => getPunchCounterConfig().counterSta
 function triggerSlipCounter(slipper: FighterState, puncher: FighterState): void {
   if (!slipper.slipActive || slipper.slipAuto) return;
   if (slipper.defenseState === "fullGuard") return;
-  puncher.slipSlowTimer = SLIP_COUNTER_SLOW_SEC();
-  slipper.slipCounterTimer = SLIP_COUNTER_SLOW_SEC();
+  const win = counterWindowSec(slipper, puncher);
+  puncher.slipSlowTimer = win;
+  slipper.slipCounterTimer = win;
   soundEngine.counterWindow();
 }
 
@@ -1109,6 +1119,19 @@ export function resetHeadDuckOffset(fighter: FighterState): number {
  * it. Career bouts, the Doghouse and quick fights are untouched — the single
  * gate for every AI Reset path, so neither one can drift from the other.
  */
+/** Referee voice lines (and the holds they put on the action) only in a watched bout. */
+function refVoiceOn(state: GameState): boolean {
+  return !state.cpuVsCpu && !soundEngine.isSilent();
+}
+
+/** The ref's word to a fighter who beat the count; the restart waits for it to finish. */
+function startRefKdLine(state: GameState, knocked: FighterState): void {
+  if (!refVoiceOn(state)) return;
+  const n = knocked.knockdowns;
+  const canStop = (state.mercyStoppageEnabled || state.towelStoppageEnabled) && !state.practiceMode && !state.sparringMode;
+  state.refVoiceHold = soundEngine.refLine(n <= 1 ? "refKd1" : n === 2 ? "refKd2" : canStop ? "refKd3Stop" : "refKd3");
+}
+
 /** Gym sparring waves knockdowns off; a challenge spar fights under the career KD rules. */
 function sparKdWaived(state: GameState): boolean {
   return state.sparringMode && !state.challengeSparMode;
@@ -1484,14 +1507,6 @@ function chargeSlip(f: FighterState): void {
   const costPct = SLIP_STAMINA_COST + f.slipChainCount * SLIP_STAMINA_COST_STEP;
   // Rounded up to a whole point, so a slip always costs something the bar shows.
   f.stamina = Math.max(0, f.stamina - Math.ceil(f.maxStamina * costPct));
-}
-
-/** The 3D fight camera's orbit yaw (0 = default front view), published each frame by the camera. */
-let viewCameraYaw = 0;
-export function setViewCameraYaw(yaw: number): void { viewCameraYaw = yaw; }
-/** Facing within 45° of the camera (a quarter of the turn): the player's left/right punch keys swap. */
-function facesCamera(f: FighterState): boolean {
-  return Math.sin(f.facingAngle - viewCameraYaw) > Math.SQRT1_2;
 }
 
 export function startSlip(f: FighterState, dir: SlipDir): void {
@@ -2948,6 +2963,8 @@ export function createInitialState(): GameState {
     opponentItemKdAvoidChance: 0,
     opponentItems: undefined,
     countdownTimer: COUNTDOWN_DURATION,
+    refVoiceHold: 0,
+    refIntroPlayed: false,
     knockdownCountdown: 0,
     knockdownMashCount: 0,
     knockdownMashRequired: 25,
@@ -3782,6 +3799,8 @@ export function startFight(state: GameState, archetype: Archetype, playerLevel: 
     playerEquipment: null,
     opponentEquipment: null,
     countdownTimer: COUNTDOWN_DURATION,
+    refVoiceHold: 0,
+    refIntroPlayed: false,
     knockdownCountdown: 0,
     knockdownMashCount: 0,
     knockdownMashRequired: 25,
@@ -6044,14 +6063,18 @@ function tryHit(
   const duckHeadAim = !attackerDucking && attacker.punchAimsDuckHead && config.hitsHead;
   const isUppercut = attacker.currentPunch?.includes("Uppercut") ?? false;
   const punchHitsHead = attackerDucking ? (attacker.punchAimsHead && config.hitsHead) : config.hitsHead;
-  // Head shots that reach a ducked head: a standing uppercut follows it down
-  // and up, and a duck-tracked punch follows it there.
-  const headThroughDuck = punchHitsHead && isDucking && !attackerDucking && (isUppercut || duckHeadAim);
-
   const armReachBonus = (attacker.armLength - 65) * PX_PER_INCH;
   const effectiveRange = (config.range + 20 + armReachBonus + (attacker.precisionStrikerRangeBonus ?? 0)) * rhythmBuffs.rangeMult;
   // Out of range: a true whiff, one of only two ways a punch cannot land at all.
-  if (!(gloveInHitBox(attacker) ?? dist <= effectiveRange)) return { hit: false, damage: 0, blocked: false, isWhiff: true };
+  // A glove the 3D view shows touching the head or body (above the trunks)
+  // connects: none of the attacker-side miss rolls below apply to it, only the
+  // defender's own defences (blocks, slips, ducks).
+  const touching = gloveInHitBox(attacker);
+  // Head shots that reach a ducked head: a standing uppercut follows it down
+  // and up, a duck-tracked punch follows it there, and a standing glove that
+  // physically touches the ducked hurtbox has aimed down to it.
+  const headThroughDuck = punchHitsHead && isDucking && !attackerDucking && (isUppercut || duckHeadAim || touching === true);
+  if (!(touching ?? dist <= effectiveRange)) return { hit: false, damage: 0, blocked: false, isWhiff: true };
   if (defender.isKnockedDown) return { hit: false, damage: 0, blocked: false };
 
   // How square the attacker is decides whether the punch reaches the opponent at
@@ -6061,7 +6084,7 @@ function tryHit(
   // attacker's facing locked away from where the opponent now is.
   const turnPct = turnPercentTo(attacker, defender.x, defender.z);
   const turnAccuracy = facingAccuracy(turnPct);
-  if (turnAccuracy <= 0 || Math.random() >= turnAccuracy) {
+  if (!touching && (turnAccuracy <= 0 || Math.random() >= turnAccuracy)) {
     // Turned too far away to connect: the other true whiff.
     return { hit: false, damage: 0, blocked: false, isWhiff: true };
   }
@@ -6086,10 +6109,10 @@ function tryHit(
   // roll, deliberately outside the perfect-range exemption below: the fault is
   // in the fighter, not the distance. Returned unflagged rather than as a whiff
   // so it never reaches the AI's range learning as a range mistake.
-  if (attacker.fatigue.swayPunch && Math.random() < getFatigueConfig().swayMissAdd * fatigueEffectMult(attacker)) {
+  if (!touching && attacker.fatigue.swayPunch && Math.random() < getFatigueConfig().swayMissAdd * fatigueEffectMult(attacker)) {
     return { hit: false, damage: 0, blocked: false };
   }
-  if (!inPerfectRange && effectiveWhiffChance > 0 && Math.random() < effectiveWhiffChance) {
+  if (!touching && !inPerfectRange && effectiveWhiffChance > 0 && Math.random() < effectiveWhiffChance) {
     state.hitEffects.push({
       x: attacker.x + attacker.facing * 30,
       y: attacker.z - 25,
@@ -6101,7 +6124,7 @@ function tryHit(
     return { hit: false, damage: 0, blocked: false };
   }
 
-  if (!attacker.isPlayer && state.aiBrain) {
+  if (!touching && !attacker.isPlayer && state.aiBrain) {
     const aiWhiffRates: Record<string, number> = { "Easy": 0.20, "Medium": 0.15, "Hard": 0.10, "Hardcore": 0.05 };
     const aiWhiff = (aiWhiffRates[state.aiBrain.difficultyBand] || 0.10) + state.enemyWhiffBonus;
     if (Math.random() < aiWhiff) {
@@ -7312,8 +7335,9 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
         // A perfect block pose marked "trigger counterpunch" opens the counter window
         // (the same slow-motion window a guard-down slip opens).
         if (pbTriggersCounter(attacker.currentPunch, defender.boxingStance === "southpaw", defender.guardStance ?? 0, defender.defenseStance)) {
-          attacker.slipSlowTimer = SLIP_COUNTER_SLOW_SEC();
-          defender.slipCounterTimer = SLIP_COUNTER_SLOW_SEC();
+          const win = counterWindowSec(defender, attacker);
+          attacker.slipSlowTimer = win;
+          defender.slipCounterTimer = win;
           soundEngine.counterWindow();
         }
       }
@@ -7833,7 +7857,7 @@ function applyHit(attacker: FighterState, defender: FighterState, state: GameSta
     // Both go straight through a perfect block (tryHit lifts it once the crit or
     // stun lands); dodges still beat them.
     // - Rocker Shot: crit OR stun, landed (clean or normal block). Takes the
-    //   `rockerShotTaken` share of the defender's max stamina (35% by default),
+    //   `rockerShotTaken` share of the defender's max stamina (10% by default),
     //   unless the defender rolls with it (Punch Rolling negate chance).
     //   A Big Shot the Mouthguard negated still lands as a Rocker Shot.
     let bigShotKd = false;
@@ -9311,17 +9335,17 @@ function updateNightmareExtras(state: GameState, dt: number): void {
 }
 
 function handlePlayerInput(player: FighterState, enemy: FighterState, state: GameState, dt: number): void {
-  // Holding C switches automatic slips off until it is let go.
-  player.autoSlipSuppressed = !!keys["c"];
+  // Holding X switches automatic slips off until it is let go.
+  player.autoSlipSuppressed = !!keys["x"];
   if (player.isKnockedDown || state.knockdownActive || state.phase !== "fighting") return;
 
   const shiftHeld = keys["shift"];
 
-  // Slip (hold C, aim with the arrows). Runs ahead of movement: while it is held
+  // Slip (hold X, aim with the arrows). Runs ahead of movement: while it is held
   // the arrows aim the slip instead of walking, so the fighter is pinned in place
   // from the same frame the key goes down.
   {
-    const slipHeld = !!keys["c"];
+    const slipHeld = !!keys["x"];
     const aimed: SlipDir | null =
       keys["arrowleft"] ? "left" :
       keys["arrowright"] ? "right" :
@@ -9351,7 +9375,7 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
       // the slip is dodging anything again.
       else if (aimed) redirectSlip(player, aimed);
     } else if (slipHeld && aimed && player.slipKeyWasUp && player.slipDisabledTimer <= 0) {
-      // C alone does nothing: a slip needs C + an arrow.
+      // X alone does nothing: a slip needs X + an arrow.
       startSlip(player, aimed);
       player.slipKeyWasUp = false;
     }
@@ -9557,9 +9581,9 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
     }
   }
 
-  // Shoulder roll (X key): full guard only, held up to 1s, no cooldown (release and re-press to roll again).
+  // Shoulder roll (C key): full guard only, held up to 1s, no cooldown (release and re-press to roll again).
   {
-    const xHeld = !!keys["x"];
+    const xHeld = !!keys["c"];
     if (!xHeld) player.shoulderRollKeyWasUp = true;
     const canRoll = player.defenseState === "fullGuard" && !player.isKnockedDown;
     if (player.shoulderRolling) {
@@ -9780,15 +9804,8 @@ function handlePlayerInput(player: FighterState, enemy: FighterState, state: Gam
   // Same keys in both stances: the left-side keys (W/Q/S) always throw the
   // LEFT glove and the right-side keys (E/R/D) the right glove. For a southpaw
   // that puts the lead (right) hand on E and the rear (left) hand on W.
-  // Facing the camera, the screen's left is the boxer's right, so the sides swap.
-  const punchKeys: [string, PunchType][] = facesCamera(player) ? [
-    ["w", "cross"],
-    ["e", "jab"],
-    ["q", "rightHook"],
-    ["r", "leftHook"],
-    ["s", "rightUppercut"],
-    ["d", "leftUppercut"],
-  ] : [
+  // The keys never change with the direction the boxer faces.
+  const punchKeys: [string, PunchType][] = [
     ["w", "jab"],
     ["e", "cross"],
     ["q", "leftHook"],
@@ -10419,7 +10436,7 @@ function updateTutorial(state: GameState, dt: number): void {
         break;
       case 6:
         // The opponent has to be throwing for there to be anything to slip.
-        state.tutorialPrompt = `Hold C to Slip, aim with the Arrow Keys. Slip incoming punches (${Math.min(t.slipsDodged, 3)}/3)`;
+        state.tutorialPrompt = `Hold X to Slip, aim with the Arrow Keys. Slip incoming punches (${Math.min(t.slipsDodged, 3)}/3)`;
         state.tutorialAiIdle = false;
         if (t.slipsDodged >= 3) {
           state.tutorialStep = 7;
@@ -10888,7 +10905,12 @@ function updateGameTick(state: GameState, dt: number): GameState {
     if (!state.practiceMode && !state.sparringMode) {
       soundEngine.startCrowdAmbient();
     }
-    state.countdownTimer -= dt;
+    if (state.currentRound === 1 && !state.refIntroPlayed) {
+      state.refIntroPlayed = true;
+      if (refVoiceOn(state)) state.refVoiceHold = soundEngine.refLine("refIntro");
+    }
+    if (state.refVoiceHold > 0) state.refVoiceHold -= dt;
+    else state.countdownTimer -= dt;
     if (state.countdownTimer <= 0) {
       state.phase = "fighting";
       state.countdownTimer = 0;
@@ -10996,6 +11018,7 @@ function updateGameTick(state: GameState, dt: number): GameState {
 
   if (state.cornerWalkActive) {
     state.cornerWalkTimer -= dt;
+    state.refVoiceHold -= dt;
     const pDistToCorner = Math.sqrt((state.player.x - PLAYER_CORNER_X) ** 2 + (state.player.z - PLAYER_CORNER_Z) ** 2);
     const eDistToCorner = Math.sqrt((state.enemy.x - ENEMY_CORNER_X) ** 2 + (state.enemy.z - ENEMY_CORNER_Z) ** 2);
     const playerAtCorner = pDistToCorner < 5;
@@ -11018,7 +11041,8 @@ function updateGameTick(state: GameState, dt: number): GameState {
       }
     }
 
-    if ((playerAtCorner && enemyAtCorner) || state.cornerWalkTimer <= 0) {
+    if (((playerAtCorner && enemyAtCorner) || state.cornerWalkTimer <= 0) && state.refVoiceHold <= 0) {
+      state.refVoiceHold = 0;
       state.cornerWalkActive = false;
       state.player.x = PLAYER_CORNER_X;
       state.player.z = PLAYER_CORNER_Z;
@@ -11110,6 +11134,7 @@ function updateGameTick(state: GameState, dt: number): GameState {
       } else {
         state.cornerWalkActive = true;
         state.cornerWalkTimer = 3.0;
+        startRefKdLine(state, state.savedStandingIsPlayer ? state.enemy : state.player);
         state.shakeIntensity = 0;
         state.shakeTimer = 0;
       }
@@ -11129,7 +11154,15 @@ function updateGameTick(state: GameState, dt: number): GameState {
     } else {
       state.knockdownMashTimer -= dt;
       state.knockdownCountdown += dt;
+      const prevRefCount = state.knockdownRefCount;
       state.knockdownRefCount = Math.min(10, Math.floor(state.knockdownCountdown) + 1);
+      if (state.knockdownRefCount !== prevRefCount) {
+        // A full count ends the bout, so the ref calls it instead of saying "ten" —
+        // except where ten is only waved off (practice, gym sparring, the Doghouse).
+        const countWavedOff = state.practiceMode || sparKdWaived(state) || (state.doghouseMode && !knockedFighter.isPlayer);
+        if (state.knockdownRefCount === 10 && !countWavedOff) soundEngine.refLine(Math.random() < 0.5 ? "refOver1" : "refOver2");
+        else soundEngine.refCount(state.knockdownRefCount);
+      }
     }
 
     const timerMult = state.timerSpeed === "double" ? 2 : 1;
@@ -11328,6 +11361,7 @@ function updateGameTick(state: GameState, dt: number): GameState {
         }
         state.cornerWalkActive = true;
         state.cornerWalkTimer = 3.0;
+        startRefKdLine(state, knockedFighter);
         state.shakeIntensity = 0;
         state.shakeTimer = 0;
       }

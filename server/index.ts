@@ -29,6 +29,8 @@ declare module "http" {
 // which is well past the default 100kb. Mounted ahead of the general parser,
 // which skips a request whose body has already been read.
 app.use("/api/tuning-defaults", express.json({ limit: "25mb" }));
+// AI Training state for the Neural Network live update: fundamentals run + RL checkpoint.
+app.use("/api/live-tuning/training", express.json({ limit: "200mb" }));
 // Replacement sound files from the Sound EQ card arrive as the raw file body.
 app.use("/api/sound-files", express.raw({ type: () => true, limit: "20mb" }));
 

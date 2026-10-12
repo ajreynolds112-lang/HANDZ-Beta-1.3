@@ -9,6 +9,8 @@ export type ScreenKind = "menu" | "play" | "other";
 let current: ScreenKind = "menu";
 const listeners = new Set<() => void>();
 
+export const getScreenKind = (): ScreenKind => current;
+
 export function setScreenKind(kind: ScreenKind): void {
   if (kind === current) return;
   current = kind;

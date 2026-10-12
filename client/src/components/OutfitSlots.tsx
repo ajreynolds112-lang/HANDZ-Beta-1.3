@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Copy, Download, Pencil, Save, Shirt, Trash2 } from "lucide-react";
 import { OUTFIT_SLOT_COUNT, type GearColors, type SavedOutfit } from "@shared/schema";
 import { cssColorOf, SPACIAL_COLOR } from "@/game/spacialColor";
+import { filterProfanity } from "@/game/profanity";
 
 const NAME_MAX = 24;
 
@@ -83,7 +84,7 @@ export default function OutfitSlots({ outfits, current, onChange, onLoad }: {
   const commitRename = () => {
     if (renaming == null) return;
     const src = outfits[renaming];
-    const name = draftName.trim().slice(0, NAME_MAX);
+    const name = filterProfanity(draftName.trim().slice(0, NAME_MAX));
     if (src && name) write(renaming, { ...src, name });
     setRenaming(null);
   };
@@ -119,7 +120,7 @@ export default function OutfitSlots({ outfits, current, onChange, onLoad }: {
                 autoFocus
                 value={draftName}
                 maxLength={NAME_MAX}
-                onChange={e => setDraftName(e.target.value)}
+                onChange={e => setDraftName(filterProfanity(e.target.value))}
                 onBlur={commitRename}
                 onKeyDown={e => {
                   e.stopPropagation();

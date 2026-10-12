@@ -480,6 +480,9 @@ function openDb(): Promise<IDBDatabase> {
 
 // Writes are chained so a slow earlier save can never land after a later one.
 let writeChain: Promise<void> = Promise.resolve();
+/** Bumped on every stored checkpoint, so watchers can spot a change without reading IndexedDB. */
+let checkpointVersion = 0;
+export const rlCheckpointVersion = () => checkpointVersion;
 
 /**
  * Queue a checkpoint write. The run is serialised synchronously, so what is
@@ -504,6 +507,7 @@ export function saveRlCheckpoint(run: RlRun): Promise<void> {
         tx.onabort = () => reject(tx.error ?? new Error("checkpoint write aborted"));
       });
       db.close();
+      checkpointVersion++;
     } catch (err) {
       console.warn("[rl] checkpoint save failed:", err);
     }

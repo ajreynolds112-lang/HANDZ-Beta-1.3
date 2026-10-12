@@ -3,6 +3,8 @@
  * field is optional: an absent field means the stock look, so an untouched
  * career renders exactly as before.
  */
+import { filterProfanity } from "./profanity";
+
 export interface GymLook {
   /** Brick colour for the walls. */
   wall?: string;
@@ -67,7 +69,7 @@ export function gymLookOf(f: { gymLook?: Record<string, string> | null } | null 
   for (const k of KEYS) {
     const v = raw[k];
     if (typeof v !== "string") continue;
-    if (k === "name") { const n = v.slice(0, GYM_NAME_MAX); if (n.trim()) out.name = n; }
+    if (k === "name") { const n = v.slice(0, GYM_NAME_MAX); if (n.trim()) out.name = filterProfanity(n); }
     else if (HEX.test(v)) out[k] = v;
   }
   return out;

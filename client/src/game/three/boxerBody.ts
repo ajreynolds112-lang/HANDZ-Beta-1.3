@@ -158,6 +158,7 @@ export async function loadBoxerTemplate(files: { body: string; eyes?: string; gi
       g.bind(skel, body.bindMatrix);
     }
   }
+  try { hideBareHands(body, skel); } catch (e) { console.warn("[3D] hideBareHands skipped", e); }
   shortenForearms(main, skel);
 
   const boneMap = new Map<string, BoneName>();
@@ -165,6 +166,85 @@ export async function loadBoxerTemplate(files: { body: string; eyes?: string; gi
   const missing = Object.values(UE_BONES).filter(b => !Array.from(boneMap.values()).includes(b));
   if (missing.length) throw new Error(`boxer rig is missing bones: ${missing.join(", ")}`);
   return { scene: main, boneMap, tex: textures, headgearGeo };
+}
+
+/**
+ * Referee clothes painted onto the body itself: every body triangle on the
+ * torso/upper arms becomes shirt and every one on the hips/legs (and the
+ * trunks) becomes trousers. Because the clothes ARE the skin triangles (on a
+ * per-instance copy of the geometry, nudged out along the normals), no bare
+ * skin exists under them to poke through in any pose. Returns a disposer.
+ */
+function dressBodyAsReferee(body: THREE.SkinnedMesh, trunksIdx: number, tankIdx: number): () => void {
+  const geo = body.geometry.clone();
+  body.geometry = geo;
+  const bones = body.skeleton.bones;
+  const si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
+  const pos = geo.attributes.position as THREE.BufferAttribute, nrm = geo.attributes.normal as THREE.BufferAttribute;
+  const SHIRT = /^(spine|clavicle|upperarm)/, PANTS = /^(pelvis|thigh|calf)/;
+  // 0 = skin, 1 = shirt, 2 = trousers (by the bone group holding >= half the weight).
+  const zone = new Uint8Array(si.count);
+  let cx = 0, cz = 0, cn = 0;
+  for (let k = 0; k < si.count; k++) {
+    let ws = 0, wp = 0;
+    for (let c = 0; c < 4; c++) {
+      const n = bones[si.getComponent(k, c)]?.name ?? "";
+      const w = sw.getComponent(k, c);
+      if (SHIRT.test(n)) ws += w; else if (PANTS.test(n)) wp += w;
+    }
+    zone[k] = ws >= 0.5 ? 1 : wp >= 0.5 && pos.getY(k) > SOCK_TOP ? 2 : 0;
+    if (zone[k] === 1) { cx += pos.getX(k); cz += pos.getZ(k); cn++; }
+  }
+  // Bare hands back (the boxers' copies keep them collapsed under the gloves).
+  if (geo.userData.fullIndex) geo.setIndex(geo.userData.fullIndex as number[]);
+  else if (!geo.index) geo.setIndex(Array.from({ length: si.count }, (_, k) => k));
+  const src = geo.index!;
+  const nMats = ([] as THREE.Material[]).concat(body.material).length;
+  const shirtM = nMats, pantsM = nMats + 1;
+  const buckets = new Map<number, number[]>();
+  const push = (m: number, a: number, b: number, c: number) => { let l = buckets.get(m); if (!l) buckets.set(m, l = []); l.push(a, b, c); };
+  const onSkin = new Uint8Array(si.count);
+  const groups = geo.groups.length ? geo.groups : [{ start: 0, count: src.count, materialIndex: 0 }];
+  for (const g of groups) {
+    const mi = g.materialIndex ?? 0;
+    for (let t = g.start; t + 2 < g.start + g.count; t += 3) {
+      const a = src.getX(t), b = src.getX(t + 1), c = src.getX(t + 2);
+      let m = mi;
+      if (mi === trunksIdx) m = pantsM;
+      else if (mi !== tankIdx && zone[a] && zone[b] && zone[c]) m = zone[a] === 1 || zone[b] === 1 || zone[c] === 1 ? shirtM : pantsM;
+      if (m !== shirtM && m !== pantsM && mi !== tankIdx) { onSkin[a] = 1; onSkin[b] = 1; onSkin[c] = 1; }
+      push(m, a, b, c);
+    }
+  }
+  // Loose fit: clothed vertices that no skin triangle shares move out a little.
+  for (let k = 0; k < si.count; k++) {
+    if (!zone[k] || onSkin[k]) continue;
+    const d = zone[k] === 1 ? 0.9 : 0.5;
+    pos.setXYZ(k, pos.getX(k) + nrm.getX(k) * d, pos.getY(k) + nrm.getY(k) * d, pos.getZ(k) + nrm.getZ(k) * d);
+  }
+  pos.needsUpdate = true;
+  const idx: number[] = [];
+  geo.clearGroups();
+  buckets.forEach((l, m) => { geo.addGroup(idx.length, l.length, m); for (const v of l) idx.push(v); });
+  geo.setIndex(idx);
+
+  // Vertical black stripes round the torso, from the bind-space angle.
+  const centre = new THREE.Vector2(cn ? cx / cn : 0, cn ? cz / cn : 0);
+  const shirt = new THREE.MeshStandardMaterial({ color: "#f2f2ee", roughness: 0.8 });
+  shirt.onBeforeCompile = sh => {
+    sh.uniforms.stripeC = { value: centre };
+    sh.vertexShader = "varying vec3 vRefP;\n" + sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n  vRefP = position;");
+    sh.fragmentShader = "uniform vec2 stripeC;\nvarying vec3 vRefP;\n" + sh.fragmentShader.replace("#include <map_fragment>", `#include <map_fragment>
+  float stripeA = atan(vRefP.z - stripeC.y, vRefP.x - stripeC.x) / 6.2831853 * 18.0;
+  float stripeF = fract(stripeA);
+  float stripeW = fwidth(stripeA) * 1.5;
+  float stripeM = smoothstep(0.37 - stripeW, 0.37 + stripeW, stripeF) * (1.0 - smoothstep(1.0 - stripeW, 1.0, stripeF));
+  diffuseColor.rgb = mix(vec3(0.07), diffuseColor.rgb, stripeM);`);
+  };
+  shirt.customProgramCacheKey = () => "refereeShirtStripes";
+  const pants = new THREE.MeshStandardMaterial({ color: "#16161a", roughness: 0.75 });
+  body.material = [...([] as THREE.Material[]).concat(body.material), shirt, pants];
+  return () => { geo.dispose(); shirt.dispose(); pants.dispose(); };
 }
 
 /**
@@ -189,6 +269,37 @@ function extendCuff(g: THREE.BufferGeometry, side: "l" | "r"): void {
 
 /** Forearm length relative to the source model (the upper arm is untouched). */
 const FOREARM_SCALE = 0.9;
+
+/**
+ * The gloves always cover the hands, so the body's own hand and finger skin is
+ * never drawn: every triangle whose three corners ride the hand/finger bones is
+ * collapsed (degenerate, so material group ranges stay valid). Fingers can then
+ * never poke through the glove, whatever the pose.
+ */
+function hideBareHands(body: THREE.SkinnedMesh, skel: THREE.Skeleton): void {
+  const handBones = new Set<number>();
+  skel.bones.forEach((b, j) => {
+    for (let o: THREE.Object3D | null = b; o; o = o.parent) if (o.name === "hand_l" || o.name === "hand_r") { handBones.add(j); return; }
+  });
+  if (handBones.size === 0) return;
+  const geo = body.geometry;
+  const si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight;
+  const onHand = new Uint8Array(si.count);
+  for (let k = 0; k < si.count; k++) {
+    let w = 0;
+    for (let c = 0; c < 4; c++) if (handBones.has(si.getComponent(k, c))) w += sw.getComponent(k, c);
+    onHand[k] = w >= 0.5 ? 1 : 0;
+  }
+  if (!geo.index) geo.setIndex(Array.from({ length: si.count }, (_, k) => k));
+  const index = geo.index!;
+  // The referee wears no gloves: keep the full hand triangles for his copy.
+  if (!geo.userData.fullIndex) geo.userData.fullIndex = Array.from(index.array as ArrayLike<number>);
+  for (let t = 0; t + 2 < index.count; t += 3) {
+    const a = index.getX(t), b = index.getX(t + 1), c = index.getX(t + 2);
+    if (onHand[a] && onHand[b] && onHand[c]) { index.setX(t + 1, a); index.setX(t + 2, a); }
+  }
+  index.needsUpdate = true;
+}
 
 /**
  * Shortens both forearms in the BIND pose, once per load: the bones below the
@@ -324,23 +435,64 @@ export interface MaskedTint {
   spacialMap: { value: THREE.Texture | null };
 }
 
+/** Custom Gear Decal picture, shared by one rig's glove, headgear and girdle shaders. */
+export interface DecalUniforms { on: { value: number }; map: { value: THREE.Texture | null } }
+
+/**
+ * The Gear Decal patches a custom design fills: each stock label's own
+ * minimum-area box, fitted to its outline in gear_regions.png, in 2048² atlas
+ * px (centre x, centre y, w, h, tilt° clockwise, ellipse?, orientation).
+ * Orientation follows the stock print so the design reads the way it did:
+ * 0 upright, 1 upside down (headgear forehead), 2 mirrored (one glove's UVs).
+ * Glove cuff labels, back-of-hand ovals, headgear forehead label.
+ */
+const DECAL_PATCHES: [number, number, number, number, number, boolean, 0 | 1 | 2][] = [
+  [157, 748, 91.7, 48.2, 13, false, 0], [1899.9, 959.8, 91.4, 48.3, -6, false, 0],
+  [119.3, 921.2, 127.4, 69.4, 5.75, true, 2], [1916.5, 1133.5, 128, 66, 0, true, 0],
+  [489, 1814, 105, 57, 0, false, 1],
+];
+const ATLAS = 2048;
+/**
+ * Per patch, uv → design coords (0..1, y up) as d = M·(uv − o):
+ * A = (o.x, o.y, M row 0), B = (M row 1, ellipse, 0).
+ */
+const DECAL_A: THREE.Vector4[] = [], DECAL_B: THREE.Vector4[] = [];
+for (const [cx, cy, w, h, deg, ellipse, orient] of DECAL_PATCHES) {
+  const r = (deg * Math.PI) / 180, c = Math.cos(r), sn = Math.sin(r);
+  // Design right / design up as uv vectors (image y runs down, uv y up).
+  let ux = (c * w) / ATLAS, uy = (-sn * w) / ATLAS, vx = (sn * h) / ATLAS, vy = (c * h) / ATLAS;
+  if (orient === 1) { ux = -ux; uy = -uy; vx = -vx; vy = -vy; }
+  if (orient === 2) { ux = -ux; uy = -uy; }
+  const ox = cx / ATLAS - (ux + vx) / 2, oy = 1 - cy / ATLAS - (uy + vy) / 2;
+  const det = ux * vy - vx * uy;
+  DECAL_A.push(new THREE.Vector4(ox, oy, vy / det, -vx / det));
+  DECAL_B.push(new THREE.Vector4(-uy / det, ux / det, ellipse ? 1 : 0, 0));
+}
+
 /**
  * Region mask (gear_regions.png): r = the piece's own colour, g = its secondary
  * (Gear Decal on gloves/headgear, Soles = the shoe's white), b = laces. g/b
  * repaint by texel brightness; their colours ride other regions' materials
  * (`linkedTints`). `darkLift` (the trim strap) colours the dark base instead; b on the glove = its cuff band, tinted with the strap.
+ * A custom decal (`decal`) replaces the DECAL_PATCHES boxes with its picture,
+ * transparent parts showing the piece's own colour.
  */
-function maskedTintMaterial(map: THREE.Texture, mask: THREE.Texture, normal: THREE.Texture, roughness: number, darkLift = false): THREE.MeshStandardMaterial {
+function maskedTintMaterial(map: THREE.Texture, mask: THREE.Texture, normal: THREE.Texture, roughness: number, darkLift = false, decal?: DecalUniforms): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({ map, normalMap: normal, roughness, metalness: 0 });
   mat.normalScale.set(1, -1);
   const u = {
     tint: { value: new THREE.Color(1, 1, 1) }, tint2: { value: new THREE.Color(1, 1, 1) }, tint3: { value: new THREE.Color(1, 1, 1) },
     spacialOn: { value: 0 }, spacialMap: { value: null as THREE.Texture | null }, tintMask: { value: mask }, darkLift: { value: darkLift ? 1 : 0 },
   };
+  const dOn = decal?.on ?? { value: 0 }, dMap = decal?.map ?? { value: null };
   mat.userData.maskedTint = u;
   mat.onBeforeCompile = sh => {
-    Object.assign(sh.uniforms, { tintColor: u.tint, tint2Color: u.tint2, tint3Color: u.tint3, spacialOn: u.spacialOn, spacialMap: u.spacialMap, tintMask: u.tintMask, darkLift: u.darkLift });
+    Object.assign(sh.uniforms, {
+      tintColor: u.tint, tint2Color: u.tint2, tint3Color: u.tint3, spacialOn: u.spacialOn, spacialMap: u.spacialMap, tintMask: u.tintMask, darkLift: u.darkLift,
+      decalOn: dOn, decalMap: dMap, decalA: { value: DECAL_A }, decalB: { value: DECAL_B },
+    });
     sh.fragmentShader = "uniform vec3 tintColor;\nuniform vec3 tint2Color;\nuniform vec3 tint3Color;\nuniform float spacialOn;\nuniform float darkLift;\nuniform sampler2D spacialMap;\nuniform sampler2D tintMask;\n"
+      + `uniform float decalOn;\nuniform sampler2D decalMap;\nuniform vec4 decalA[${DECAL_A.length}];\nuniform vec4 decalB[${DECAL_A.length}];\n`
       + sh.fragmentShader.replace("#include <map_fragment>", `#include <map_fragment>
   vec3 tintM3 = texture2D(tintMask, vMapUv).rgb;
   float tintM = tintM3.r;
@@ -349,9 +501,57 @@ function maskedTintMaterial(map: THREE.Texture, mask: THREE.Texture, normal: THR
   diffuseColor.rgb = mix(diffuseColor.rgb, tinted, tintM);
   diffuseColor.rgb = mix(diffuseColor.rgb, tint2Color * tintL, tintM3.g);
   diffuseColor.rgb = mix(diffuseColor.rgb, tint3Color * tintL, tintM3.b);
-  if (spacialOn > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, texture2D(spacialMap, gl_FragCoord.xy / 110.0).rgb, tintM);`);
+  if (spacialOn > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, texture2D(spacialMap, gl_FragCoord.xy / 110.0).rgb, tintM);
+  if (decalOn > 0.5) {
+    for (int i = 0; i < ${DECAL_A.length}; i++) {
+      vec2 dd = vMapUv - decalA[i].xy;
+      vec2 dlp = vec2(dot(decalA[i].zw, dd), dot(decalB[i].xy, dd));
+      vec2 dq = abs(dlp - 0.5) * 2.0;
+      float dIn = decalB[i].z > 0.5 ? step(dot(dq, dq), 1.0) : step(max(dq.x, dq.y), 1.0);
+      if (dIn > 0.5) {
+        vec4 dc = texture2D(decalMap, clamp(dlp, 0.0, 1.0));
+        diffuseColor.rgb = mix(tintColor * 0.9, dc.rgb, dc.a);
+      }
+    }
+  }`);
   };
-  mat.customProgramCacheKey = () => "boxerMaskedTint";
+  mat.customProgramCacheKey = () => "boxerMaskedTintDecal";
+  return mat;
+}
+
+/**
+ * Girdle shell: flat tint (or the Spacial finish) plus the Gear Decal patch on
+ * the front, centred under the waistband. Standard decal = a solid patch in the
+ * decal colour; a custom decal paints its picture there, transparent parts
+ * showing the girdle colour. Patch coords come from the bind-space position.
+ */
+const GIRDLE_PATCH = { cx: 0, cy: 110.4, w: 8.6, h: 8.6 * 288 / 512 };
+function girdleShellMaterial(decalColor: { value: THREE.Color }, decal: DecalUniforms): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0 });
+  const u = { tint: { value: new THREE.Color(1, 1, 1) }, spacialOn: { value: 0 }, spacialMap: { value: null as THREE.Texture | null } };
+  mat.userData.maskedTint = u;
+  const P = GIRDLE_PATCH;
+  mat.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, { tintColor: u.tint, spacialOn: u.spacialOn, spacialMap: u.spacialMap, patchColor: decalColor, decalOn: decal.on, decalMap: decal.map });
+    sh.vertexShader = "varying vec2 vPatch;\nvarying float vPatchFront;\n" + sh.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
+  vPatch = vec2((position.x - ${P.cx.toFixed(2)}) / ${P.w.toFixed(2)} + 0.5, (position.y - ${P.cy.toFixed(2)}) / ${P.h.toFixed(3)} + 0.5);
+  vPatchFront = step(0.0, position.z) * step(0.25, normal.z);`);
+    sh.fragmentShader = "uniform vec3 tintColor;\nuniform float spacialOn;\nuniform sampler2D spacialMap;\nuniform vec3 patchColor;\nuniform float decalOn;\nuniform sampler2D decalMap;\nvarying vec2 vPatch;\nvarying float vPatchFront;\n"
+      + sh.fragmentShader.replace("#include <map_fragment>", `#include <map_fragment>
+  diffuseColor.rgb *= tintColor;
+  if (spacialOn > 0.5) diffuseColor.rgb = texture2D(spacialMap, gl_FragCoord.xy / 110.0).rgb;
+  vec2 pq = abs(vPatch - 0.5) * 2.0;
+  if (gl_FrontFacing && vPatchFront > 0.5 && max(pq.x, pq.y) <= 1.0) {
+    if (decalOn > 0.5) {
+      vec4 pc = texture2D(decalMap, vPatch);
+      diffuseColor.rgb = mix(diffuseColor.rgb, pc.rgb, pc.a);
+    } else {
+      vec2 pk = max(pq - vec2(0.82, 0.68), 0.0) / vec2(0.18, 0.32);
+      if (dot(pk, pk) <= 1.0) diffuseColor.rgb = patchColor * 0.92;
+    }
+  }`);
+  };
+  mat.customProgramCacheKey = () => "boxerGirdleShell";
   return mat;
 }
 
@@ -432,14 +632,17 @@ export function buildBoxerRig(t: BoxerTemplate): RigInstance {
   };
   tex(materials.skin, T.skinLight, T.skinNormal);
   tex(materials.trunks, T.shorts, T.shortsNormal);
-  materials.glove.dispose(); materials.shoe.dispose(); materials.headgear.dispose(); materials.tape.dispose();
-  materials.glove = maskedTintMaterial(T.gear, T.gearMask, T.gearNormal, 0.4);
+  materials.glove.dispose(); materials.shoe.dispose(); materials.headgear.dispose(); materials.tape.dispose(); materials.girdle.dispose();
+  const decalU: DecalUniforms = { on: { value: 0 }, map: { value: null } };
+  const girdlePatchColor = { value: new THREE.Color(1, 1, 1) };
+  materials.glove = maskedTintMaterial(T.gear, T.gearMask, T.gearNormal, 0.4, false, decalU);
   materials.shoe = maskedTintMaterial(T.gear, T.gearMask, T.gearNormal, 0.55);
-  materials.headgear = maskedTintMaterial(T.gear, T.gearMask, T.gearNormal, 0.5);
+  materials.headgear = maskedTintMaterial(T.gear, T.gearMask, T.gearNormal, 0.5, false, decalU);
+  materials.girdle = girdleShellMaterial(girdlePatchColor, decalU);
   materials.tape = maskedTintMaterial(T.gear, T.gearMask, T.gearNormal, 0.8, true);
   materials.headgear.side = THREE.DoubleSide;
   const sub = (m: THREE.Material) => m.userData.maskedTint as { tint2: { value: THREE.Color }; tint3: { value: THREE.Color } };
-  materials.decal.userData.linkedTints = [sub(materials.glove).tint2, sub(materials.headgear).tint2];
+  materials.decal.userData.linkedTints = [sub(materials.glove).tint2, sub(materials.headgear).tint2, girdlePatchColor];
   materials.sole.userData.linkedTints = [sub(materials.shoe).tint2];
   materials.laces.userData.linkedTints = [sub(materials.shoe).tint3];
   // The wrist strap is the glove's cuff band (blue on the glove) plus the trim piece.
@@ -469,6 +672,8 @@ export function buildBoxerRig(t: BoxerTemplate): RigInstance {
   const hidden = new THREE.MeshBasicMaterial({ visible: false });
 
   const srcMats = ([] as THREE.Material[]).concat(body.material);
+  const trunksIdx = srcMats.findIndex(m => m.name === "phong1"), tankIdx = srcMats.findIndex(m => m.name === "blinn21");
+  let undressReferee: (() => void) | null = null;
   body.material = srcMats.map(m => m.name === "phong1" ? materials.trunks
     : m.name === "blinn21" ? hidden // the tank top: boxers fight bare-chested
       : m.name === "phongE1" ? mouthMat
@@ -518,10 +723,16 @@ export function buildBoxerRig(t: BoxerTemplate): RigInstance {
       setMorph(MORPHS.blinkL, blink); setMorph(MORPHS.blinkR, blink);
       setMorph(MORPHS.squintL, squint); setMorph(MORPHS.squintR, squint);
     },
+    setCustomDecal(tex) {
+      decalU.on.value = tex ? 1 : 0;
+      decalU.map.value = tex;
+    },
     setRefereeMode() {
       for (const g of gloveMeshes) g.visible = false;
+      if (!undressReferee) undressReferee = dressBodyAsReferee(body, trunksIdx, tankIdx);
     },
     dispose() {
+      undressReferee?.();
       for (const m of Object.values(materials) as THREE.Material[]) m.dispose();
       eyeMat.dispose(); mouthMat.dispose(); hidden.dispose(); girdleBand.dispose();
     },

@@ -17,13 +17,15 @@ import {
 } from "../renderer";
 import { BONE_NAMES, type BoneName, type Region, type RigInstance, createRig, fighterAssetEpoch } from "./fighterRig";
 import { type PoseMemory, type PoseTargets, type RigDims, eyeState, newPoseMemory, newPoseTargets, solvePose } from "./fighterPose";
-import { PB_VARIANTS, getGuardOffsets, getNoseLine, getPoseOffsets, pickPbVariant, shoulderRollEnabled, type PbVariant, type PoseOffsets } from "./poseOffsets";
+import { PB_VARIANTS, getGuardOffsets, getHandLocks, getNoseLine, getPoseOffsets, pickPbVariant, shoulderRollEnabled, type PbVariant, type PoseOffsets } from "./poseOffsets";
 import { PROFILE_VIEW_OPP_PX, activePunchProfile, type ActivePunchProfile } from "./punchProfiles";
 import { createInitialState } from "../engine";
 import { MAT_HEIGHT, toSceneX, toSceneYaw, toSceneZ } from "./worldMapping";
 import { type BodyTilt, type KdMemory, applyKnockdownPose, newKdMemory } from "./knockdownPose";
 import { maskedTintOf } from "./boxerBody";
-import type { GloveHitBox } from "./gloveHitBox";
+import { customDecalRenderKey, customDecalTexture, parseCustomDecalColor } from "../customDecals";
+import { type GloveHitBox, newGloveHitBox } from "./gloveHitBox";
+import { HURT_PARTS, type HurtPart, boxSeparation, getHurtBoxes, hurtBoxLocal } from "./hurtBox";
 import { type RefereeMemory, buildRefereeClothes, newRefereeMemory, solveRefereePose } from "./referee3d";
 
 interface BoneBind {
@@ -58,28 +60,32 @@ function setSpacial(mat: THREE.MeshStandardMaterial, on: boolean, tex: THREE.Tex
   if (mt) { mt.spacialOn.value = on ? 1 : 0; mt.spacialMap.value = on ? tex : null; return; }
   const ls = mat.userData.linkedSpacial as { on: { value: number }; map: { value: THREE.Texture | null } } | undefined;
   if (ls) { ls.on.value = on ? 1 : 0; ls.map.value = on ? tex : null; mat.userData.spacial = on; return; }
-  const was = mat.userData.spacial === true;
-  if (on === was) {
-    if (on && mat.userData.uniform) mat.userData.uniform.value = tex;
-    return;
-  }
-  mat.userData.spacial = on;
-  if (on) {
-    const uniform = { value: tex };
-    mat.userData.uniform = uniform;
-    mat.onBeforeCompile = sh => {
-      sh.uniforms.spacialMap = uniform;
-      sh.fragmentShader = "uniform sampler2D spacialMap;\n" + sh.fragmentShader.replace(
+  // Patched once, then toggled by uniform: swapping onBeforeCompile per toggle
+  // lets three reuse the cached spacial program with the plain uniforms, which
+  // leaves the starfield map unbound (white trunks).
+  let su = mat.userData.spacialUniforms as { on: { value: number }; map: { value: THREE.Texture | null } } | undefined;
+  if (!su) {
+    if (!on) return;
+    const uniforms = { on: { value: 0 }, map: { value: null as THREE.Texture | null } };
+    su = uniforms;
+    mat.userData.spacialUniforms = uniforms;
+    const prevCompile = mat.onBeforeCompile;
+    const prevKey = mat.customProgramCacheKey();
+    mat.onBeforeCompile = (sh, r) => {
+      prevCompile.call(mat, sh, r);
+      sh.uniforms.spacialOn = uniforms.on;
+      sh.uniforms.spacialMap = uniforms.map;
+      sh.fragmentShader = "uniform float spacialOn;\nuniform sampler2D spacialMap;\n" + sh.fragmentShader.replace(
         "#include <map_fragment>",
-        "#include <map_fragment>\n diffuseColor.rgb = texture2D(spacialMap, gl_FragCoord.xy / 110.0).rgb;",
+        "#include <map_fragment>\n if (spacialOn > 0.5) diffuseColor.rgb = texture2D(spacialMap, gl_FragCoord.xy / 110.0).rgb;",
       );
     };
-    mat.customProgramCacheKey = () => "spacial";
-  } else {
-    mat.onBeforeCompile = () => {};
-    mat.customProgramCacheKey = () => "plain";
+    mat.customProgramCacheKey = () => `${prevKey}|spacialable`;
+    mat.needsUpdate = true;
   }
-  mat.needsUpdate = true;
+  su.on.value = on ? 1 : 0;
+  su.map.value = on ? tex : null;
+  mat.userData.spacial = on;
 }
 
 /** Set a region's colour: textured gear tints through its mask, the textured skin through the rig. */
@@ -214,7 +220,11 @@ export class Fighter3D {
   /** Torso slabs in bind body space, each riding its spine bone; gloves are spheres of gloveR. */
   private torso: { bone: BoneName; bind: THREE.Matrix4; y0: number; y1: number; cx: number; cz: number; d: number; w: number; back?: boolean }[] = [];
   private gloveR = 0.09;
-  private headR = 0.1;
+  /**
+   * Hurt boxes' measured base (before Edit Poses' tweaks): centre + half size in
+   * body bind space, riding `bone` through rel = bone bind world⁻¹ · body bind world.
+   */
+  private hurtBase: Record<HurtPart, { bone: BoneName; rel: THREE.Matrix4; c: THREE.Vector3; s: THREE.Vector3 }> | null = null;
   /** Glove hit box half-extents (m) in each glove centre's local frame [left, right]. */
   readonly gloveHalf = [new THREE.Vector3(0.06, 0.06, 0.08), new THREE.Vector3(0.06, 0.06, 0.08)];
   private armPrev: (THREE.Quaternion[] | null)[] = [null, null];
@@ -224,8 +234,6 @@ export class Fighter3D {
     const pts: Partial<Record<BoneName, THREE.Vector3[]>> = {};
     const glove: number[] = [];
     const shoulders: THREE.Vector3[] = [];
-    const head: number[] = [];
-    const hc = this.rig.headgear.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv);
     const gc = [this.rig.gloveCenter.left, this.rig.gloveCenter.right].map(o => o.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv));
     const gl = [this.rig.gloveCenter.left, this.rig.gloveCenter.right].map(o => new THREE.Matrix4().copy(o.matrixWorld).invert());
     const ext: number[][][] = [[[], [], []], [[], [], []]];
@@ -233,23 +241,42 @@ export class Fighter3D {
     const canon = new Map<THREE.Object3D, BoneName>();
     for (const n of BONE_NAMES) canon.set(this.rig.bones[n], n);
     const v = new THREE.Vector3();
+    const BODY = new Set<BoneName>(["Spine", "Spine1", "Spine2", "Hips", "LeftShoulder", "RightShoulder"]);
+    const headPts: THREE.Vector3[] = [], bodyPts: THREE.Vector3[] = [];
+    let trunksTop = -Infinity;
     this.rig.body.traverse(o => {
       const m = o as THREE.SkinnedMesh;
       if (!m.isSkinnedMesh || !m.geometry.attributes.skinIndex) return;
       const si = m.geometry.attributes.skinIndex, sw = m.geometry.attributes.skinWeight;
+      // Per-vertex material tag: 1 = trunks, 2 = hidden (e.g. the tank top).
+      const tag = new Uint8Array(si.count);
+      if (Array.isArray(m.material)) {
+        const idx = m.geometry.index;
+        for (const g of m.geometry.groups) {
+          const mat = m.material[g.materialIndex ?? 0];
+          const t = mat === this.rig.materials.trunks ? 1 : mat && !mat.visible ? 2 : 0;
+          if (t) for (let j = g.start; j < g.start + g.count && j < (idx ? idx.count : si.count); j++) {
+            const vi = idx ? idx.getX(j) : j;
+            if (t > tag[vi]) tag[vi] = t;
+          }
+        }
+      } else if (m.material === this.rig.materials.trunks) tag.fill(1);
       for (let i = 0; i < si.count; i++) {
         let best = 0;
         for (let k = 1; k < 4; k++) if (sw.getComponent(i, k) > sw.getComponent(i, best)) best = k;
         const n = canon.get(m.skeleton.bones[si.getComponent(i, best)]);
+        if (tag[i] === 1) { m.getVertexPosition(i, v).applyMatrix4(m.matrixWorld).applyMatrix4(inv); trunksTop = Math.max(trunksTop, v.y); }
         if (!n) continue;
+        if (m !== this.rig.girdle && !tag[i] && (n === "Head" || BODY.has(n))) {
+          (n === "Head" ? headPts : bodyPts).push(m.getVertexPosition(i, new THREE.Vector3()).applyMatrix4(m.matrixWorld).applyMatrix4(inv));
+        }
         const side = n === "LeftHand" ? 0 : n === "RightHand" ? 1 : -1;
         const sh = n === "LeftShoulder" || n === "RightShoulder";
-        if (side < 0 && !sh && n !== "Head" && !TORSO.includes(n)) continue;
+        if (side < 0 && !sh && !TORSO.includes(n)) continue;
         m.getVertexPosition(i, v).applyMatrix4(m.matrixWorld);
         if (side >= 0) { lv.copy(v).applyMatrix4(gl[side]); ext[side][0].push(Math.abs(lv.x)); ext[side][1].push(Math.abs(lv.y)); ext[side][2].push(Math.abs(lv.z)); }
         v.applyMatrix4(inv);
         if (side >= 0) glove.push(v.distanceTo(gc[side]));
-        else if (n === "Head") head.push(v.distanceTo(hc));
         else if (sh) shoulders.push(v.clone());
         else if (n !== "Hips" || v.y > this.dims.hips.y - 0.1) (pts[n] ??= []).push(v.clone());
       }
@@ -276,7 +303,21 @@ export class Fighter3D {
     }
     if (glove.length > 20) this.gloveR = pct(glove, 0.5);
     ext.forEach((e, s) => { if (e[0].length > 20) this.gloveHalf[s].set(pct(e[0], 0.95), pct(e[1], 0.95), pct(e[2], 0.95)); });
-    if (head.length > 20) this.headR = pct(head, 0.6);
+    // Hurt boxes: head verts, and torso/shoulder verts above the waistband (2-98% extents).
+    const waistY = Number.isFinite(trunksTop) ? trunksTop : this.dims.hips.y;
+    const aabb = (a: THREE.Vector3[], floor = -Infinity) => {
+      const lo = new THREE.Vector3(pct(a.map(p => p.x), 0.02), Math.max(floor, pct(a.map(p => p.y), 0.02)), pct(a.map(p => p.z), 0.02));
+      const hi = new THREE.Vector3(pct(a.map(p => p.x), 0.98), pct(a.map(p => p.y), 0.98), pct(a.map(p => p.z), 0.98));
+      return { c: lo.clone().add(hi).multiplyScalar(0.5), s: hi.sub(lo).multiplyScalar(0.5).max(new THREE.Vector3(0.01, 0.01, 0.01)) };
+    };
+    const above = bodyPts.filter(p => p.y > waistY);
+    const headBox = headPts.length >= 20 ? aabb(headPts)
+      : { c: new THREE.Vector3(0, this.dims.headY, 0), s: new THREE.Vector3(0.1, 0.12, 0.1) };
+    const bodyBox = above.length >= 20 ? aabb(above, waistY)
+      : { c: new THREE.Vector3(0, (waistY + this.dims.shoulder[0].y) / 2, 0), s: new THREE.Vector3(0.12, (this.dims.shoulder[0].y - waistY) / 2, 0.16) };
+    const bodyWorld = new THREE.Matrix4().copy(inv).invert();
+    const rel = (b: BoneName) => new THREE.Matrix4().copy(this.rig.bones[b].matrixWorld).invert().multiply(bodyWorld);
+    this.hurtBase = { head: { bone: "Head", rel: rel("Head"), ...headBox }, body: { bone: "Spine1", rel: rel("Spine1"), ...bodyBox } };
     this.armPrev = [null, null];
     this.armPrevO = [null, null];
   }
@@ -285,9 +326,6 @@ export class Fighter3D {
   private _tp = new THREE.Vector3();
   private _push = new THREE.Vector3();
   private _tq = new THREE.Quaternion();
-  private _tg = new THREE.Matrix4();
-  private _tv = new THREE.Vector3();
-  private _tp2 = new THREE.Vector3();
   /** How far glove `side` sits inside `o`'s torso (0 = clear, 1 = at its axis); _push = world move that would put it on the surface. bodyInv = o's body inverse. */
   private torsoPen(side: 0 | 1, bodyInv: THREE.Matrix4, o: Fighter3D = this): number {
     const g = (side ? this.rig.gloveCenter.right : this.rig.gloveCenter.left).getWorldPosition(this._tp).applyMatrix4(bodyInv);
@@ -309,7 +347,7 @@ export class Fighter3D {
         ux = 0; uz = az > 1e-6 ? Math.sign(dz) : side ? 1 : -1;
         depth = b - az + 0.003;
       } else {
-        if (t.back) continue;
+        if (t.back || (o === this && this.selfCollideBackOnly)) continue;
         const e = Math.hypot(dx / a, dz / b);
         if (e >= 1 || 1 - e <= pen) continue;
         pen = 1 - e;
@@ -322,33 +360,39 @@ export class Fighter3D {
     }
     return pen;
   }
-  /** How far (m, per face) glove `side`'s hit box is from o's head or front torso; <= 0 = touching. */
-  gloveGap(side: 0 | 1, o: Fighter3D, box: GloveHitBox): number {
+  private _hl = newGloveHitBox();
+  private _hm = new THREE.Matrix4();
+  private _gm = new THREE.Matrix4();
+  private _hp = new THREE.Vector3();
+  /** Measured base half size of a hurt box (Edit Poses' face-drag limits). */
+  hurtBaseHalf(part: HurtPart): THREE.Vector3 | null {
+    return this.hurtBase?.[part].s ?? null;
+  }
+  /** Hurt box `part` as a unit-cube → world matrix (Edit Poses draws exactly this). */
+  hurtBoxMatrix(part: HurtPart, out: THREE.Matrix4): THREE.Matrix4 | null {
+    const b = this.hurtBase?.[part];
+    if (!b) return null;
+    const h = hurtBoxLocal(getHurtBoxes()[part], b.c, b.s, this._hl);
+    return out.compose(h.c, h.q, h.s).premultiply(b.rel).premultiply(this.rig.bones[b.bone].matrixWorld);
+  }
+  /** Glove `side`'s hit box as a unit-cube → world matrix (the punch animator draws exactly this). */
+  gloveBoxMatrix(side: 0 | 1, box: GloveHitBox, out: THREE.Matrix4): THREE.Matrix4 {
     const gc = side ? this.rig.gloveCenter.right : this.rig.gloveCenter.left;
-    const h = box.s;
-    const gInv = this._tg.copy(gc.matrixWorld).invert();
-    const qInv = this._tq.copy(box.q).invert();
-    // How far (per face) the hit box must grow to reach world point q.
-    const grow = (q: THREE.Vector3) => { q.applyMatrix4(gInv).applyQuaternion(qInv).sub(box.c); return Math.max(Math.abs(q.x) - h.x, Math.abs(q.y) - h.y, Math.abs(q.z) - h.z); };
-    let gap = o.headCenterValid ? grow(this._tv.copy(o.headCenter)) - o.headR : Infinity;
-    const bodyInv = this._tb.copy(o.rig.body.matrixWorld).invert();
-    const g = gc.getWorldPosition(this._tp2).applyMatrix4(bodyInv);
-    for (const t of o.torso) {
-      if (t.back) continue;
-      this._tm.copy(bodyInv).multiply(o.rig.bones[t.bone].matrixWorld).invert().premultiply(t.bind);
-      const p = this._tp.copy(g).applyMatrix4(this._tm);
-      const dx = p.x - t.cx, dz = p.z - t.cz, len = Math.hypot(dx, dz);
-      const r = len > 1e-6 ? 1 / Math.hypot(dx / len / t.d, dz / len / t.w) : 0;
-      if (len <= r && p.y >= t.y0 && p.y <= t.y1) { gap = Math.min(gap, -0.05); continue; }
-      // Nearest torso surface point, back to world.
-      const k = len > r ? r / len : 1;
-      p.set(t.cx + dx * k, Math.min(t.y1, Math.max(t.y0, p.y)), t.cz + dz * k)
-        .applyMatrix4(this._tm.invert()).applyMatrix4(o.rig.body.matrixWorld);
-      gap = Math.min(gap, grow(p));
+    return out.compose(this._hp.copy(box.c).applyQuaternion(box.q), box.q, box.s).premultiply(gc.matrixWorld);
+  }
+  /** How far (m) glove `side`'s hit box is from o's head or body hurt box; <= 0 = touching. */
+  gloveGap(side: 0 | 1, o: Fighter3D, box: GloveHitBox): number {
+    const g = this.gloveBoxMatrix(side, box, this._gm);
+    let gap = Infinity;
+    for (const part of HURT_PARTS) {
+      const m = o.hurtBoxMatrix(part, this._hm);
+      if (m) gap = Math.min(gap, boxSeparation(g, m));
     }
     return gap;
   }
   private armPrevO: (THREE.Quaternion[] | null)[] = [null, null];
+  /** Own torso is only a wall at the back (Edit Poses): the glove may sink into the front up to the spine line. */
+  selfCollideBackOnly = false;
   /** The punch profile playing has self-collision off: the own-torso pass only tracks its baseline. */
   private selfCollideOff = false;
   private armPenO = [0, 0];
@@ -478,7 +522,8 @@ export class Fighter3D {
     this.root.rotation.set(0, toSceneYaw(facing), 0);
     this.rig.body.quaternion.identity();
     this.rig.body.position.set(0, 0, 0);
-    if (!this.shirt) this.shirt = buildRefereeClothes(this.rig, this.bind, this.dims);
+    // The textured body wears clothes made from its own skin (setRefereeMode); other rigs get the tube overlay.
+    if (!this.shirt) this.shirt = this.rig.kind === "boxer" ? new THREE.Group() : buildRefereeClothes(this.rig, this.bind, this.dims);
     solveRefereePose(state, this.dims, this.refMem, dt, this.pose);
     this.applyPose();
     const M = this.rig.materials;
@@ -752,7 +797,7 @@ export class Fighter3D {
     const src = f.defenseStance;
     const up = f.pbPreview != null || (!f.isKnockedDown && (f.perfectBlockState === "rising" || f.perfectBlockState === "active"
       || (f.perfectBlockActive && f.perfectBlockTimer > 0)));
-    // X held in full guard plays this guard's Shoulder Roll slot (when active), over any perfect block.
+    // C held in full guard plays this guard's Shoulder Roll slot (when active), over any perfect block.
     const roll = f.pbPreview == null && !f.isKnockedDown && !!f.shoulderRolling && shoulderRollEnabled(stance, src);
     const v = roll ? "shoulderRoll" : f.pbPreview ?? pickPbVariant(opponent?.isPunching ? opponent.currentPunch : null, this.mem.stanceBlend >= 0.5, stance, src);
     for (const x of PB_VARIANTS) {
@@ -881,6 +926,11 @@ export class Fighter3D {
         (["Left", "Right"] as const).forEach((s, i) => {
           if (mem.armPunch[1 - i] && !mem.armPunch[i]) Fighter3D.ARM_CHAIN.forEach(j => target.add(`${s}${j}` as BoneName));
         });
+        // Edit Poses hand locks: held through every punch in this guard.
+        if (mem.armPunch[0] || mem.armPunch[1]) {
+          const sp = f.boxingStance === "southpaw";
+          getHandLocks(f.guardStance ?? 0).forEach(b => target.add(sp ? (b === "LeftHand" ? "RightHand" : "LeftHand") : b));
+        }
       }
     }
     const g = Math.max(0, Math.min(1, f.guardBlend || 0));
@@ -1009,7 +1059,7 @@ export class Fighter3D {
       skin: c.skin,
       trunks: c.trunks,
       stripe: c.trunks,
-      decal: c.gearDecal || defaultGearDecalColor(),
+      decal: cssColorOf(c.gearDecal || defaultGearDecalColor()),
       socks: c.socks || DEFAULT_SOCK_COLOR,
       glove: c.gloves,
       tape: c.gloveTape || "#eeeeee",
@@ -1025,9 +1075,12 @@ export class Fighter3D {
         : (SPARRING_HEADGEAR_BY_DIFFICULTY[state.aiDifficulty ?? ""] || c.girdle || DEFAULT_HEADGEAR_COLOR),
       girdleLaces: f.isPlayer ? (c.girdleLaces || "#f2f2f2") : "#f2f2f2",
     };
-    const key = Object.values(regionColor).join("|");
+    // A custom Gear Decal rides the decal string as `decal:<id>|<hex>`.
+    const custom = parseCustomDecalColor(c.gearDecal);
+    const key = Object.values(regionColor).join("|") + (custom ? `|${customDecalRenderKey(custom.id)}` : "");
     if (key !== this.colorKey) {
       this.colorKey = key;
+      this.rig.setCustomDecal?.(custom ? customDecalTexture(custom.id) : null);
       for (const r of Object.keys(regionColor) as Region[]) {
         const col = regionColor[r];
         const spacial = r !== "skin" && isSpacial(col);

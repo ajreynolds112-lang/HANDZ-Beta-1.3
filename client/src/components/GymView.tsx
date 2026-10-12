@@ -8,7 +8,6 @@ import ActiveBoostsHud from "@/components/ActiveBoostsHud";
 import { hasUnseenItems, markItemsSeen } from "@/lib/itemInventory";
 import { getGymIncomeMult, hasPerk } from "@/game/itemEffects";
 import { clampPassiveClock } from "@/game/gymIncome";
-import { diamondLevelUpCost } from "@/game/diamondLevelCost";
 import { isEquipmentCrateUnlocked, pendingEquipmentUnlocks } from "@/game/equipmentConfig";
 import { equipmentCareerWins } from "@/lib/equipmentUpgrades";
 import RefinementProgressMeter from "@/components/RefinementProgressMeter";
@@ -81,7 +80,6 @@ export interface GymViewProps {
   onOpenRefinements: () => void;
   onOpenEditColors: () => void;
   onOpenEditRingColors: () => void;
-  onLevelUp: () => void;
   /**
    * "available" — the free weekly sweep is unspent.
    * "paid" — free sweep spent, but it's the back half of the week, so another
@@ -117,8 +115,21 @@ export interface GymViewProps {
   /** Challenges: open requests (office) and the away-gym visit, if any. */
   challenges?: GymChallenges;
   onChallengeDecision?: (id: string, approve: boolean) => void;
+  getChallengeContract?: (id: string) => ChallengeContract | null;
   onChallengeSpar?: () => void;
   onChallengeReturnHome?: () => void;
+}
+
+export interface ChallengeContract {
+  weeks: number;
+  force: number;
+  rankNow: number;
+  rankWin: number;
+  rankLoss: number;
+  chestCount: number;
+  chestOdds: { name: string; pct: number }[];
+  statPoints: number;
+  acceptable: boolean;
 }
 
 export interface GymChallenges {
@@ -128,7 +139,7 @@ export interface GymChallenges {
   }[];
   /** `gym` indexes AWAY_GYMS. */
   away: { name: string; done: boolean; gym: number } | null;
-  /** A fight is already booked. */
+  /** A bout request contract is already pending. */
   fightBlocked: boolean;
   /** Fight week. */
   sparBlocked: boolean;
@@ -265,13 +276,14 @@ function makeGymFight(): GameState {
 // ==================== MAIN COMPONENT ====================
 export default function GymView({
   fighter, playerColors, playerRank, weeklyBonus, trainingLocked, trainingLockReason, refinementSpent, refinementUnlocked, refinementUnseen,
-  onExit, onOpenPlanner, onOpenStats, onOpenRefinements, onOpenEquipment, onOpenEditColors, onOpenEditRingColors, onLevelUp, sweepStatus, onSweep,
+  onExit, onOpenPlanner, onOpenStats, onOpenRefinements, onOpenEquipment, onOpenEditColors, onOpenEditRingColors, sweepStatus, onSweep,
   onStartSparring, onStartWeightLifting, onStartBagWork, onStartFreeBag, onFightNow, onForceChange,
   onForceToDiamond, roster, overlayBanner, onFighterChanged, onDailyRewardDue,
-  challenges, onChallengeDecision, onChallengeSpar, onChallengeReturnHome,
+  challenges, onChallengeDecision, getChallengeContract, onChallengeSpar, onChallengeReturnHome,
 }: GymViewProps) {
   const away = challenges?.away ?? null;
   const [challengesOpen, setChallengesOpen] = useState(false);
+  const [contractView, setContractView] = useState<{ id: string; name: string; q: ChallengeContract } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
   const hoveredRef = useRef<GymZone | null>(null);
@@ -301,10 +313,9 @@ export default function GymView({
   const [gymState, setGymState] = useState<GymState>(() => { const s=loadGymState(); gymRef.current=s; return s; });
   const [hoveredZone, setHoveredZone] = useState<GymZone | null>(null);
   const [popup, setPopup] = useState<{ zone: GymZone; x: number; y: number } | null>(null);
-  const [confirmingLevelUp, setConfirmingLevelUp] = useState(false);
   const [styleOpen, setStyleOpen] = useState(false);
   const [confirmingSweep, setConfirmingSweep] = useState(false);
-  useEffect(() => { setConfirmingLevelUp(false); setConfirmingSweep(false); }, [popup]);
+  useEffect(() => { setConfirmingSweep(false); }, [popup]);
   const [currentForce, setCurrentForce] = useState<number>(fighter.force ?? 0);
   const [earnedOnEnter, setEarnedOnEnter] = useState<number>(0);
   const [convertOpen, setConvertOpen] = useState(false);
@@ -625,8 +636,12 @@ export default function GymView({
       // At a challenger's gym: no leaving or training until the challenge is done.
       // Nothing of the player's own lives here: lockers, crate, trophy cases, office.
       if (zone === "office" || zone === "lockers" || zone === "equipCrate" || zone === "trophyA" || zone === "trophyB") return;
-      if (!away.done && (zone === "door" || zone === "weights" || zone.startsWith("bag"))) return;
-      if (zone === "door") { setPopup({ zone, x: e.clientX, y: e.clientY }); return; }
+      if (!away.done && (zone === "weights" || zone.startsWith("bag"))) return;
+      if (zone === "door") {
+        if (away.done) setPopup({ zone, x: e.clientX, y: e.clientY });
+        else onExit();
+        return;
+      }
     }
     if (zone === "door") { onExit(); return; }
     if (zone === "trophyA") { onOpenStats(); return; }
@@ -813,6 +828,7 @@ export default function GymView({
       >
         {popup.zone === "door" && away && <>
           <button className={btnAction} onClick={() => { setPopup(null); onChallengeReturnHome?.(); }} data-testid="gym-challenge-return">🏠 Return Home</button>
+          <button className={btnAction} onClick={() => { setPopup(null); onExit(); }} data-testid="gym-challenge-exit">🚪 Main Menu</button>
         </>}
 
         {popup.zone === "ring" && away && !away.done && <>
@@ -895,7 +911,6 @@ export default function GymView({
 
         {popup.zone === "player" && (() => {
           const sp = fighter.skillPoints ?? { power: 0, speed: 0, defense: 0, stamina: 0, focus: 0 };
-          const levelUpCost = diamondLevelUpCost(fighter.diamondLevelsBought ?? 0);
           return <>
           <div className="text-white font-bold text-xs">{displayName}</div>
           <div className="text-yellow-400 text-[10px]">Level {fighter.level} · Rank #{playerRank}</div>
@@ -903,20 +918,11 @@ export default function GymView({
             PWR {sp.power} · SPD {sp.speed} · DEF {sp.defense} · STA {sp.stamina} · FOC {sp.focus}
           </div>
           {!away && <div className="text-cyan-300 text-[10px] mb-1">Looking sharp. Want a new look?</div>}
-          {confirmingLevelUp ? <>
-            <div className="text-cyan-300 text-[10px] font-bold text-center">Spend {levelUpCost.toLocaleString()} diamond{levelUpCost === 1 ? "" : "s"} to level up?</div>
-            {/* Confirming drops back to the panel's normal buttons — showing the
-                new level and the next price — rather than closing it. */}
-            <button className={btnAction} onClick={() => { setConfirmingLevelUp(false); onLevelUp(); }} data-testid="gym-player-levelup-confirm">💎 Confirm</button>
-            <button className={`${btnBase} text-white/60 bg-white/5 hover:bg-white/10`} onClick={() => setConfirmingLevelUp(false)} data-testid="gym-player-levelup-cancel">Cancel</button>
-          </> : <>
-            {(fighter.diamonds ?? 0) >= levelUpCost
-              ? <button className={btnAction} onClick={() => setConfirmingLevelUp(true)} data-testid="gym-player-levelup">⬆ Level Up — {levelUpCost.toLocaleString()} 💎</button>
-              : <button className={`${btnBase} text-white/40 bg-white/5 cursor-not-allowed`} disabled data-testid="gym-player-levelup">⬆ Level Up — needs {levelUpCost.toLocaleString()} 💎</button>}
+          <>
             <button className={btnAction} onClick={() => { setPopup(null); setStyleOpen(true); }} data-testid="gym-player-fighting-style">🥊 Fighting Style</button>
             {!away && <button className={btnAction} onClick={() => { setPopup(null); onOpenEditColors(); }} data-testid="gym-player-edit-colors">🎨 Edit Colors</button>}
             <button className={`${btnBase} text-white/60 bg-white/5 hover:bg-white/10`} onClick={() => setPopup(null)} data-testid="gym-player-cancel">Not now</button>
-          </>}
+          </>
           </>;
         })()}
 
@@ -978,12 +984,20 @@ export default function GymView({
                       <div className="text-white text-xs font-bold truncate">{r.name}</div>
                       <div className="text-white/60 text-[10px]">{r.rank != null ? `#${r.rank} · ` : ""}{r.record} · Lv.{r.level} · {r.weeksLeft}w</div>
                     </div>
-                    <button
-                      className={`rounded px-2 py-1 text-[11px] font-bold ${blocked ? "bg-white/5 text-white/30 cursor-not-allowed" : "bg-green-700 hover:bg-green-600 text-white"}`}
-                      disabled={blocked}
-                      onClick={() => { setChallengesOpen(false); onChallengeDecision?.(r.id, true); }}
-                      data-testid={`gym-challenge-approve-${r.id}`}
-                    >Approve</button>
+                    {r.kind === "fight" ? (
+                      <button
+                        className="rounded px-2 py-1 text-[11px] font-bold bg-yellow-700 hover:bg-yellow-600 text-white"
+                        onClick={() => { const q = getChallengeContract?.(r.id); if (q) setContractView({ id: r.id, name: r.name, q }); }}
+                        data-testid={`gym-challenge-contract-${r.id}`}
+                      >View Contract</button>
+                    ) : (
+                      <button
+                        className={`rounded px-2 py-1 text-[11px] font-bold ${blocked ? "bg-white/5 text-white/30 cursor-not-allowed" : "bg-green-700 hover:bg-green-600 text-white"}`}
+                        disabled={blocked}
+                        onClick={() => { setChallengesOpen(false); onChallengeDecision?.(r.id, true); }}
+                        data-testid={`gym-challenge-approve-${r.id}`}
+                      >Approve</button>
+                    )}
                     <button
                       className="rounded px-2 py-1 text-[11px] font-bold bg-red-800 hover:bg-red-700 text-white"
                       onClick={() => onChallengeDecision?.(r.id, false)}
@@ -995,6 +1009,40 @@ export default function GymView({
             </div>
           </div>
         )}
+
+        {contractView && (() => {
+          const { q } = contractView;
+          const row = (label: string, value: React.ReactNode) => (
+            <div className="flex justify-between gap-3 text-xs"><span className="text-white/60">{label}</span><span className="text-white font-bold text-right">{value}</span></div>
+          );
+          return (
+            <div className="absolute inset-0 z-[90] flex items-center justify-center bg-black/60" onClick={() => setContractView(null)}>
+              <div className="bg-[#1a1a1a] border border-yellow-600/50 rounded-lg p-4 w-[340px] space-y-2" onClick={e => e.stopPropagation()} data-testid="gym-contract-panel">
+                <div className="text-yellow-400 font-black text-sm uppercase tracking-wide">Contract</div>
+                <div className="text-white text-sm font-bold">{contractView.name}</div>
+                {row("Fight in", `${q.weeks} ${q.weeks === 1 ? "week" : "weeks"}`)}
+                {row("Force prize", `⚡${q.force.toLocaleString()}`)}
+                {row("Rank if you win", <span className="text-green-400">#{q.rankWin} ({q.rankNow - q.rankWin >= 0 ? "+" : ""}{q.rankNow - q.rankWin})</span>)}
+                {row("Rank if you lose", <span className="text-red-400">#{q.rankLoss} ({q.rankNow - q.rankLoss >= 0 ? "+" : ""}{q.rankNow - q.rankLoss})</span>)}
+                {row("Chests (win)", `${q.chestCount}× ${q.chestOdds.map(o => `${o.name} ${o.pct}%`).join(" · ")}`)}
+                {row("Stat points (win)", `+${q.statPoints}`)}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    className={`flex-1 rounded px-2 py-1.5 text-xs font-bold ${q.acceptable ? "bg-green-700 hover:bg-green-600 text-white" : "bg-white/5 text-white/30 cursor-not-allowed"}`}
+                    disabled={!q.acceptable}
+                    onClick={() => { onChallengeDecision?.(contractView.id, true); setContractView(null); }}
+                    data-testid="gym-contract-accept"
+                  >Accept</button>
+                  <button
+                    className="flex-1 rounded px-2 py-1.5 text-xs font-bold bg-red-800 hover:bg-red-700 text-white"
+                    onClick={() => { onChallengeDecision?.(contractView.id, false); setContractView(null); }}
+                    data-testid="gym-contract-deny"
+                  >Deny</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {editGymOpen && (
           <EditGymPanel
@@ -1049,7 +1097,7 @@ export default function GymView({
           <FightingStyleDialog open={styleOpen} onOpenChange={setStyleOpen} fighter={fighter} onSaved={onFighterChanged} />
           {/* Defensive Mastery — mastery bar and the diamond ladder. */}
           <DefensiveMasteryMeter fighter={fighter} roster={roster} onFighterChanged={onFighterChanged} className="pointer-events-auto" />
-          <PurePowerMeter roster={roster} className="pointer-events-auto" />
+          <PurePowerMeter roster={roster} power={statLine.power} className="pointer-events-auto" />
           {/* Daily chests — time left until the 00:00 reset, worked out from the
               device clock so it keeps running offline. */}
           <DailyRewardBadge roster={roster} onDue={onDailyRewardDue} className="pointer-events-auto" />

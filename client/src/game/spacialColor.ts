@@ -42,12 +42,18 @@ export function isSpacial(color: string | null | undefined): boolean {
 
 /** The sentinel as something CSS will actually accept. */
 export function cssColorOf(color: string | null | undefined): string {
-  return isSpacial(color) ? SPACIAL_BASE_HEX : (color ?? SPACIAL_BASE_HEX);
+  if (isSpacial(color)) return SPACIAL_BASE_HEX;
+  // A custom gear decal (`decal:<id>|<hex>`) reads as its standard colour.
+  if (typeof color === "string" && color.startsWith("decal:")) {
+    const hex = color.slice(color.indexOf("|") + 1);
+    return /^#[0-9a-f]{6}$/i.test(hex) ? hex : "#ffffff";
+  }
+  return color ?? SPACIAL_BASE_HEX;
 }
 
-/** Gear fields the finish can cover. Skin is deliberately left alone. */
+/** Gear fields the finish can cover. Skin and the Gear Decal are deliberately left alone. */
 export const SPACIAL_GEAR_KEYS = [
-  "gloves", "gloveTape", "trunks", "shoes", "headgear", "socks", "laces", "soles", "gearDecal", "girdle", "girdleLaces",
+  "gloves", "gloveTape", "trunks", "shoes", "headgear", "socks", "laces", "soles", "girdle", "girdleLaces",
 ] as const;
 
 export type SpacialGearKey = typeof SPACIAL_GEAR_KEYS[number];

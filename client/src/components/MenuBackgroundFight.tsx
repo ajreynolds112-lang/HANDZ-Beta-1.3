@@ -1,5 +1,6 @@
 import { useRef, useEffect } from "react";
 import { GameState, FighterColors, SKIN_COLOR_PRESETS, Archetype } from "@/game/types";
+import { PREMADE_DECALS } from "@/game/premadeDecals";
 import { createInitialState, startFight, updateGame } from "@/game/engine";
 import { resetAutoZoom } from "@/game/renderer";
 import { soundEngine } from "@/game/sound";
@@ -16,6 +17,8 @@ const TRUNK_COLORS = ["#222222", "#cc2222", "#22aa22", "#ddaa00", "#aa22aa", "#1
 const SHOE_COLORS = ["#1a1a1a", "#2a1a1a", "#222222", "#3a2a1a"];
 const SOCK_COLORS = ["#f0f0f0", "#e6e6e6", "#111111", "#cc2222"];
 
+const WHITE_PREMADES = PREMADE_DECALS.filter(d => d.background?.toLowerCase() === "#ffffff");
+
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -28,6 +31,7 @@ function randomColors(): FighterColors {
     shoes: pick(SHOE_COLORS),
     socks: pick(SOCK_COLORS),
     skin: pick(SKIN_COLOR_PRESETS as readonly string[] as string[]),
+    gearDecal: `decal:${pick(WHITE_PREMADES).id}|#ffffff`,
   };
 }
 

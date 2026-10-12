@@ -23,7 +23,34 @@ import { ensureFighterAssets } from "./fighterRig";
 import { loadGeneratedProps } from "./props3d";
 import { GymEnvironment3D, getGymRingName } from "./gym3d";
 import { type GymZone3D, makeGymHomeCamera, poseGymCamera } from "./gymLayout";
-import { MAT_HEIGHT, toSceneLen, toSceneX, toSceneZ } from "./worldMapping";
+import { MAT_HEIGHT, toSceneLen, toSceneX, toSceneYaw, toSceneZ } from "./worldMapping";
+import type { PoseTargets, RigDims } from "./fighterPose";
+
+/**
+ * Result ceremony arms: both gloves hang at the sides (the fight is over); the
+ * winner's rise overhead once `up` is set. Moves smoothly between the two.
+ */
+type CeremonyHook = ((pose: PoseTargets, dims: RigDims, dt: number) => void) & { up: boolean };
+function makeCeremonyHook(): CeremonyHook {
+  let t = 0, k = 0; // t: lowering from the guard, k: raised share
+  const down = new THREE.Vector3(), up = new THREE.Vector3();
+  const hook = ((pose: PoseTargets, dims: RigDims, dt: number) => {
+    t = Math.min(1, t + dt * 3);
+    k += ((hook.up ? 1 : 0) - k) * Math.min(1, dt * 6);
+    const lower = t * t * (3 - 2 * t);
+    for (let i = 0; i < 2; i++) {
+      const side = Math.sign(dims.shoulder[i].z) || (i === 0 ? -1 : 1);
+      down.set(0.06, dims.hips.y - 0.05, dims.shoulder[i].z + side * 0.14);
+      up.set(0.08, dims.headY + 0.42, dims.shoulder[i].z + side * 0.22);
+      pose.glove[i].lerp(down.lerp(up, k), lower);
+      if (k > 0.5) pose.elbowPole[i].set(0, -0.3, side).normalize();
+      else if (lower > 0.5) pose.elbowPole[i].set(-1, -0.2, side * 0.3).normalize();
+      pose.maxStretch[i] = 1;
+    }
+  }) as CeremonyHook;
+  hook.up = false;
+  return hook;
+}
 
 const SCREEN_W = 800;
 const SCREEN_H = 600;
@@ -234,7 +261,9 @@ export class FightScene3D {
     });
 
     this.referee.root.visible = state.refereeVisible;
-    if (state.refereeVisible) {
+    if (state.ceremony) {
+      this.syncCeremony(state, state.ceremony);
+    } else if (state.refereeVisible) {
       const down = state.player.isKnockedDown ? state.player : state.enemy.isKnockedDown ? state.enemy : null;
       // Face the fighter on the canvas; on a stoppage, face the fighters' midpoint.
       const tx = down ? down.x : (state.player.x + state.enemy.x) / 2;
@@ -243,6 +272,21 @@ export class FightScene3D {
       const facing = Math.hypot(dx, dz) > 4 ? Math.atan2(dz, dx) : Math.atan2(state.player.z - state.refZ, state.player.x - state.refX) + Math.PI / 2;
       this.referee.updateReferee(state.refX, state.refZ, facing, state, REF_COLORS, this.frame);
     }
+  }
+
+  /** Result ceremony: the ref faces the camera and lifts the winner's side arm; the winner raises both gloves. */
+  private syncCeremony(state: GameState, c: NonNullable<GameState["ceremony"]>): void {
+    const facing = Math.PI / 2;
+    const win = c.winner === "player" ? state.player : c.winner === "enemy" ? state.enemy : null;
+    // Body faces +x and the root turns by the scene yaw, so body +z in the world is (sin y, 0, cos y).
+    const yaw = toSceneYaw(facing);
+    const raiseZ = win ? Math.sign(Math.sin(yaw) * toSceneX(win.x) + Math.cos(yaw) * toSceneZ(win.z) - (Math.sin(yaw) * toSceneX(state.refX) + Math.cos(yaw) * toSceneZ(state.refZ))) : 0;
+    this.referee.updateReferee(state.refX, state.refZ, facing, { ...state, ceremony: { ...c, raiseZ } }, REF_COLORS, this.frame);
+    this.fighters.forEach((fig, i) => {
+      const winner = c.raised && ((i === 0 && c.winner === "player") || (i === 1 && c.winner === "enemy"));
+      if (!fig.poseHook || !("up" in fig.poseHook)) fig.poseHook = makeCeremonyHook();
+      (fig.poseHook as CeremonyHook).up = winner;
+    });
   }
 
   private syncEffects(state: GameState): void {

@@ -282,11 +282,11 @@ class SoundEngine {
     this.eqOverride = null;
   }
 
-  private playFx(key: FightFx, volume = 0.5): void {
+  private playFx(key: FightFx, volume = 0.5): AudioBufferSourceNode | null {
     const ctx = this.ensureCtx();
     const buf = this.bufferOf(key);
     const vol = this.getVolume("sfx") * volume;
-    if (!buf || vol <= 0) return;
+    if (!buf || vol <= 0) return null;
     const source = ctx.createBufferSource();
     source.buffer = buf;
     source.playbackRate.value = this.rate(key);
@@ -294,6 +294,7 @@ class SoundEngine {
     gain.gain.value = vol;
     source.connect(gain).connect(this.eq(key, ctx.destination));
     source.start();
+    return source;
   }
 
   private ensureCtx(): AudioContext {
@@ -505,8 +506,15 @@ class SoundEngine {
   refLine(key: "refOver1" | "refOver2" | "refKd1" | "refKd2" | "refKd3Stop" | "refKd3" | "refIntro"): number {
     const buf = this.bufferOf(key);
     if (!buf || this.getVolume("sfx") <= 0) return 0;
-    this.playFx(key, 0.9);
+    this.refSource = this.playFx(key, 0.9);
     return buf.duration / this.rate(key);
+  }
+
+  private refSource: AudioBufferSourceNode | null = null;
+  /** Cuts off the referee line that is playing (e.g. the ring walk was skipped). */
+  stopRefLine(): void {
+    try { this.refSource?.stop(); } catch {}
+    this.refSource = null;
   }
 
   knockdown(): void {

@@ -14,9 +14,10 @@ import { BONE_NAMES, type BoneName } from "@/game/three/fighterRig";
 import { createPoseStage, GROUPS, JOINT_LABEL } from "@/components/poseStage";
 import {
   type JointRot, type PbPose, type PbVariant, type PoseLayer, type PoseOffsets, type StancePoses,
-  FULL_GUARD_LAYERS, GUARD_STANCE_LABELS, HIP_HEIGHT_MAX, PB_LABELS, PB_VARIANTS,
+  FULL_GUARD_LAYERS, GUARD_STANCE_LABELS, HAND_LOCK_JOINTS, HIP_HEIGHT_MAX, PB_LABELS, PB_VARIANTS,
   getSavedStancePoses, isArmJoint, isPbJoint, savePoseOffsets, setPoseOffsetsDraft,
 } from "@/game/three/poseOffsets";
+import { DEFAULT_HURT_BOXES, HURT_LABELS, HURT_PARTS, type HurtBoxConfig, type HurtBoxParams, type HurtPart, loadHurtBoxes, setHurtBoxField } from "@/game/three/hurtBox";
 
 const AXES = [
   { label: "X", hint: "roll about the forward axis" },
@@ -193,13 +194,29 @@ export default function PoseEditorView({ onBack }: { onBack: () => void }) {
 
   // ── 3D viewport ──
   const hostRef = useRef<HTMLDivElement>(null);
-  const frame = { southpaw: false, fullGuard, duck, selected, noseLine: true, guardStance: guard, pbPreview: pb ?? undefined };
+  // Hurt boxes save instantly (like the punch animator's hit boxes).
+  const [showHurt, setShowHurt] = useState(false);
+  const [hurt, setHurt] = useState<HurtBoxConfig>(loadHurtBoxes);
+  const setHurtField = useCallback((part: HurtPart, key: keyof HurtBoxParams, v: number) => setHurt(setHurtBoxField(part, key, v)), []);
+  const frame = { southpaw: false, fullGuard, duck, selected, noseLine: true, selfCollideBackOnly: true, guardStance: guard, pbPreview: pb ?? undefined, hurtBoxes: showHurt };
   const viewRef = useRef(frame);
   viewRef.current = frame;
+  // Right-click a hand: lock it at this guard's pose through every punch (over punch-animator keys).
+  const isHandLocked = (b: BoneName) => !!poses.handLocks?.[guard]?.includes(b);
+  const toggleHandLock = (b: BoneName) => {
+    if (!HAND_LOCK_JOINTS.includes(b)) return;
+    const cur = offsetsRef.current, g = viewRef2.current.guard;
+    const handLocks = [0, 1, 2].map(i => [...(cur.handLocks?.[i] ?? [])]);
+    handLocks[g] = handLocks[g].includes(b) ? handLocks[g].filter(x => x !== b) : [...handLocks[g], b];
+    const { handLocks: _old, ...rest } = cur;
+    replaceAll(handLocks.some(l => l.length) ? { ...rest, handLocks } : rest);
+  };
+  const toggleHandLockRef = useRef(toggleHandLock);
+  toggleHandLockRef.current = toggleHandLock;
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    return createPoseStage(host, () => viewRef.current, setSelected);
+    return createPoseStage(host, () => viewRef.current, setSelected, b => toggleHandLockRef.current(b), undefined, setHurtField);
   }, []);
 
   const selLayer = tFor(selected);
@@ -272,6 +289,7 @@ export default function PoseEditorView({ onBack }: { onBack: () => void }) {
             )}
             <Button size="sm" variant={pbOn ? "default" : "outline"} onClick={() => setPbOn(p => !p)} data-testid="button-pose-pb">Perfect block</Button>
             <Button size="sm" variant={duck ? "default" : "outline"} onClick={() => setDuck(d => !d)} data-testid="button-pose-duck">Duck</Button>
+            <Button size="sm" variant={showHurt ? "default" : "outline"} onClick={() => setShowHurt(h => !h)} data-testid="button-pose-hurtboxes">Hurtboxes</Button>
           </div>
         </div>
 
@@ -284,8 +302,11 @@ export default function PoseEditorView({ onBack }: { onBack: () => void }) {
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{g}</div>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {bones.map(b => (
-                      <Button key={b} size="sm" variant={b === selected ? "default" : "outline"} className="h-7 px-2 text-xs"
-                        onClick={() => setSelected(b)} data-testid={`button-joint-${b}`}>
+                      <Button key={b} size="sm" variant={b === selected ? "default" : "outline"}
+                        className={`h-7 px-2 text-xs${isHandLocked(b) ? (b === selected ? " bg-amber-500 hover:bg-amber-500/90 text-black" : " border-amber-500 text-amber-400") : ""}`}
+                        onClick={() => setSelected(b)}
+                        onContextMenu={e => { if (!HAND_LOCK_JOINTS.includes(b)) return; e.preventDefault(); toggleHandLock(b); }}
+                        data-testid={`button-joint-${b}`}>
                         {JOINT_LABEL[b]}{valueOf(b) ? " •" : ""}
                       </Button>
                     ))}
@@ -321,6 +342,31 @@ export default function PoseEditorView({ onBack }: { onBack: () => void }) {
               out as it extends, so punches still land at their real reach.
             </p>
           </div>
+
+          {showHurt && HURT_PARTS.map(part => (
+            <div key={part} className="border-t border-border pt-3 flex flex-col gap-3" data-testid={`panel-hurtbox-${part}`}>
+              <div className="flex items-center">
+                <div className="font-semibold mr-auto">{HURT_LABELS[part]} hurtbox</div>
+                <Button variant="ghost" size="sm"
+                  onClick={() => (Object.keys(DEFAULT_HURT_BOXES[part]) as (keyof HurtBoxParams)[]).forEach(k => setHurtField(part, k, DEFAULT_HURT_BOXES[part][k]))}
+                  data-testid={`button-hurtbox-reset-${part}`}>
+                  <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset
+                </Button>
+              </div>
+              {([["sizeCm", "Size", -20, 30, 0.5, "cm"], ["rotX", "Rotate X", -180, 180, 1, "°"], ["rotY", "Rotate Y", -180, 180, 1, "°"], ["rotZ", "Rotate Z", -180, 180, 1, "°"]] as const).map(([k, label, min, max, step, unit]) => (
+                <div key={k} className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm mr-auto">{label}</span>
+                    <Input type="number" className="h-7 w-20 text-right" min={min} max={max} step={step} value={hurt[part][k]}
+                      onChange={e => setHurtField(part, k, Math.max(min, Math.min(max, Number(e.target.value) || 0)))} data-testid={`input-hurtbox-${part}-${k}`} />
+                    <span className="text-xs text-muted-foreground">{unit}</span>
+                  </div>
+                  <Slider min={min} max={max} step={step} value={[hurt[part][k]]}
+                    onValueChange={([v]) => setHurtField(part, k, v)} data-testid={`slider-hurtbox-${part}-${k}`} />
+                </div>
+              ))}
+            </div>
+          ))}
 
           {pbOn && pbVar !== "standard" && (
             <div className="border-t border-border pt-3 flex flex-col gap-2" data-testid="panel-pb-variant">

@@ -55,6 +55,8 @@ export interface RigInstance {
   skinTone?(css: string): void;
   /** Textured body: eyelid morphs instead of eye meshes. */
   setEyes?(state: "open" | "closed" | "squint"): void;
+  /** Textured body: wear a custom Gear Decal picture (null = the standard decal colour). */
+  setCustomDecal?(tex: THREE.Texture | null): void;
   /** Textured body: drive as the referee (no gloves). */
   setRefereeMode?(): void;
   dispose(): void;

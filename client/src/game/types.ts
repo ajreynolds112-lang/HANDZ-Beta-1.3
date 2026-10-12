@@ -432,6 +432,9 @@ export interface AiBrainState {
   } | null;
   /** Edge detector for "a punch just finished" (head off the centre line). */
   basicsWasPunching?: boolean;
+  /** Post-combo defence: actions still owed after a string ends, and its deadline (gameTime). */
+  postComboDefLeft?: number;
+  postComboDefUntil?: number;
   /** Scenario follow-ups: edge baselines and one queued answer with expiry. */
   basicsPrev?: { oppPunching: boolean; oppCls: string | null; evaded: boolean; hitTaken: boolean;
     blockedByMe: number; blockedByOpp: number; landed: number; oppLanded: number; ownHook: string | null; ownBody: boolean };
@@ -483,6 +486,24 @@ export interface AiBrainState {
   desiredMoveZ: number;
   lateralDir: 1 | -1;
   lateralSwitchTimer: number;
+  /** Champion footwork around punches: on for opponent Champion brains only. */
+  champFootwork?: boolean;
+  /** Seconds left in the current lateral/zig-zag burst. */
+  champFootTimer?: number;
+  /** The burst is a pre-punch setup (holds the throw until it ends). */
+  champFootPre?: boolean;
+  /** 1 or -1: side being stepped to. */
+  champFootDir?: number;
+  /** Zig-zag (true) or straight lateral (false). */
+  champFootZig?: boolean;
+  /** Countdown to the next zig-zag direction flip. */
+  champFootFlipTimer?: number;
+  /** gameTime until which the next throw goes out without a setup roll. */
+  champFootReadyUntil?: number;
+  /** gameTime of the last accepted real punch. */
+  champFootLastThrow?: number;
+  /** isPunching last tick, for the post-punch edge. */
+  champFootWasPunching?: boolean;
   hitReactRetreatTimer: number;
   hitReactLateralDir: 1 | -1;
 
@@ -1508,11 +1529,11 @@ export interface FighterState {
   slipChainCount: number;
   /** The slip key has to be released before another slip can start. */
   slipKeyWasUp: boolean;
-  /** Player is holding C: no automatic slips (head slip or body-shot step) until it is released. */
+  /** Player is holding X: no automatic slips (head slip or body-shot step) until it is released. */
   autoSlipSuppressed?: boolean;
   /** 0..1 eased lean. Outlives the slip itself so the torso snaps back. */
   slipLean: number;
-  /** Shoulder roll (X, full guard only): blocks straights, no punching; held up to 1s, re-press to roll again. */
+  /** Shoulder roll (C, full guard only): blocks straights, no punching; held up to 1s, re-press to roll again. */
   shoulderRolling?: boolean;
   shoulderRollTimer?: number;
   shoulderRollKeyWasUp?: boolean;
@@ -1960,6 +1981,10 @@ export interface GameState {
   fightWinner: "player" | "enemy" | null;
   xpGained: number;
   countdownTimer: number;
+  /** Seconds left on a referee voice line that holds the pre-fight countdown or a post-KD restart. */
+  refVoiceHold: number;
+  /** The opening ring instructions have been given this bout. */
+  refIntroPlayed: boolean;
   knockdownCountdown: number;
   knockdownMashCount: number;
   knockdownMashRequired: number;
@@ -2175,6 +2200,14 @@ export interface GameState {
   tutorialCareerMode: boolean;
   menuBackground?: boolean;
   staticCamera?: boolean;
+  /**
+   * The post-fight result ceremony (render-only staging): the referee stands
+   * between the fighters and, once `raised`, lifts the winner's hand.
+   * `raiseZ` is filled in by the 3D scene: the ref's body-space side toward the winner.
+   */
+  ceremony?: { winner: "player" | "enemy" | "draw"; raised: boolean; raiseZ?: number };
+  /** Ring walk face-off (render-only staging): a close side-on shot of both fighters. */
+  faceoff?: boolean;
   nightmareMode: boolean;
   nightmareEnemies: FighterState[];
   nightmareAiBrains: (AiBrainState | null)[];
@@ -2235,7 +2268,7 @@ export interface TutorialTracking {
   rhythmHits: number;
   /** Real body shots thrown (Shift + punch). */
   bodyShotCount: number;
-  /** Incoming punches dodged with a hand slip (C). */
+  /** Incoming punches dodged with a hand slip (X). */
   slipsDodged: number;
   /** Real punches released after a hold of at least POWER_SHOT_HOLD_SEC. */
   heldPunchCount: number;

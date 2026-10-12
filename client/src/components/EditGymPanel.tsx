@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { GYM_LOOK_DEFAULTS, GYM_NAME_MAX, GYM_RENAME_FORCE, type GymLook } from "@/game/gymLook";
+import { filterProfanity } from "@/game/profanity";
 
 const PROP_ROWS = [
   ["mats", "Weightlifting Mats"],
@@ -134,7 +135,7 @@ export default function EditGymPanel({ saved, force, onPreview, onSaveFree, onBu
         <input
           value={name}
           maxLength={GYM_NAME_MAX}
-          onChange={e => setName(e.target.value.slice(0, GYM_NAME_MAX))}
+          onChange={e => setName(filterProfanity(e.target.value.slice(0, GYM_NAME_MAX)))}
           className="w-full rounded border border-white/20 bg-black/60 px-2 py-1 text-xs text-white outline-none focus:border-yellow-500"
           data-testid="edit-gym-name-input"
         />

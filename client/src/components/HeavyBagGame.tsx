@@ -115,7 +115,7 @@ export default function HeavyBagGame({ fighter, onComplete, onQuit, calcStatPoin
   freeModeRef.current = freeMode;
   const onSessionTimeUpRef = useRef(onSessionTimeUp);
   onSessionTimeUpRef.current = onSessionTimeUp;
-  // Free mode defence: Shift ducks, C slips (arrows aim). The scene reads this
+  // Free mode defence: Shift ducks, X slips (arrows aim). The scene reads this
   // object live every frame; the key handlers below mutate it.
   const defenseRef = useRef<BagDefense>({
     duck: false, slip: false, aim: null, guardStance: 0,
@@ -186,7 +186,7 @@ export default function HeavyBagGame({ fighter, onComplete, onQuit, calcStatPoin
       }
       switch (e.key) {
         case "Shift": k.shift = down; break;
-        case "c": case "C": d.slip = down; break;
+        case "x": case "X": d.slip = down; break;
         case "ArrowLeft": k.left = down; break;
         case "ArrowRight": k.right = down; break;
         case "ArrowUp": k.up = down; break;
@@ -695,7 +695,7 @@ export default function HeavyBagGame({ fighter, onComplete, onQuit, calcStatPoin
           ctx.fillText("CONTROLS", W / 2, 122);
           const groups: [string, [string, string][]][] = [
             ["ATTACK", [["Punches", "Q W E R S D"], ["Aim", "Arrow keys"]]],
-            ["DEFENCE", [["Duck", "Left Shift"], ["Slip", "C"]]],
+            ["DEFENCE", [["Duck", "Left Shift"], ["Slip", "X"]]],
             ["STANCE", [["Switch stance", "Right Shift"], ["Full guards", "Tab"]]],
           ];
           let y = 148;

@@ -10,6 +10,7 @@ import { grownEquipmentLevel, normalizeEquipmentLevels, postChampEquipmentFloor 
 import { clampPunchEndurance, punchEnduranceOf, PUNCH_ENDURANCE_MIN, punchEnduranceLossOf, PUNCH_ENDURANCE_LOSS_MAX, PUNCH_ENDURANCE_LOSS_MIN, PUNCH_ENDURANCE_GRACE_WEEKS, PUNCH_ENDURANCE_STEP_WEEKS, needsPunchEnduranceLossRebase } from "./punchEndurance";
 import { clampPurePower, purePowerOf, PURE_POWER_DECAY_PER_WEEK, PURE_POWER_GRACE_WEEKS } from "./purePower";
 import { applySpacialGear, spacialSelectionOf } from "./spacialColor";
+import { premadeDecalForRoster } from "./premadeDecals";
 import { advanceDrilledWeek } from "./drilledActions";
 import { advanceResetTrainingWeek, resetTrainingOf, RESET_SPEED_GRACE_WEEKS, RESET_SPEED_STEP_WEEKS, RESET_SPEED_MAX_STEPS } from "./resetTraining";
 import { loadXpConfig } from "@/lib/xpConfig";
@@ -685,7 +686,8 @@ function enforceRankingIntegrity(roster: RosterFighterState[]): void {
 
 const ROSTER_CUSTOMIZATIONS_KEY = "handz_roster_customizations";
 const RANK_EDITS_KEY = "handz_roster_rank_edits";
-const RANK_EDITS_PENDING_KEY = "handz_roster_rank_edits_pending";
+/** Set when a Neural Network live update brings new rank edits; the next career load applies them. Outside handz_ so career files don't carry it. */
+export const RANK_EDITS_PENDING_KEY = "liveRankEditsPending";
 
 export function saveRankEdits(roster: RosterFighterState[]): void {
   const rankEdits: Record<number, { customSkillPoints?: RosterFighterState["customSkillPoints"]; customRefinementSkills?: Record<string, number> }> = {};
@@ -698,7 +700,6 @@ export function saveRankEdits(roster: RosterFighterState[]): void {
   }
   try {
     localStorage.setItem(RANK_EDITS_KEY, JSON.stringify(rankEdits));
-    localStorage.setItem(RANK_EDITS_PENDING_KEY, "true");
   } catch {}
 }
 
@@ -2042,6 +2043,48 @@ export function getRosterEntryById(id: number): RosterEntry | undefined {
   return ROSTER_DATA.find(r => r.id === id);
 }
 
+/** Display name + style of a roster fighter (the state entry stores neither). */
+export function rosterFighterIdentity(f: RosterFighterState): { name: string; archetype: Archetype } {
+  const entry = getRosterEntryById(f.id);
+  return {
+    name: entry ? getRosterDisplayName(entry, f) : `Fighter ${f.id}`,
+    archetype: (entry?.archetype as Archetype) ?? "BoxerPuncher",
+  };
+}
+
+/**
+ * A gym sparring partner: a real roster fighter ranked just outside both the
+ * Select Opponent board and the reroll reach, so the partner is never someone
+ * the player could book this week. Falls back inward only if the roster is tiny.
+ */
+export function pickSparringPartner(
+  roster: RosterFighterState[],
+  playerRank: number,
+  playerLevel: number | undefined,
+  playerWins: number | undefined,
+  careerFightsCompleted: number | undefined,
+  expandedBoard: boolean,
+): RosterFighterState | null {
+  const active = roster.filter(f => f.active && !f.retired && f.rank > 0 && f.id !== 204);
+  if (active.length === 0) return null;
+  const board = new Set(getOpponentCandidates(
+    roster, playerRank, playerLevel, undefined, playerWins, careerFightsCompleted, undefined, undefined, expandedBoard,
+  ).map(f => f.id));
+  const top = playerRank - (expandedBoard ? REROLL_ABOVE_REACH_EXPANDED : REROLL_ABOVE_REACH);
+  const bottom = playerRank + REROLL_ABOVE_REACH;
+  const outsideReach = (f: RosterFighterState) => f.rank < top || f.rank > bottom;
+  const tiers = [
+    active.filter(f => outsideReach(f) && !board.has(f.id)),
+    active.filter(outsideReach),
+    active.filter(f => !board.has(f.id)),
+    active,
+  ];
+  const pool = tiers.find(t => t.length > 0)!;
+  const gap = (f: RosterFighterState) => (f.rank < top ? top - f.rank : f.rank > bottom ? f.rank - bottom : 0);
+  const nearest = pool.slice().sort((a, b) => gap(a) - gap(b)).slice(0, 10);
+  return nearest[Math.floor(Math.random() * nearest.length)];
+}
+
 export function getAIDifficultyForRank(rank: number, totalActive: number): AIDifficulty {
   const pct = rank / totalActive;
   if (pct <= 0.05) return "champion";
@@ -2974,6 +3017,11 @@ export function getRandomQuickFightOpponent(difficulty: AIDifficulty): CareerOpp
   };
 }
 
+/** Roster fighters with no edited decal wear their assigned premade one. */
+function rosterPremadeDecal(id: number): string {
+  return `decal:${premadeDecalForRoster(id).id}|#ffffff`;
+}
+
 export function getRosterFighterColors(f: RosterFighterState): RosterColorSet {
   // The Spacial finish paints over every gear colour but leaves the saved ones
   // underneath, so unticking it restores the fighter's own look.
@@ -2988,7 +3036,7 @@ export function getRosterFighterColors(f: RosterFighterState): RosterColorSet {
     // laces/soles from the shoe colour.
     laces: f.customLaces,
     soles: f.customSoles,
-    gearDecal: f.customGearDecal,
+    gearDecal: f.customGearDecal ?? rosterPremadeDecal(f.id),
   }, spacialSelectionOf({ spacialColors: f.customSpacial, spacialParts: f.customSpacialParts }));
 }
 
@@ -3008,7 +3056,7 @@ export function getQuickFightColorsForRosterId(rosterId: number): RosterColorSet
     socks: c?.customSocks || gen.genSocks,
     laces: c?.customLaces,
     soles: c?.customSoles,
-    gearDecal: c?.customGearDecal,
+    gearDecal: c?.customGearDecal ?? rosterPremadeDecal(rosterId),
   }, spacialSelectionOf({ spacialColors: c?.customSpacial, spacialParts: c?.customSpacialParts }));
 }
 
@@ -3035,4 +3083,55 @@ export function buildOpponentFromRoster(f: RosterFighterState): CareerOpponentFr
     statFocus: f.statFocus,
     overallRating: f.overallRating,
   };
+}
+
+/**
+ * A career bout's effect on the rankings: the opponent's record, both ratings,
+ * the belt and the player's new rank. Shared by the fight-end payout and the
+ * challenge contract quote, so the quote can't drift from what the bout pays.
+ */
+export function resolveBoutRanking(
+  rs: CareerRosterState,
+  oppId: number,
+  result: "win" | "loss" | "draw",
+  isKO: boolean,
+  method: "close" | "dominant" | "ko",
+  careerDiff: AIDifficulty,
+  playerLevel: number,
+): { roster: RosterFighterState[]; playerRank: number; playerRatingScore: number; rank1HolderId: number | "player"; oppRank: number } {
+  const isWin = result === "win", isDraw = result === "draw";
+  const currentHolderId = resolveRank1Holder(rs.roster, rs.rank1HolderId);
+  let newHolderId: number | "player" = currentHolderId;
+  if (isWin && currentHolderId === oppId) newHolderId = "player";
+  else if (!isWin && !isDraw && currentHolderId === "player") newHolderId = oppId;
+  const newRoster = rs.roster.map(f => {
+    if (f.id !== oppId) return { ...f };
+    const u = { ...f };
+    u.totalFights++;
+    if (isWin) {
+      u.losses++;
+      if (KEY_FIGHTER_IDS.includes(f.id) || f.alwaysUndefeated) u.beatenByPlayer = true;
+      if (f.alwaysUndefeated) u.alwaysUndefeated = false;
+    } else if (isDraw) u.draws++;
+    else { u.wins++; if (isKO) u.knockouts++; }
+    return u;
+  });
+  const oppEntry = newRoster.find(f => f.id === oppId);
+  const oppRank = oppEntry?.rank ?? 999;
+  const oppRating = oppEntry?.ratingScore ?? 1000;
+  const preRating = rs.playerRatingScore ?? 1000;
+  const currentPlayerRank = rs.playerRank ?? 705;
+  const pRating = updatePlayerRating(preRating, oppRating, result, method, careerDiff, currentPlayerRank, oppRank, playerLevel, oppEntry?.level);
+  if (isWin && oppEntry) {
+    const { loserDelta } = computeEloChange(preRating, oppRating, method, 1.0, oppRank === 1, currentPlayerRank, oppRank, undefined, oppEntry.totalFights);
+    oppEntry.ratingScore = Math.max(800, (oppEntry.ratingScore ?? 1000) + loserDelta);
+  } else if (!isWin && !isDraw && oppEntry) {
+    const { winnerDelta } = computeEloChange(oppRating, preRating, method, 1.0, false, oppRank, currentPlayerRank, oppEntry.totalFights, undefined);
+    oppEntry.ratingScore = (oppEntry.ratingScore ?? 1000) + winnerDelta;
+  }
+  updateRankings(newRoster, newHolderId);
+  const playerRank = newHolderId === "player"
+    ? 1
+    : smoothPlayerRankMovement(currentPlayerRank, computePlayerRankFromRating(newRoster, pRating, newHolderId), oppRank, result);
+  return { roster: newRoster, playerRank, playerRatingScore: pRating, rank1HolderId: newHolderId, oppRank };
 }

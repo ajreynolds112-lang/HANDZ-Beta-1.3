@@ -26,9 +26,10 @@ export function newRefereeMemory(): RefereeMemory {
 const Z = new THREE.Vector3(0, 0, 1);
 function pitchQ(a: number, out: THREE.Quaternion): THREE.Quaternion { return out.setFromAxisAngle(Z, -a); }
 
-export type RefereeAction = "stand" | "count" | "waveOff";
+export type RefereeAction = "stand" | "count" | "waveOff" | "raise";
 
 export function refereeAction(state: GameState): RefereeAction {
+  if (state.ceremony?.raised) return "raise";
   if (state.refStoppageActive || state.towelActive) return "waveOff";
   if (state.knockdownRefCount >= 10) return "waveOff";
   if (state.knockdownActive && state.knockdownRefCount > 0) return "count";
@@ -66,6 +67,16 @@ export function solveRefereePose(state: GameState, dims: RigDims, mem: RefereeMe
       } else {
         g.set(0.42, dims.hips.y - 0.38 - crouch, -0.2); // hand on the knee
       }
+    } else if (action === "raise") {
+      // Result ceremony: the winner's side arm straight up (both on a draw).
+      const rz = state.ceremony?.raiseZ ?? 0;
+      if (state.ceremony?.winner === "draw" || Math.sign(rz) === side) {
+        g.set(0.05, dims.headY + 0.48, side * (Math.abs(sh[i].z) + 0.2));
+        T.elbowPole[i].set(0, -0.3, side).normalize();
+      } else {
+        g.set(0.05, dims.hips.y - 0.08, side * (Math.abs(sh[i].z) + 0.12));
+        T.elbowPole[i].set(-1, -0.2, side * 0.3).normalize();
+      }
     } else if (action === "waveOff") {
       const s = Math.cos(mem.t * 10);
       g.set(0.28, dims.headY + 0.22, side * 0.08 + s * side * 0.42 * (i === 0 ? 1 : -1));
@@ -76,7 +87,7 @@ export function solveRefereePose(state: GameState, dims: RigDims, mem: RefereeMe
     }
   }
   if (!mem.init) { lerpPose(T, T, 0, mem.cur); mem.init = true; }
-  const rate = action === "waveOff" ? 22 : 14;
+  const rate = action === "waveOff" ? 22 : action === "raise" ? 6 : 14;
   lerpPose(mem.cur, T, 1 - Math.exp(-dt * rate), mem.cur);
   return lerpPose(mem.cur, mem.cur, 0, out);
 }

@@ -163,6 +163,8 @@ export function createFighter(data: InsertFighter): Fighter {
     ringSpacialUnlocked: data.ringSpacialUnlocked ?? false,
     gymLook: data.gymLook ?? null,
     outfits: null,
+    customDecals: null,
+    decalFonts: null,
     fightingStyle: null,
     sparringGearInBouts: null,
     diamonds: data.diamonds ?? 0,

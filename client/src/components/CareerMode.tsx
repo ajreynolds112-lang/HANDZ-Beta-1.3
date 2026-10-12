@@ -7,20 +7,24 @@ import PunchProfileAssignCard from "@/components/PunchProfileAssignCard";
 import GuardStanceAssignCard from "@/components/GuardStanceAssignCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SPARRING_MODE_COSTS, grandfatherSparringUnlocks, type SparringMode } from "@/game/sparringModes";
+import { filterProfanity } from "@/game/profanity";
+import { useHoldRepeat } from "@/hooks/useHoldRepeat";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Fighter, CareerStats, SkillPoints, GearColors, SavedOutfit, TrainingBonuses, CareerRosterState, RosterFighterState, SkillRefinement, ChallengeRequest, ChallengeState } from "@shared/schema";
+import type { CustomDecal, Fighter, CareerStats, SkillPoints, GearColors, SavedOutfit, TrainingBonuses, CareerRosterState, RosterFighterState, SkillRefinement, ChallengeRequest, ChallengeState } from "@shared/schema";
 import { challengeStateOf, nextChallengeState } from "@/game/challenges";
 import { AWAY_GYMS, awayGymFor } from "@/game/gymLook";
-import { DEFAULT_CAREER_STATS, DEFAULT_GEAR_COLORS, DEFAULT_TRAINING_BONUSES, DEFAULT_SKILL_REFINEMENT, statPointCap, perStatCap, maxActiveRefinementsFor, refinementSlotsForRank, refinementSlotsUnlocked, REFINEMENT_SLOT_RANK_UNLOCKS } from "@shared/schema";
+import { DEFAULT_CAREER_STATS, DEFAULT_GEAR_COLORS, DEFAULT_TRAINING_BONUSES, DEFAULT_SKILL_REFINEMENT, statPointCap, totalSkillPts, perStatCap, maxActiveRefinementsFor, refinementSlotsForRank, refinementSlotsUnlocked, REFINEMENT_SLOT_RANK_UNLOCKS } from "@shared/schema";
 import { migrateStatCaps, updateFighter } from "@/lib/localSaves";
 import { claimDailyReward } from "@/lib/dailyReward";
-import type { CrateId } from "@/game/cratesConfig";
+import { CRATES, type CrateId } from "@/game/cratesConfig";
+import { getCrateRewardForRank, applyUpsetCrateBoost } from "@/game/rosterGenConfig";
+import { boutStatPoints } from "@/game/boutRewards";
+import { loadXpConfig } from "@/lib/xpConfig";
 import GymView, { FORCE_PER_DIAMOND } from "@/components/GymView";
 import EquipmentUpgradesView from "@/components/EquipmentUpgradesView";
 import { EQUIPMENT, type EquipmentSlot } from "@/game/equipmentConfig";
 import { takeEquipmentUnlockAnnouncement } from "@/lib/equipmentUpgrades";
-import { diamondLevelUpCost } from "@/game/diamondLevelCost";
 import ActiveBoostsHud from "@/components/ActiveBoostsHud";
 import { hasPerk, countPerk, getForceMult } from "@/game/itemEffects";
 import { computeForceEarned } from "@/game/forceRewards";
@@ -28,7 +32,7 @@ import { withSavedInventory } from "@/lib/itemInventory";
 import { SPACIAL_COLOR, SPACIAL_GEAR_KEYS, SPACIAL_PRICE_PER_GEAR_FORCE, applySpacialGear, cssColorOf, isSpacial, spacialOwnedOf, spacialSelectionOf } from "@/game/spacialColor";
 import { DEFAULT_RING_COLORS, RING_COLOR_KEYS, RING_COLOR_LABELS, RING_SPACIAL_PRICE_FORCE, ringColorsOf, type RingColorKey, type RingColors } from "@/game/ringColors";
 import RingOnlyBackground from "@/components/RingOnlyBackground";
-import { gymLookOf } from "@/game/gymLook";
+import { gymLookOf, GYM_LOOK_DEFAULTS } from "@/game/gymLook";
 import { useCloudSaves } from "@/lib/cloudSaves";
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import LoadingScreen from "@/components/LoadingScreen";
@@ -65,6 +69,7 @@ import {
   clearRosterCustomizationNumbers,
   getRosterFighterColors,
   isChampBeaten,
+  resolveBoutRanking,
   updateRankings,
   respawnRetiredFighters,
   resolveRank1Holder,
@@ -73,10 +78,14 @@ import {
   demotePlayerOneRank,
   saveRankEdits,
   applyRankEditsToRoster,
+  isRankEditsPending,
+  clearRankEditsPending,
   type CareerOpponentFromRoster,
 } from "@/game/careerRoster";
 import { getRosterDisplayName, ROSTER_DATA, KEY_FIGHTER_IDS } from "@/game/rosterData";
 import FighterStanceCanvas, { playerBoxingStance } from "@/components/FighterStanceCanvas";
+import DecalEditor from "@/components/DecalEditor";
+import { customDecalColor, parseCustomDecalColor } from "@/game/customDecals";
 import { BoxingGloveIcon } from "@/components/BoxingGloveIcon";
 import NeuralNetworkView from "@/components/NeuralNetworkView";
 import * as localSaves from "@/lib/localSaves";
@@ -305,56 +314,6 @@ const REF_EFFECT_DESC: Record<RefField, (lvl: number) => string> = {
   },
   lifeDrain: (lvl) => `every punch that lands restores ${fmtPct(refCurve("lifeDrain", "drain", lvl))}% of max stamina — blocked punches still pay out, only a perfect block denies it; paused while a debuff has your stamina regen stopped`,
 };
-
-const HOLD_REPEAT_DELAY_MS = 500;
-const HOLD_REPEAT_INTERVAL_MS = 50;
-
-function useHoldRepeat(action: () => void) {
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const repeatedRef = useRef(false);
-  const actionRef = useRef(action);
-  actionRef.current = action;
-
-  const clear = () => {
-    if (timeoutRef.current !== null) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
-    if (intervalRef.current !== null) { clearInterval(intervalRef.current); intervalRef.current = null; }
-    window.removeEventListener("mouseup", clear);
-    window.removeEventListener("touchend", clear);
-    window.removeEventListener("touchcancel", clear);
-  };
-
-  const start = () => {
-    clear();
-    repeatedRef.current = false;
-    window.addEventListener("mouseup", clear);
-    window.addEventListener("touchend", clear);
-    window.addEventListener("touchcancel", clear);
-    timeoutRef.current = setTimeout(() => {
-      intervalRef.current = setInterval(() => {
-        repeatedRef.current = true;
-        actionRef.current();
-      }, HOLD_REPEAT_INTERVAL_MS);
-    }, HOLD_REPEAT_DELAY_MS);
-  };
-
-  const handleClick = () => {
-    if (repeatedRef.current) {
-      repeatedRef.current = false;
-      return;
-    }
-    actionRef.current();
-  };
-
-  useEffect(() => clear, []);
-
-  return {
-    onMouseDown: start,
-    onMouseLeave: clear,
-    onTouchStart: start,
-    onClick: handleClick,
-  };
-}
 
 const FIELD_TO_TRACK: Record<RefField, "offense" | "defense" | "fightIq"> = {
   pressureFighter: "offense", precisionStriker: "offense", jabPower: "offense", hookPower: "offense", uppercutPower: "offense",
@@ -896,6 +855,7 @@ export default function CareerMode({
    * separate record and keeps burning until the page itself is opened.
    */
   const [equipAnnounce, setEquipAnnounce] = useState<EquipmentSlot[] | null>(null);
+  const [tutorialPrompt, setTutorialPrompt] = useState(false);
   const equipAnnounceFighterId = selectedFighter?.id ?? null;
   const equipAnnounceWins = selectedFighter?.wins ?? 0;
   useEffect(() => {
@@ -914,6 +874,17 @@ export default function CareerMode({
   const [simulateTips, setSimulateTips] = useState<string[]>([]);
   // Drives the full-screen loading view for the heavy career transitions.
   const { loader, runLoader } = useChunkedLoader();
+  /** Moving between the home gym and a challenger's gym runs behind a "Headed to" loading screen. */
+  const travelToGym = (gymName: string, arrive: () => void) => {
+    void runLoader({
+      title: `Headed to ${gymName}`,
+      minDurationMs: 1200,
+      phases: [
+        { label: "Travelling", weight: 2, run: () => preload3dAssets() },
+        { label: "Arriving", run: arrive },
+      ],
+    });
+  };
   useEffect(() => {
     migrateStatCaps();
   }, []);
@@ -1288,6 +1259,7 @@ export default function CareerMode({
     onInitRoster(newest.id, initialized);
     setSelectedFighter({ ...newest, careerRosterState: initialized });
     setView("gym");
+    if (onTutorial) setTutorialPrompt(true);
   }, [view, pendingFighterData, fighters]);
 
   /**
@@ -1345,6 +1317,8 @@ export default function CareerMode({
           weight: 2,
           run: () => {
             fixedRoster = applyRosterCustomizations(redistributeRosterLevels(rs.roster, maxGain, fighter.level, rs.endgameShownIds, rs.selectedOpponentId ?? undefined));
+            // Edit Roster rank edits that arrived by live update since the last load.
+            if (isRankEditsPending()) { fixedRoster = applyRankEditsToRoster(fixedRoster); clearRankEditsPending(); }
           },
         },
         {
@@ -1798,7 +1772,7 @@ export default function CareerMode({
             const rf = gymRs?.roster.find(f => f.id === r.rosterId);
             return {
               id: r.id, name: chName(r.rosterId), kind: r.kind, level: r.level,
-              weeksLeft: Math.max(1, r.expiresWeek - (gymRs?.weekNumber ?? 0) + 1),
+              weeksLeft: r.fightWeek != null ? r.fightWeek - (gymRs?.weekNumber ?? 0) : Math.max(1, r.expiresWeek - (gymRs?.weekNumber ?? 0) + 1),
               rank: rf?.rank ?? null,
               record: rf ? `${rf.wins}W-${rf.losses}L-${rf.draws}D` : "",
               colors: rf ? getRosterFighterColors(rf) : null,
@@ -1806,24 +1780,65 @@ export default function CareerMode({
             };
           }),
           away: gymAway ? { name: chName(gymAway.request.rosterId), done: gymAway.done, gym: AWAY_GYMS.indexOf(awayGymFor(gymAway.request.rosterId)) } : null,
-          fightBlocked: gymRs?.selectedOpponentId != null,
+          fightBlocked: !!gymRs?.challengeState?.contract,
           sparBlocked: gymIsFightWeek,
         }}
         onChallengeDecision={(id, approve) => {
           const fresh = localSaves.getFighter(selectedFighter.id)?.careerRosterState as CareerRosterState | null;
           const req = challengeStateOf(fresh).requests.find(r => r.id === id);
-          if (!req) return;
-          if (approve && (req.kind === "fight" ? fresh?.selectedOpponentId != null : gymIsFightWeek)) return;
-          writeChallenges(selectedFighter.id, c => ({
+          if (!req || !fresh) return;
+          if (approve && (req.kind === "fight" ? !contractAcceptable(fresh, req) : gymIsFightWeek)) return;
+          const write = () => writeChallenges(selectedFighter.id, c => ({
             ...c,
             requests: c.requests.filter(r => r.id !== id),
             accepted: c.accepted + (approve ? 1 : 0),
             away: approve && req.kind === "spar" ? { request: req, done: false } : c.away,
+            // Booked by the save funnel as soon as no other fight is booked.
+            contract: approve && req.kind === "fight"
+              ? { rosterId: req.rosterId, fightWeek: req.fightWeek!, bookAfterFights: (fresh.careerFightsCompleted ?? 0) + (fresh.selectedOpponentId != null ? 1 : 0) }
+              : c.contract,
           }));
-          if (approve && req.kind === "fight") { setPendingOpponentId(req.rosterId); setView("prepWeeks"); }
+          if (approve && req.kind === "spar") travelToGym(awayGymFor(req.rosterId).look.name, write);
+          else write();
+        }}
+        getChallengeContract={(id) => {
+          const rs = localSaves.getFighter(selectedFighter.id)?.careerRosterState as CareerRosterState | null;
+          const req = challengeStateOf(rs).requests.find(r => r.id === id);
+          const rf = rs?.roster.find(f => f.id === req?.rosterId);
+          if (!rs || !req || req.kind !== "fight" || req.fightWeek == null || !rf) return null;
+          const diff = (selectedFighter.careerDifficulty as AIDifficulty) || "contender";
+          const lvl = selectedFighter.level ?? 1;
+          const rankWin = resolveBoutRanking(rs, rf.id, "win", false, "close", diff, lvl).playerRank;
+          const rankLoss = resolveBoutRanking(rs, rf.id, "loss", false, "close", diff, lvl).playerRank;
+          const sparred = challengeStateOf(rs).sparredRosterIds.includes(rf.id) ? 2 : 1;
+          const { chances, count } = getCrateRewardForRank(rf.rank);
+          const odds = applyUpsetCrateBoost(chances, rf.rank, rs.playerRank);
+          const sp = selectedFighter.skillPoints as Partial<SkillPoints> | null;
+          const pts = boutStatPoints({
+            careerDiff: diff, level: lvl, accuracy: 0, accuracyBonusStat: 0,
+            statBoutMult: loadXpConfig().statBoutMult ?? 1.0, koTimeBonus: 0,
+            oppLevel: rf.level, enemyLevel: rf.level,
+            playerStatTotal: (sp?.power ?? 0) + (sp?.speed ?? 0) + (sp?.defense ?? 0) + (sp?.stamina ?? 0) + (sp?.focus ?? 0),
+            oppStatTotal: (rf.statPower ?? 0) + (rf.statSpeed ?? 0) + (rf.statDefense ?? 0) + (rf.statStamina ?? 0) + (rf.statFocus ?? 0),
+            isLoss: false,
+          });
+          return {
+            weeks: req.fightWeek - rs.weekNumber,
+            force: Math.round(computeForceEarned(rf.rank) * getForceMult(selectedFighter, rs) * sparred),
+            rankNow: rs.playerRank,
+            rankWin,
+            rankLoss,
+            chestCount: count,
+            chestOdds: (Object.keys(odds) as CrateId[]).filter(k => odds[k] > 0).map(k => ({ name: CRATES[k].name, pct: Math.round(odds[k] / Object.values(odds).reduce((a, b) => a + Math.max(0, b), 0) * 100) })),
+            statPoints: Math.min(pts, Math.max(0, statPointCap(isChampBeaten(rs.roster)) - totalSkillPts(selectedFighter.skillPoints, selectedFighter.availableStatPoints || 0))),
+            acceptable: contractAcceptable(rs, req),
+          };
         }}
         onChallengeSpar={() => { if (gymAway && !gymAway.done) onStartChallengeSpar?.(selectedFighter, gymAway.request); }}
-        onChallengeReturnHome={() => writeChallenges(selectedFighter.id, c => ({ ...c, away: null }))}
+        onChallengeReturnHome={() => travelToGym(
+          gymLookOf(localSaves.getFighter(selectedFighter.id) ?? selectedFighter).name ?? GYM_LOOK_DEFAULTS.name,
+          () => writeChallenges(selectedFighter.id, c => ({ ...c, away: null })),
+        )}
         fighter={selectedFighter}
         onFighterChanged={(f) => { setSelectedFighter(f); onFighterRefresh?.(f); }}
         onDailyRewardDue={runDailyClaim}
@@ -1842,26 +1857,6 @@ export default function CareerMode({
         onOpenEquipment={() => setView("equipment")}
         onOpenEditColors={() => setView("editColors")}
         onOpenEditRingColors={() => setView("editRingColors")}
-        onLevelUp={() => {
-          // Always base level and diamonds on the stored save — the in-memory
-          // snapshot can be stale, and stale writes would persist wrong totals.
-          const saved = localSaves.getFighter(selectedFighter.id) ?? selectedFighter;
-          const diamonds = saved.diamonds ?? 0;
-          const curLevel = saved.level ?? 1;
-          if (curLevel >= 1000) return;
-          // Price is read off the stored purchase count so the cost curve can't
-          // be undercut by a stale in-memory snapshot — and so levels earned
-          // with XP never make the next purchase dearer.
-          const luBought = saved.diamondLevelsBought ?? 0;
-          const luCost = diamondLevelUpCost(luBought);
-          if (diamonds < luCost) return;
-          const updated = updateFighter(selectedFighter.id, {
-            level: curLevel + 1,
-            diamonds: diamonds - luCost,
-            diamondLevelsBought: luBought + 1,
-          });
-          if (updated) setSelectedFighter(updated);
-        }}
         onStartSparring={() => setView("sparringSelect")}
         onStartWeightLifting={awaySession(() => { onStartTraining(selectedFighter, "weightLifting"); })}
         onStartBagWork={awaySession(() => { onStartTraining(selectedFighter, "heavyBag"); })}
@@ -1950,6 +1945,25 @@ export default function CareerMode({
           </div>
         );
       })()}
+      <Dialog open={tutorialPrompt} onOpenChange={setTutorialPrompt}>
+        <DialogContent className="max-w-sm" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Watch the tutorial?</DialogTitle>
+          </DialogHeader>
+          <div className="flex gap-2 mt-2">
+            <Button
+              className="flex-1"
+              onClick={() => { setTutorialPrompt(false); onTutorial?.(selectedFighter.firstName || selectedFighter.name, gymColors); }}
+              data-testid="button-tutorial-prompt-watch"
+            >
+              Watch Tutorial
+            </Button>
+            <Button variant="secondary" className="flex-1" onClick={() => setTutorialPrompt(false)} data-testid="button-tutorial-prompt-skip">
+              Skip
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       </>
     );
   }
@@ -2042,7 +2056,7 @@ export default function CareerMode({
           {isChampMode && <p className="text-xs text-center text-red-400">Opponent&apos;s schedule limits available prep windows.</p>}
           <div className="grid grid-cols-4 gap-2 w-full bg-[#0d0d0d00]">
             {[1, 2, 3, 4, 5, 6, 7, 8].map(weeks => {
-              const booked = champSchedule ? !!champSchedule[weeks - 1] : false;
+              const booked = (champSchedule ? !!champSchedule[weeks - 1] : false) || contractBlocksWeek(rosterState, weeks);
               return (
                 <Button
                   key={weeks}
@@ -2132,6 +2146,7 @@ export default function CareerMode({
                 key={weeks}
                 variant="outline"
                 className="h-16 flex-col gap-1"
+                disabled={contractBlocksWeek(rosterState, weeks)}
                 onClick={() => {
                   const updatedReschOpps = isRank1
                     ? (rosterState.rescheduledOpponentIds ?? [])
@@ -2231,6 +2246,13 @@ export default function CareerMode({
           // editor's purchase-follow effect and drop its unsaved Spacial ticks.
           setSelectedFighter(prev => prev ? { ...prev, outfits: updated.outfits } : prev);
           onFighterRefresh?.(updated);
+        }}
+        onSaveDecalLibrary={(patch) => {
+          const updated = updateFighter(selectedFighter.id, patch);
+          if (!updated) return undefined;
+          setSelectedFighter(prev => prev ? { ...prev, customDecals: updated.customDecals, decalFonts: updated.decalFonts, diamonds: updated.diamonds } : prev);
+          onFighterRefresh?.(updated);
+          return updated;
         }}
         onSaveSparringGearInBouts={(on) => {
           const updated = updateFighter(selectedFighter.id, { sparringGearInBouts: on });
@@ -3260,6 +3282,7 @@ export default function CareerMode({
                     key={weeks}
                     variant="outline"
                     className={`h-16 flex-col gap-1 ${booked ? "border-orange-600/50 text-orange-400" : ""}`}
+                    disabled={contractBlocksWeek(rosterState, weeks)}
                     onClick={() => setNegotiateConfirmWeek(weeks)}
                     data-testid={`button-negotiate-week-${weeks}`}
                   >
@@ -3534,6 +3557,21 @@ function NewsTicker({ news }: { news: string[] }) {
       </div>
     </div>
   );
+}
+
+/**
+ * An accepted bout request owns its week: no other fight may be booked on or
+ * after it while it waits (it is booked as soon as the earlier fight is done).
+ */
+/** A bout request can be signed if no contract is pending and it lands after any booked fight. */
+function contractAcceptable(rs: CareerRosterState, req: ChallengeRequest): boolean {
+  if (rs.challengeState?.contract || req.fightWeek == null || req.fightWeek <= rs.weekNumber) return false;
+  return rs.selectedOpponentId == null || req.fightWeek > rs.weekNumber + (rs.prepWeeksRemaining ?? 0);
+}
+
+function contractBlocksWeek(rs: CareerRosterState, weeks: number): boolean {
+  const k = rs.challengeState?.contract;
+  return !!k && rs.selectedOpponentId !== k.rosterId && rs.weekNumber + weeks >= k.fightWeek;
 }
 
 function OpponentSelectionView({ fighter, rosterState, onSelectOpponent, onBack }: {
@@ -3959,16 +3997,16 @@ function CreateFighter({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-[10px] text-white/50 font-semibold uppercase tracking-widest">First Name *</label>
-              <Input value={firstName} onChange={e => setFirstName(e.target.value)} maxLength={15} className="bg-black/40 border-white/10 text-white" data-testid="input-first-name" />
+              <Input value={firstName} onChange={e => setFirstName(filterProfanity(e.target.value))} maxLength={15} className="bg-black/40 border-white/10 text-white" data-testid="input-first-name" />
             </div>
             <div>
               <label className="text-[10px] text-white/50 font-semibold uppercase tracking-widest">Last Name *</label>
-              <Input value={lastName} onChange={e => setLastName(e.target.value)} maxLength={15} className="bg-black/40 border-white/10 text-white" data-testid="input-last-name" />
+              <Input value={lastName} onChange={e => setLastName(filterProfanity(e.target.value))} maxLength={15} className="bg-black/40 border-white/10 text-white" data-testid="input-last-name" />
             </div>
           </div>
           <div>
             <label className="text-[10px] text-white/50 font-semibold uppercase tracking-widest">Nickname (optional)</label>
-            <Input value={nickname} onChange={e => setNickname(e.target.value)} maxLength={20} placeholder='e.g. "The Hammer"' className="bg-black/40 border-white/10 text-white placeholder:text-white/30" data-testid="input-nickname" />
+            <Input value={nickname} onChange={e => setNickname(filterProfanity(e.target.value))} maxLength={20} placeholder='e.g. "The Hammer"' className="bg-black/40 border-white/10 text-white placeholder:text-white/30" data-testid="input-nickname" />
           </div>
         </div>
 
@@ -4725,8 +4763,10 @@ export function AllocateStats({ fighter, onAllocate, onBack, allowedStats, fixed
 /** Compact price tag for the per-piece buy buttons, where the full figure won't fit. */
 const SPACIAL_PART_PRICE_LABEL = `${Math.round(SPACIAL_PRICE_PER_GEAR_FORCE / 1_000_000)}M`;
 
-function EditFighterColors({ fighter, onSave, onBuySpacialPart, onSaveOutfits, onSaveSparringGearInBouts }: {
+function EditFighterColors({ fighter, onSave, onBuySpacialPart, onSaveOutfits, onSaveSparringGearInBouts, onSaveDecalLibrary }: {
   fighter: Fighter;
+  /** Persist custom-decal library fields (decals, fonts, diamonds); returns the saved record. */
+  onSaveDecalLibrary: (patch: Partial<Fighter>) => Fighter | undefined;
   /** Also the back button: leaving the editor saves. */
   onSave: (skinColor: string, gearColors: GearColors, spacialParts: string[]) => void;
   /** Persist the outfit slots straight away (independent of Save Colors). */
@@ -4754,6 +4794,11 @@ function EditFighterColors({ fighter, onSave, onBuySpacialPart, onSaveOutfits, o
   const lacesShown = laces ?? defaultLaceColor(shoes);
   const solesShown = soles ?? defaultSoleColor(shoes);
   const gearDecalShown = gearDecal ?? defaultGearDecalColor();
+  const wornCustomDecal = parseCustomDecalColor(gearDecal);
+  const decalBase = wornCustomDecal?.base ?? gearDecalShown;
+  const [lastCustomDecalId, setLastCustomDecalId] = useState<string | null>(wornCustomDecal?.id ?? null);
+  const [decalEditorOpen, setDecalEditorOpen] = useState(false);
+  const decalLibrary = (fighter.customDecals as CustomDecal[] | null) ?? [];
 
   // Spacial Color: on offer from day one, whatever the player can afford, and
   // picked per gear piece once it has been bought.
@@ -4813,9 +4858,9 @@ function EditFighterColors({ fighter, onSave, onBuySpacialPart, onSaveOutfits, o
     const ownsPart = !!partKey && ownedParts.includes(partKey);
     const tryingOn = !!partKey && tryOn === partKey;
     return (
-      <div className={`bg-black/40 border rounded-lg px-3 py-2 ${spacialOnPart || tryingOn ? "border-purple-500/60" : "border-white/10"}`}>
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <label className="text-[10px] text-white/50 font-semibold uppercase tracking-widest">{label}</label>
+      <div className={`bg-black/40 border rounded-lg px-2 py-1.5 ${spacialOnPart || tryingOn ? "border-purple-500/60" : "border-white/10"}`}>
+        <div className="flex items-center justify-between gap-1 mb-1 min-h-5">
+          <label className="text-[10px] text-white/50 font-semibold uppercase tracking-widest truncate min-w-0">{label}</label>
           {partKey && ownsPart && (
             <button
               type="button"
@@ -4871,10 +4916,10 @@ function EditFighterColors({ fighter, onSave, onBuySpacialPart, onSaveOutfits, o
             onChange={e => onChange(e.target.value)}
             disabled={spacialOnPart || tryingOn}
             title={spacialOnPart ? "Untick Spacial to change this colour" : undefined}
-            className={`w-9 h-9 rounded-md bg-transparent ${spacialOnPart || tryingOn ? "opacity-40 pointer-events-none" : "cursor-pointer"}`}
+            className={`w-7 h-7 rounded-md bg-transparent ${spacialOnPart || tryingOn ? "opacity-40 pointer-events-none" : "cursor-pointer"}`}
             data-testid={testId}
           />
-          <span className="text-xs text-white/60 font-mono">{spacialOnPart || tryingOn ? "Spacial" : value}</span>
+          <span className="text-[11px] text-white/60 font-mono">{spacialOnPart || tryingOn ? "Spacial" : value}</span>
         </div>
       </div>
     );
@@ -4882,7 +4927,7 @@ function EditFighterColors({ fighter, onSave, onBuySpacialPart, onSaveOutfits, o
 
   return (
     <div className="flex w-full h-screen overflow-hidden bg-[#0d0d0d]">
-      <div className="flex flex-col gap-3 p-4 w-[52%] overflow-y-auto shrink-0">
+      <div className="flex flex-col gap-2 p-3 w-[52%] overflow-y-auto shrink-0">
         <div className="flex items-center gap-3 w-full">
           <Button variant="ghost" size="icon" onClick={() => onSave(skinColor, currentGear(), spacialParts.filter(k => ownedParts.includes(k)))} className="text-white/70 hover:text-white" data-testid="button-back-edit-colors">
             <ArrowLeft className="w-5 h-5" />
@@ -4899,11 +4944,11 @@ function EditFighterColors({ fighter, onSave, onBuySpacialPart, onSaveOutfits, o
           />
         </div>
 
-        <div className="bg-[#1a1a1a] border border-white/15 rounded-lg p-4 space-y-3">
+        <div className="bg-[#1a1a1a] border border-white/15 rounded-lg p-3 space-y-2">
           <p className="text-[10px] text-white/40 font-semibold uppercase tracking-widest">Gear &amp; Skin</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-black/40 border border-white/10 rounded-lg px-3 py-2">
-              <label className="text-[10px] text-white/50 font-semibold uppercase tracking-widest mb-1 block">Skin</label>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-2 bg-black/40 border border-white/10 rounded-lg px-2 py-1.5">
+              <label className="text-[10px] text-white/50 font-semibold uppercase tracking-widest mb-1 block min-h-5 leading-5">Skin</label>
               <SkinColorField value={skinColor} onChange={setSkinColor} unlocked={isChampBeaten((fighter.careerRosterState as CareerRosterState | null)?.roster ?? []) || fighter.level >= 100} testId="color-hub-skin" />
             </div>
             {swatchField("Gloves", gloves, setGloves, "color-hub-gloves", "gloves")}
@@ -4916,7 +4961,34 @@ function EditFighterColors({ fighter, onSave, onBuySpacialPart, onSaveOutfits, o
             {swatchField("Girdle Laces", girdleLaces, setGirdleLaces, "color-hub-girdle-laces", "girdleLaces")}
             {swatchField("Laces", lacesShown, setLaces, "color-hub-laces", "laces")}
             {swatchField("Soles", solesShown, setSoles, "color-hub-soles", "soles")}
-            {swatchField("Gear Decal", gearDecalShown, setGearDecal, "color-hub-gear-decal", "gearDecal")}
+            <div className="col-span-3 bg-black/40 border border-white/10 rounded-lg px-2 py-1.5" data-testid="field-gear-decal">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <label className="text-[10px] text-white/50 font-semibold uppercase tracking-widest">Gear Decal</label>
+                <div className="flex rounded border border-white/20 overflow-hidden text-[10px] font-bold">
+                  <button type="button" onClick={() => setGearDecal(wornCustomDecal ? wornCustomDecal.base : gearDecal)}
+                    className={`px-2 py-0.5 ${!wornCustomDecal ? "bg-yellow-500 text-black" : "text-white/60 hover:bg-white/10"}`} data-testid="button-gear-decal-standard">Standard Decal</button>
+                  <button type="button" onClick={() => {
+                    const last = decalLibrary.find(d => d.id === lastCustomDecalId && d.purchased);
+                    if (!wornCustomDecal && last) setGearDecal(customDecalColor(last.id, decalBase));
+                    else setDecalEditorOpen(true);
+                  }}
+                    className={`px-2 py-0.5 ${wornCustomDecal ? "bg-yellow-500 text-black" : "text-white/60 hover:bg-white/10"}`} data-testid="button-gear-decal-custom">Custom Decal</button>
+                </div>
+              </div>
+              {wornCustomDecal ? (
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 truncate text-xs text-white/80" data-testid="text-gear-decal-name">{decalLibrary.find(d => d.id === wornCustomDecal.id)?.name ?? "Missing decal"}</span>
+                  <Button size="sm" variant="outline" onClick={() => setDecalEditorOpen(true)} className="h-7 text-xs bg-black/40 border-white/20 text-white hover:bg-white/10" data-testid="button-open-decal-editor">
+                    <Pencil className="w-3 h-3 mr-1" />Decal Editor
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input type="color" value={decalBase} onChange={e => setGearDecal(e.target.value)} className="w-7 h-7 rounded-md bg-transparent cursor-pointer" data-testid="color-hub-gear-decal" />
+                  <span className="text-xs text-white/60 font-mono">{decalBase}</span>
+                </div>
+              )}
+            </div>
           </div>
           <label className="flex items-center gap-2 text-xs text-white/80 cursor-pointer select-none">
             <input
@@ -4933,6 +5005,19 @@ function EditFighterColors({ fighter, onSave, onBuySpacialPart, onSaveOutfits, o
 
       </div>
 
+      {decalEditorOpen && (
+        <DecalEditor
+          fighterId={fighter.id}
+          baseColors={previewColors}
+          wornId={wornCustomDecal?.id ?? null}
+          onUse={id => {
+            if (id) { setGearDecal(customDecalColor(id, decalBase)); setLastCustomDecalId(id); }
+            else { setGearDecal(decalBase); setLastCustomDecalId(null); }
+          }}
+          onClose={() => setDecalEditorOpen(false)}
+          onPersist={onSaveDecalLibrary}
+        />
+      )}
       <div className="flex-1 flex items-center justify-center overflow-hidden p-4">
         <div className="bg-[#1a1a1a] border border-white/15 rounded-xl p-4 flex items-center justify-center">
           <FighterStanceCanvas colors={previewColors} width={320} height={560} showHeadgear stance={playerBoxingStance()} spinnable />
@@ -5893,7 +5978,7 @@ export function RosterEditView({
             {rosterColorField("Socks", editSocks, setEditSocks, "color-edit-socks", "socks")}
             {rosterColorField("Laces", editLaces ?? defaultLaceColor(editShoes), setEditLaces, "color-edit-laces", "laces")}
             {rosterColorField("Soles", editSoles ?? defaultSoleColor(editShoes), setEditSoles, "color-edit-soles", "soles")}
-            {rosterColorField("Gear Decal", editGearDecal ?? defaultGearDecalColor(), setEditGearDecal, "color-edit-gear-decal", "gearDecal")}
+            {rosterColorField("Gear Decal", editGearDecal ?? defaultGearDecalColor(), setEditGearDecal, "color-edit-gear-decal")}
           </div>
           <div className="shrink-0 bg-black/30 border border-border rounded-lg p-2 flex items-center justify-center" data-testid="preview-edit-fighter">
             <FighterStanceCanvas colors={previewColors} width={180} height={280} stance={editedRoster.find(ef => ef.id === editingId)?.boxingStance} />

@@ -12,6 +12,9 @@ interface CloudState {
   error: string | null;
   lastSavedAt: string | null;
   cloudFighterName: string | null;
+  conflictCloud: CloudResponse | null;
+  /** The conflict was found when the page loaded (only then is the picker shown). */
+  conflictOnLoad?: boolean;
 }
 interface CloudContext extends CloudState {
   gameReady: boolean;
@@ -20,14 +23,17 @@ interface CloudContext extends CloudState {
   reloadCloud: () => Promise<void>;
   replaceFromFile: (data: saves.SaveFileData) => Promise<void>;
   prepareSignOut: () => Promise<void>;
+  keepLocal: () => Promise<void>;
+  /** Fetch the cloud copy; returns true when it differs and the keep-which picker should open. */
+  syncNow: () => Promise<boolean>;
 }
 interface Metadata { userId: string; revision: number; fingerprint: string }
-interface CloudResponse { save: saves.SaveFileData | null; revision: number; updatedAt: string | null }
+export interface CloudResponse { save: saves.SaveFileData | null; revision: number; updatedAt: string | null }
 const SESSION_KEY = "handz_cloud_session";
 const GUEST_KEY = "handz_cloud_guest_backup";
 const RECOVERY_KEY = "handz_cloud_recovery";
 const Context = createContext<CloudContext | null>(null);
-const initial: CloudState = { status: "loading", error: null, lastSavedAt: null, cloudFighterName: null };
+const initial: CloudState = { status: "loading", error: null, lastSavedAt: null, cloudFighterName: null, conflictCloud: null };
 
 function fingerprint(save: saves.SaveFileData | null): string {
   const text = JSON.stringify(save);
@@ -35,7 +41,19 @@ function fingerprint(save: saves.SaveFileData | null): string {
   for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
   return `${text.length}:${hash >>> 0}`;
 }
-function currentSave(): saves.SaveFileData | null {
+/** Key-order-insensitive equality: the server's JSON store reorders keys. */
+function stable(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stable).join(",")}]`;
+  if (v && typeof v === "object") {
+    return `{${Object.keys(v).sort().filter(k => (v as Record<string, unknown>)[k] !== undefined)
+      .map(k => `${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v) ?? "null";
+}
+function sameSave(a: saves.SaveFileData | null, b: saves.SaveFileData | null): boolean {
+  return stable(a) === stable(b);
+}
+export function currentSave(): saves.SaveFileData | null {
   const fighter = saves.getFighters()[0];
   return fighter ? saves.exportSaveFile(fighter) : null;
 }
@@ -65,6 +83,26 @@ async function request<T>(method: "GET" | "PUT", body?: unknown): Promise<T> {
   return result as T;
 }
 
+/** The other build's (workspace ↔ live) account career, mirrored server-side. */
+export interface OtherCareer { save: saves.SaveFileData; updatedAt: string; source: "dev" | "live" }
+const OTHER_SEEN_KEY = "cloudOtherCareerSeen";
+const otherTag = (o: OtherCareer) => `${o.source}:${o.updatedAt}`;
+/** The other build's career when it differs from this one and hasn't been offered here yet. */
+export async function fetchOtherCareer(): Promise<OtherCareer | null> {
+  const response = await fetch("/api/cloud-save/other", { credentials: "same-origin" });
+  const result = await response.json();
+  if (!response.ok) throw new CloudError(result.error || "Could not check the other build's career.", response.status);
+  if (!result.save) return null;
+  const other = result as OtherCareer;
+  if (localStorage.getItem(OTHER_SEEN_KEY) === otherTag(other) || sameSave(currentSave(), other.save)) return null;
+  validateCareerSave(other.save);
+  return other;
+}
+/** Offered (imported or cancelled): don't offer this copy again until the other build saves anew. */
+export function markOtherCareerSeen(o: OtherCareer): void {
+  localStorage.setItem(OTHER_SEEN_KEY, otherTag(o));
+}
+
 export function CloudSaveProvider({ children }: { children: ReactNode }) {
   const { isLoaded, userId } = useAuth();
   const identity = isLoaded ? userId ?? "guest" : null;
@@ -81,14 +119,6 @@ export function CloudSaveProvider({ children }: { children: ReactNode }) {
   const identityRef = useRef(identity);
   identityRef.current = identity;
 
-  const fail = useCallback((error: unknown) => {
-    const conflict = error instanceof CloudError && error.code === 409;
-    conflicted.current = conflict;
-    if (mounted.current) setState(s => ({
-      ...s, status: conflict ? "conflict" : "error",
-      error: error instanceof Error ? error.message : "Unable to sync this career.",
-    }));
-  }, []);
   const acknowledge = useCallback((save: saves.SaveFileData | null, rev: number, at: string | null) => {
     revision.current = rev;
     acknowledged.current = fingerprint(save);
@@ -97,9 +127,26 @@ export function CloudSaveProvider({ children }: { children: ReactNode }) {
     }));
     void deleteBackup(`${RECOVERY_KEY}_${owner.current}`).catch(() => {});
     conflicted.current = false;
-    setState({ status: "ready", error: null, lastSavedAt: at, cloudFighterName: save?.fighter.name ?? null });
+    setState({ status: "ready", error: null, lastSavedAt: at, cloudFighterName: save?.fighter.name ?? null, conflictCloud: null });
   }, []);
 
+  const fail = useCallback((error: unknown) => {
+    const conflict = error instanceof CloudError && error.code === 409;
+    conflicted.current = conflict;
+    if (mounted.current) setState(s => ({
+      ...s, status: conflict ? "conflict" : "error",
+      error: error instanceof Error ? error.message : "Unable to sync this career.",
+    }));
+    if (conflict) void request<CloudResponse>("GET")
+      .then(remote => {
+        if (!mounted.current) return;
+        const local = currentSave();
+        // Same career on both sides: just adopt the cloud revision.
+        if (sameSave(local, remote.save)) acknowledge(local, remote.revision, remote.updatedAt);
+        else setState(s => ({ ...s, conflictCloud: remote }));
+      })
+      .catch(() => {});
+  }, [acknowledge]);
   const saveNow = useCallback(async () => {
     if (pending.current) return pending.current;
     if (paused.current || !owner.current || owner.current !== identityRef.current) return;
@@ -149,13 +196,17 @@ export function CloudSaveProvider({ children }: { children: ReactNode }) {
     const local = currentSave();
     const sameAccount = previous?.userId === id;
     const dirty = sameAccount && previous?.fingerprint !== fingerprint(local);
-    if (!discardLocal && dirty) {
+    if (!discardLocal && dirty && sameSave(local, remote.save)) {
+      acknowledge(local, remote.revision, remote.updatedAt);
+    } else if (!discardLocal && dirty) {
       acknowledged.current = previous!.fingerprint;
       conflicted.current = previous!.revision !== remote.revision;
       setState({
         status: conflicted.current ? "conflict" : "ready",
         error: conflicted.current ? "Unsynced local progress conflicts with the cloud career. Download your local career before discarding it." : null,
         cloudFighterName: remote.save?.fighter.name ?? null, lastSavedAt: remote.updatedAt,
+        conflictCloud: conflicted.current ? remote : null,
+        conflictOnLoad: conflicted.current,
       });
     } else if (remote.save || remote.revision > 0 || discardLocal) {
       const backup = captureCareerStorage();
@@ -168,7 +219,7 @@ export function CloudSaveProvider({ children }: { children: ReactNode }) {
       // A new account adopts the current browser career without touching its guest backup.
       acknowledged.current = fingerprint(null);
       localStorage.setItem(SESSION_KEY, JSON.stringify({ userId: id, revision: 0, fingerprint: acknowledged.current }));
-      setState({ status: "ready", error: null, cloudFighterName: null, lastSavedAt: null });
+      setState({ status: "ready", error: null, cloudFighterName: null, lastSavedAt: null, conflictCloud: null });
     }
     paused.current = false;
     setGameEpoch(n => n + 1);
@@ -271,6 +322,39 @@ export function CloudSaveProvider({ children }: { children: ReactNode }) {
     finally { paused.current = false; setReadyIdentity(userId); }
   }, [userId, acknowledge, fail]);
 
+  // Conflict resolution: this browser's career overwrites the cloud copy.
+  const keepLocal = useCallback(async () => {
+    const id = owner.current;
+    if (!id || id !== identityRef.current) throw new Error("Sign in and load your cloud career first.");
+    if (pending.current) await pending.current.catch(() => {});
+    try {
+      const remote = await request<CloudResponse>("GET");
+      const save = currentSave();
+      if (save) validateCareerSave(save);
+      const result = await request<{ revision: number; updatedAt: string }>("PUT", {
+        revision: remote.revision, save, reason: "autosave",
+      });
+      if (owner.current === id) acknowledge(save, result.revision, result.updatedAt);
+    } catch (error) { fail(error); throw error; }
+  }, [acknowledge, fail]);
+
+  // On-demand sync: nothing new in the cloud → push local progress; a newer
+  // cloud copy that differs → conflict state, so the caller opens the picker.
+  const syncNow = useCallback(async (): Promise<boolean> => {
+    const id = owner.current;
+    if (!id || id !== identityRef.current || paused.current) throw new Error("Sign in and load your cloud career first.");
+    if (pending.current) await pending.current.catch(() => {});
+    let remote: CloudResponse;
+    try { remote = await request<CloudResponse>("GET"); } catch (error) { fail(error); throw error; }
+    if (owner.current !== id) return false;
+    const local = currentSave();
+    if (sameSave(local, remote.save)) { acknowledge(local, remote.revision, remote.updatedAt); return false; }
+    if (remote.revision === revision.current && !conflicted.current) { await saveNow(); return false; }
+    conflicted.current = true;
+    setState(s => ({ ...s, status: "conflict", error: null, conflictCloud: remote, conflictOnLoad: false }));
+    return true;
+  }, [acknowledge, fail, saveNow]);
+
   const prepareSignOut = useCallback(async () => {
     if (readyIdentity !== userId) return; // A failed initial load has not touched browser progress.
     await saveNow();
@@ -280,7 +364,7 @@ export function CloudSaveProvider({ children }: { children: ReactNode }) {
   }, [saveNow, readyIdentity, userId]);
   return <Context.Provider value={{
     ...state, gameReady: identity !== null && readyIdentity === identity, gameEpoch,
-    saveNow, reloadCloud, replaceFromFile, prepareSignOut,
+    saveNow, reloadCloud, replaceFromFile, prepareSignOut, keepLocal, syncNow,
   }}>{children}</Context.Provider>;
 }
 

@@ -11,16 +11,18 @@ import MeterHoverReadout from "@/components/MeterHoverReadout";
 
 interface PurePowerMeterProps {
   roster: CareerRosterState | null | undefined;
+  /** Player's Power stat (1000 waives the max-stamina cost). */
+  power?: number;
   className?: string;
 }
 
-export default function PurePowerMeter({ roster, className = "" }: PurePowerMeterProps) {
+export default function PurePowerMeter({ roster, power = 0, className = "" }: PurePowerMeterProps) {
   const pct = purePowerOf(roster);
   const bonus = Math.round(purePowerBonusOf(roster) * 100);
   const steps = Math.floor(pct / PURE_POWER_PER_SESSION);
   const critCut = Math.round(steps * PURE_POWER_CRIT_RESIST_PER_STEP * 100);
   const stunCut = Math.round(steps * PURE_POWER_STUN_RESIST_PER_STEP * 100);
-  const pen = purePowerPenaltyOf(pct);
+  const pen = purePowerPenaltyOf(pct, power);
   const staminaCut = Math.round(pen.stamina * 100);
   const speedCut = Math.round(pen.speed * 100);
   const emptyVuln = pct <= 0 ? Math.round(PURE_POWER_EMPTY_VULN * 100) : 0;

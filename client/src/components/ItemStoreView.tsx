@@ -16,6 +16,7 @@ import {
   DIAMOND_PACKS, diamondsPerDollar, formatUsd, startDiamondCheckout,
 } from "@/game/diamondPacks";
 import { useEnterKey, ENTER_PRIORITY } from "@/hooks/useEnterKey";
+import { useHoldRepeat } from "@/hooks/useHoldRepeat";
 
 interface ItemStoreViewProps {
   fighterId: string;
@@ -28,11 +29,11 @@ interface ItemStoreViewProps {
 
 type StoreTab = "items" | "resources";
 
-/** A row's buy button walks idle → pick a quantity → confirm that quantity. */
-type BuyStage = "idle" | "qty" | "confirm";
+/** A row's buy button opens a quantity picker; its Buy button (or Enter) completes the purchase. */
+type BuyStage = "idle" | "qty";
 interface BuyFlow {
   id: string;
-  stage: Exclude<BuyStage, "idle">;
+  stage: "qty";
   qty: number;
 }
 
@@ -80,9 +81,12 @@ export default function ItemStoreView({ fighterId, playerRank, onClose, onChange
 
   const flowDef = flow ? shelf.find(d => d.id === flow.id) ?? null : null;
   useEnterKey(
-    () => { if (flow?.stage === "confirm" && flowDef) buy(flowDef, flow.qty); },
-    { enabled: flow?.stage === "confirm", priority: ENTER_PRIORITY.milestone },
+    () => { if (flow && flowDef) buy(flowDef, flow.qty); },
+    { enabled: !!flow, priority: ENTER_PRIORITY.milestone },
   );
+  // Functional update so a held +1 never adds onto a stale amount.
+  const setQty = (id: string, next: (q: number) => number, max: number) =>
+    setFlow(f => (f && f.id === id ? { ...f, qty: Math.max(1, Math.min(max, next(f.qty))) } : f));
   // Escape backs out of whichever step the flow is on. Enter is left to the
   // shared registry above so the focused YES button can't also answer it.
   useEffect(() => {
@@ -189,7 +193,9 @@ export default function ItemStoreView({ fighterId, playerRank, onClose, onChange
                     {group.rarity}
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {group.items.map(def => (
+                    {group.items.map(def => {
+                      const maxQty = flow?.id === def.id ? storeMaxQty(def, inv, force, diamonds) : 0;
+                      return (
                       <StoreRow
                         key={def.id}
                         def={def}
@@ -200,13 +206,15 @@ export default function ItemStoreView({ fighterId, playerRank, onClose, onChange
                         diamonds={diamonds}
                         stage={flow?.id === def.id ? flow.stage : "idle"}
                         qty={flow?.id === def.id ? flow.qty : 1}
-                        maxQty={flow?.id === def.id ? storeMaxQty(def, inv, force, diamonds) : 0}
+                        maxQty={maxQty}
                         onStart={() => setFlow({ id: def.id, stage: "qty", qty: 1 })}
-                        onPick={n => setFlow({ id: def.id, stage: "confirm", qty: n })}
+                        onAdd={n => setQty(def.id, q => q + n, maxQty)}
+                        onMax={() => setQty(def.id, () => maxQty, maxQty)}
                         onConfirm={() => buy(def, flow?.qty ?? 1)}
                         onCancel={() => setFlow(null)}
                       />
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -246,8 +254,12 @@ export default function ItemStoreView({ fighterId, playerRank, onClose, onChange
   );
 }
 
+const QTY_BTN = "px-2 py-1 rounded text-[10px] font-black uppercase tracking-wide transition-colors select-none";
+const QTY_ON = "bg-yellow-500 text-black hover:bg-yellow-400";
+const QTY_OFF = "bg-white/5 text-white/25 cursor-not-allowed";
+
 function StoreRow({
-  def, owned, block, quote, force, diamonds, stage, qty, maxQty, onStart, onPick, onConfirm, onCancel,
+  def, owned, block, quote, force, diamonds, stage, qty, maxQty, onStart, onAdd, onMax, onConfirm, onCancel,
 }: {
   def: ItemDefinition;
   owned: number;
@@ -259,10 +271,13 @@ function StoreRow({
   qty: number;
   maxQty: number;
   onStart: () => void;
-  onPick: (qty: number) => void;
+  onAdd: (n: number) => void;
+  onMax: () => void;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const minusHold = useHoldRepeat(() => onAdd(-1));
+  const plusHold = useHoldRepeat(() => onAdd(1));
   const locked = block?.kind === "locked";
   const canBuy = !block && quote.affordable;
   const badges = CATEGORY_BADGES.filter(b => def[b.key] === true);
@@ -277,10 +292,11 @@ function StoreRow({
   // so the shelf reads as locked at a glance without a word of copy.
   return (
     <div
-      className={`flex items-center gap-2.5 rounded border bg-white/[0.03] px-2.5 py-2 ${locked ? "border-white/15 opacity-60" : rarityBorderClass(def.rarity)}`}
+      className={`flex flex-col gap-2 rounded border bg-white/[0.03] px-2.5 py-2 ${locked ? "border-white/15 opacity-60" : rarityBorderClass(def.rarity)}`}
       style={locked ? undefined : rarityBorderStyle(def.rarity)}
       data-testid={`store-item-${def.id}`}
     >
+      <div className="flex items-center gap-2.5">
       <div className="shrink-0 w-11 h-11 flex items-center justify-center">
         <ItemIcon def={def} size={40} />
       </div>
@@ -341,43 +357,59 @@ function StoreRow({
         </button>
       )}
 
-      {stage === "qty" && (
-        <div className="shrink-0 flex items-center gap-1" data-testid={`store-qty-${def.id}`}>
-          {([["+1", 1, true], ["+10", 10, maxQty >= 10], ["+MAX", maxQty, maxQty >= 2]] as const).map(([label, n, on]) => (
-            <button
-              key={label}
-              onClick={() => on && onPick(n)}
-              disabled={!on}
-              className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-wide transition-colors ${
-                on ? "bg-yellow-500 text-black hover:bg-yellow-400" : "bg-white/5 text-white/25 cursor-not-allowed"
-              }`}
-              data-testid={`button-store-qty-${label === "+MAX" ? "max" : n}-${def.id}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
+      </div>
 
-      {stage === "confirm" && (
-        <div className="shrink-0 flex items-center gap-1.5" data-testid={`store-confirm-${def.id}`}>
-          <span className="text-[10px] font-bold text-white/85 text-right">
-            Buy {qty.toLocaleString()} for {paidBits.length > 0 ? paidBits.join(" + ") : "free"}?
+      {stage === "qty" && (
+        <div className="flex items-center gap-1" data-testid={`store-qty-${def.id}`}>
+          <button
+            {...minusHold}
+            aria-disabled={qty <= 1}
+            className={`${QTY_BTN} ${qty > 1 ? QTY_ON : QTY_OFF}`}
+            data-testid={`button-store-qty-minus-${def.id}`}
+          >
+            −1
+          </button>
+          <span className="min-w-[2.5rem] text-center font-mono text-sm font-bold text-white" data-testid={`store-qty-value-${def.id}`}>
+            {qty.toLocaleString()}
           </span>
+          <button
+            {...plusHold}
+            aria-disabled={qty >= maxQty}
+            className={`${QTY_BTN} ${qty < maxQty ? QTY_ON : QTY_OFF}`}
+            data-testid={`button-store-qty-1-${def.id}`}
+          >
+            +1
+          </button>
+          <button
+            onClick={() => onAdd(10)}
+            disabled={qty >= maxQty}
+            className={`${QTY_BTN} ${qty < maxQty ? QTY_ON : QTY_OFF}`}
+            data-testid={`button-store-qty-10-${def.id}`}
+          >
+            +10
+          </button>
+          <button
+            onClick={onMax}
+            disabled={qty >= maxQty}
+            className={`${QTY_BTN} ${qty < maxQty ? QTY_ON : QTY_OFF}`}
+            data-testid={`button-store-qty-max-${def.id}`}
+          >
+            Max
+          </button>
           <button
             autoFocus
             onClick={onConfirm}
-            className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-wide bg-emerald-500 text-black hover:bg-emerald-400 transition-colors"
+            className="ml-auto px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wide bg-emerald-500 text-black hover:bg-emerald-400 transition-colors"
             data-testid={`button-store-yes-${def.id}`}
           >
-            Yes
+            Buy · {paidBits.length > 0 ? paidBits.join(" + ") : "Free"}
           </button>
           <button
             onClick={onCancel}
-            className="px-2 py-1 rounded text-[10px] font-black uppercase tracking-wide bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
+            className="px-1.5 py-1 rounded bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
             data-testid={`button-store-no-${def.id}`}
           >
-            No
+            <X className="w-3 h-3" />
           </button>
         </div>
       )}

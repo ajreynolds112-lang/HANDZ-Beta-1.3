@@ -28,10 +28,14 @@ import {
   computeEloChange,
   updateRankings,
   resolveRank1Holder,
+  resolveBoutRanking,
   buildOpponentFromRoster,
   getRandomQuickFightOpponent,
   getRosterFighterColors,
   getRosterEntryById,
+  pickSparringPartner,
+  rosterFighterIdentity,
+  isExpandedOpponentBoard,
   getQuickFightColorsForRosterId,
   saveRosterCustomizations,
   EXPANDED_BOARD_WIN_THRESHOLD,
@@ -49,7 +53,7 @@ import { KEY_FIGHTER_IDS, getRosterDisplayName, type RosterEntry } from "@/game/
 import { applySpacialGear, spacialSelectionOf } from "@/game/spacialColor";
 import GameCanvas from "@/game/GameCanvas";
 import RingWalkOverlay from "@/components/RingWalkOverlay";
-import DecisionCeremony from "@/components/DecisionCeremony";
+import DecisionCeremony, { type CeremonyStage } from "@/components/DecisionCeremony";
 import MainMenu from "@/components/MainMenu";
 import MenuBackgroundFight from "@/components/MenuBackgroundFight";
 import RingOnlyBackground from "@/components/RingOnlyBackground";
@@ -94,6 +98,7 @@ import { preload3dAssets } from "@/game/three/preload3d";
 import { useChunkedLoader } from "@/lib/useChunkedLoader";
 import { pickRewardCrates, getAiPunchEnduranceLossForRank } from "@/game/rosterGenConfig";
 import { computeForceEarned } from "@/game/forceRewards";
+import { boutStatPoints } from "@/game/boutRewards";
 import { getSparringRewardConfig, SPARRING_WIN_RARITY_CAP, sparringRewardTier, sparringWinRarity, isSparringUpgrade, SPARRING_TIER_LABELS, championDefenceDiamonds, type SparringDuration } from "@/game/sparringRewards";
 import type { CrateId } from "@/game/cratesConfig";
 
@@ -886,6 +891,8 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
     enemyRank?: number;
     playerRank?: number;
     playerNickname?: string;
+    ringCanvasColor?: string;
+    stage: CeremonyStage;
   } | null>(null);
   const [ceremonyData, setCeremonyData] = useState<{
     isWin: boolean;
@@ -895,6 +902,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
     playerColors: FighterColors;
     enemyColors: FighterColors;
     ringCanvasColor: string;
+    stage: CeremonyStage;
   } | null>(null);
 
   useEffect(() => {
@@ -1453,6 +1461,11 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
           playerColors: newState.player.colors,
           enemyColors: newState.enemy.colors,
           ringCanvasColor: newState.ringCanvasColor || "#3d2f1e",
+          stage: {
+            ringColors: newState.ringColors,
+            player: { boxingStance: newState.player.boxingStance, guardStance: newState.player.guardStance },
+            enemy: { boxingStance: newState.enemy.boxingStance, guardStance: newState.enemy.guardStance },
+          },
         });
         setUiMode("resultsCeremony");
       }
@@ -2304,74 +2317,17 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         let bestRankThisBout = preFightPlayerRank ?? 999;
         let oppRankForForce = 704;
         if (updatedRosterState && careerOpponentId) {
-          const currentHolderId = resolveRank1Holder(updatedRosterState.roster, updatedRosterState.rank1HolderId);
-          let newHolderId: number | "player" = currentHolderId;
-          if (isWin && currentHolderId === careerOpponentId) {
-            newHolderId = "player";
-          } else if (!isWin && !isDraw && currentHolderId === "player") {
-            newHolderId = careerOpponentId;
-          }
-          const newRoster = updatedRosterState.roster.map(f => {
-            if (f.id === careerOpponentId) {
-              const updated = { ...f };
-              if (isWin) {
-                updated.losses++;
-                updated.totalFights++;
-                if (KEY_FIGHTER_IDS.includes(f.id) || f.alwaysUndefeated) {
-                  updated.beatenByPlayer = true;
-                }
-                if (f.alwaysUndefeated) {
-                  updated.alwaysUndefeated = false;
-                }
-              } else if (isDraw) {
-                updated.draws++;
-                updated.totalFights++;
-              } else {
-                updated.wins++;
-                updated.totalFights++;
-                if (isKO) updated.knockouts++;
-              }
-              return updated;
-            }
-            return { ...f };
-          });
-          const oppEntry = newRoster.find(f => f.id === careerOpponentId);
-          const oppRank = oppEntry?.rank ?? 999;
-          oppRankForForce = oppRank;
-          const oppRating = oppEntry?.ratingScore ?? 1000;
-
           let method: "close" | "dominant" | "ko" = "close";
           if (isKO) method = "ko";
-          else {
-            const kdsGiven = perfStats.knockdownsGiven;
-            if (kdsGiven >= 2) method = "dominant";
-          }
-
+          else if (perfStats.knockdownsGiven >= 2) method = "dominant";
           const careerDiff = (activeFighter.careerDifficulty as AIDifficulty) || "contender";
-          const preFightPlayerRating = updatedRosterState.playerRatingScore ?? 1000;
-          const currentPlayerRank = updatedRosterState.playerRank ?? 705;
           const fightResult: "win" | "loss" | "draw" = isWin ? "win" : isDraw ? "draw" : "loss";
-          // ELO changes first (standard formula + rank-gap multiplier)...
-          const pRating = updatePlayerRating(preFightPlayerRating, oppRating, fightResult, method, careerDiff, currentPlayerRank, oppRank, activeFighter.level, oppEntry?.level);
-
-          if (isWin && oppEntry) {
-            const { loserDelta } = computeEloChange(preFightPlayerRating, oppRating, method, 1.0, oppRank === 1, currentPlayerRank, oppRank, undefined, oppEntry.totalFights);
-            oppEntry.ratingScore = Math.max(800, (oppEntry.ratingScore ?? 1000) + loserDelta);
-          } else if (!isWin && !isDraw && oppEntry) {
-            const { winnerDelta } = computeEloChange(oppRating, preFightPlayerRating, method, 1.0, false, oppRank, currentPlayerRank, oppEntry.totalFights, undefined);
-            oppEntry.ratingScore = (oppEntry.ratingScore ?? 1000) + winnerDelta;
-          }
-
-          // ...then rankings recompute from ELO with movement smoothing.
-          // Rank 1 stays a sticky belt via newHolderId — never displaced by sorting.
-          updateRankings(newRoster, newHolderId);
-          let newPlayerRank: number;
-          if (newHolderId === "player") {
-            newPlayerRank = 1;
-          } else {
-            const eloRank = computePlayerRankFromRating(newRoster, pRating, newHolderId);
-            newPlayerRank = smoothPlayerRankMovement(currentPlayerRank, eloRank, oppRank, fightResult);
-          }
+          const outcome = resolveBoutRanking(updatedRosterState, careerOpponentId, fightResult, isKO, method, careerDiff, activeFighter.level);
+          const newRoster = outcome.roster;
+          const newHolderId = outcome.rank1HolderId;
+          const pRating = outcome.playerRatingScore;
+          const newPlayerRank = outcome.playerRank;
+          oppRankForForce = outcome.oppRank;
           bestRankThisBout = Math.min(bestRankThisBout, newPlayerRank);
 
           updatedRosterState = {
@@ -2395,44 +2351,21 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         }
 
         const careerDiffForPoints = (activeFighter.careerDifficulty as AIDifficulty) || "contender";
-        let fightStatPoints = (careerDiffForPoints === "champion" ? 5 : careerDiffForPoints === "elite" ? 2 : 1) + accuracyBonusStat;
-        if (activeFighter.level >= 20 && accuracy > 0.6) {
-          const fightTiers = Math.floor(activeFighter.level / 10) - 1;
-          fightStatPoints += fightTiers * 2;
-        }
-        fightStatPoints = Math.floor(Math.ceil(fightStatPoints * 1.75 * 4) * 0.5);
-        fightStatPoints = Math.round(fightStatPoints * (xpCfg.statBoutMult ?? 1.0));
-        if (isKO && isWin) {
-          const koElapsed = newState.roundDuration - newState.roundTimer;
-          const koTimeBonus = koElapsed <= 25 ? 6 : koElapsed <= 30 ? 3 : koElapsed <= 35 ? 2 : koElapsed <= 40 ? 1 : 0;
-          fightStatPoints += koTimeBonus * 3;
-        }
-        const upsetLevelDiff = Math.max(0, oppStartLevel - activeFighter.level);
-        if (upsetLevelDiff > 0) {
-          fightStatPoints += upsetLevelDiff * 2;
-        }
-        // Stat-point discrepancy bonus: opponent has >15% more total stat points than the player.
-        // Adds +10% per percentage point above the 15% threshold, capped at +100%.
-        // The bonus is halved on a loss.
-        if (oppRosterEntry) {
-          const sp = activeFighter.skillPoints as { power?: number; speed?: number; defense?: number; stamina?: number; focus?: number } | null;
-          const playerStatTotal = (sp?.power ?? 0) + (sp?.speed ?? 0) + (sp?.defense ?? 0) + (sp?.stamina ?? 0) + (sp?.focus ?? 0);
-          const oppStatTotal = (oppRosterEntry.statPower ?? 0) + (oppRosterEntry.statSpeed ?? 0) + (oppRosterEntry.statDefense ?? 0) + (oppRosterEntry.statStamina ?? 0) + (oppRosterEntry.statFocus ?? 0);
-          if (playerStatTotal > 0 && oppStatTotal > playerStatTotal * 1.15) {
-            const excessPct = oppStatTotal / playerStatTotal - 1;
-            const bonusFrac = Math.min(1.0, (excessPct - 0.15) * 10);
-            const bonusMult = 1 + bonusFrac * (isLoss ? 0.5 : 1.0);
-            fightStatPoints = Math.round(fightStatPoints * bonusMult);
-          }
-        }
-        if (activeFighter.level >= 100) {
-          // Endgame stat-point rules: zero vs opponents 5+ levels below you, otherwise x0.3 (floored) and hard-capped at 20.
-          if (newState.enemyLevel < activeFighter.level - 5) {
-            fightStatPoints = 0;
-          } else {
-            fightStatPoints = Math.min(20, Math.floor(fightStatPoints * 0.3));
-          }
-        }
+        const fightSp = activeFighter.skillPoints as { power?: number; speed?: number; defense?: number; stamina?: number; focus?: number } | null;
+        const koElapsed = newState.roundDuration - newState.roundTimer;
+        let fightStatPoints = boutStatPoints({
+          careerDiff: careerDiffForPoints,
+          level: activeFighter.level,
+          accuracy,
+          accuracyBonusStat,
+          statBoutMult: xpCfg.statBoutMult ?? 1.0,
+          koTimeBonus: isKO && isWin ? (koElapsed <= 25 ? 6 : koElapsed <= 30 ? 3 : koElapsed <= 35 ? 2 : koElapsed <= 40 ? 1 : 0) : 0,
+          oppLevel: oppStartLevel,
+          enemyLevel: newState.enemyLevel,
+          playerStatTotal: (fightSp?.power ?? 0) + (fightSp?.speed ?? 0) + (fightSp?.defense ?? 0) + (fightSp?.stamina ?? 0) + (fightSp?.focus ?? 0),
+          oppStatTotal: oppRosterEntry ? (oppRosterEntry.statPower ?? 0) + (oppRosterEntry.statSpeed ?? 0) + (oppRosterEntry.statDefense ?? 0) + (oppRosterEntry.statStamina ?? 0) + (oppRosterEntry.statFocus ?? 0) : null,
+          isLoss,
+        });
         const fightUncappedSp = fightStatPoints;
         fightStatPoints = Math.min(
           fightStatPoints,
@@ -3106,8 +3039,10 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         setPreFightSnapshot(JSON.parse(JSON.stringify(activeFighter)));
       }
     }
-    commitGameState(newState);
     const showRingWalk = effectiveCareerFight || (isQuick && !practice);
+    // The ref gives his instructions during the ring walk face-off, so the countdown just counts.
+    if (showRingWalk) newState.refIntroPlayed = true;
+    commitGameState(newState);
     if (showRingWalk) {
       const walkRoster = (fighter?.careerRosterState as CareerRosterState | null)?.roster;
       const walkEnemyEntry = enemyRosterId != null ? walkRoster?.find(f => f.id === enemyRosterId) : null;
@@ -3133,6 +3068,12 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         enemyRank: walkEnemyEntry?.rank,
         playerRank: (fighter?.careerRosterState as CareerRosterState | null)?.playerRank,
         playerNickname: fighter?.nickname ?? undefined,
+        ringCanvasColor: newState.ringCanvasColor,
+        stage: {
+          ringColors: newState.ringColors,
+          player: { boxingStance: newState.player.boxingStance, guardStance: newState.player.guardStance },
+          enemy: { boxingStance: newState.enemy.boxingStance, guardStance: newState.enemy.guardStance },
+        },
       });
       setUiMode("ringWalk");
     } else {
@@ -3906,8 +3847,9 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
       : [];
     if (dhAvailable.length > 0) {
       const dhPartner = dhAvailable[Math.floor(Math.random() * dhAvailable.length)];
-      dhPartnerName = dhPartner.name;
-      dhPartnerArch = dhPartner.archetype as Archetype;
+      const dhId = rosterFighterIdentity(dhPartner);
+      dhPartnerName = dhId.name;
+      dhPartnerArch = dhId.archetype;
       dhPartnerArm = dhPartner.armLength || 65;
       dhPartnerRosterId = dhPartner.id;
       const sc = getRosterFighterColors(dhPartner);
@@ -3992,8 +3934,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
       const sc = getRosterFighterColors(f);
       return {
         rosterId: f.id,
-        name: f.name,
-        archetype: f.archetype as Archetype,
+        ...rosterFighterIdentity(f),
         armLength: f.armLength || 65,
         colors: { gloves: sc.gloves, gloveTape: sc.gloveTape, trunks: sc.trunks, shoes: sc.shoes, skin: sc.skin, socks: sc.socks, laces: sc.laces, soles: sc.soles, gearDecal: sc.gearDecal },
         level: dhRefLevel,
@@ -4136,9 +4077,6 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         ? importRosterState?.roster.find(f => f.id === importedPartnerId) ?? null
         : null;
       importedPartnerUsedRef.current = importedPartner != null && !challenge;
-      const foughtOpponents = rosterState ? rosterState.roster.filter(f => f.beatenByPlayer) : [];
-      const usePreviousOpponent = !importedPartner && fighter.careerBoutIndex >= 3 && foughtOpponents.length > 0 && Math.random() < 0.35;
-
       if (importedPartner) {
         // A roster entry stores only the *custom* name parts and no archetype —
         // both live in the roster catalogue, keyed by id. Reading them straight
@@ -4153,49 +4091,30 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
         sparPartnerRosterId = importedPartner.id;
         const sc = getRosterFighterColors(importedPartner);
         sparPartnerColors = { gloves: sc.gloves, gloveTape: sc.gloveTape, trunks: sc.trunks, shoes: sc.shoes, skin: sc.skin, socks: sc.socks, laces: sc.laces, soles: sc.soles, gearDecal: sc.gearDecal };
-      } else if (usePreviousOpponent && foughtOpponents.length > 0) {
-        const sparPartner = foughtOpponents[Math.floor(Math.random() * foughtOpponents.length)];
-        sparPartnerName = sparPartner.name;
-        sparPartnerArch = sparPartner.archetype as Archetype;
-        sparPartnerArm = sparPartner.armLength || 65;
-        sparPartnerRosterId = sparPartner.id;
-        const sc = getRosterFighterColors(sparPartner);
-        sparPartnerColors = {
-          gloves: sc.gloves,
-          gloveTape: sc.gloveTape,
-          trunks: sc.trunks,
-          shoes: sc.shoes,
-          skin: sc.skin,
-          socks: sc.socks,
-          laces: sc.laces,
-          soles: sc.soles,
-          gearDecal: sc.gearDecal,
-        };
       } else if (rosterState && rosterState.roster.length > 0) {
-        const randomIdx = Math.floor(Math.random() * rosterState.roster.length);
-        const sparPartner = rosterState.roster[randomIdx];
-        sparPartnerName = sparPartner.name;
-        sparPartnerArch = sparPartner.archetype as Archetype;
-        sparPartnerArm = sparPartner.armLength || 65;
-        sparPartnerRosterId = sparPartner.id;
-        const sc = getRosterFighterColors(sparPartner);
-        sparPartnerColors = {
-          gloves: sc.gloves,
-          gloveTape: sc.gloveTape,
-          trunks: sc.trunks,
-          shoes: sc.shoes,
-          skin: sc.skin,
-          socks: sc.socks,
-          laces: sc.laces,
-          soles: sc.soles,
-          gearDecal: sc.gearDecal,
-        };
+        // A real roster fighter ranked just outside what the player can book or
+        // reroll into. Level, stats and AI tier are set below from the player's
+        // level and the chosen sparring difficulty, not from the partner's rank.
+        const sparPartner = pickSparringPartner(
+          rosterState.roster,
+          rosterState.playerRank ?? 999,
+          fighter.level ?? undefined,
+          fighter.wins ?? 0,
+          rosterState.careerFightsCompleted,
+          isExpandedOpponentBoard(rosterState, fighter.wins ?? 0),
+        );
+        if (sparPartner) {
+          const id = rosterFighterIdentity(sparPartner);
+          sparPartnerName = id.name;
+          sparPartnerArch = id.archetype;
+          sparPartnerArm = sparPartner.armLength || 65;
+          sparPartnerRosterId = sparPartner.id;
+          const sc = getRosterFighterColors(sparPartner);
+          sparPartnerColors = { gloves: sc.gloves, gloveTape: sc.gloveTape, trunks: sc.trunks, shoes: sc.shoes, skin: sc.skin, socks: sc.socks, laces: sc.laces, soles: sc.soles, gearDecal: sc.gearDecal };
+        }
       }
 
       const sparSp = fighter.skillPoints as SkillPoints | null;
-      const sparPartnerState = sparPartnerRosterId
-        ? rosterState?.roster.find(f => f.id === sparPartnerRosterId)
-        : undefined;
 
       const clampSp = (v: number) => Math.max(0, Math.min(1000, Math.round(v)));
       const playerTotal = sparSp
@@ -4347,12 +4266,12 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
       // foldAiPatternLibrary refuses a sparring bout, so nothing the partner
       // picks up in here goes back on the tape.
       //
-      // Rank drives how much they studied: their own roster rank when the
-      // partner is a real fighter, otherwise the player's, since a generic gym
-      // partner is drawn from the player's own division. Seeded off the partner
-      // id so the same partner has studied the same card every session.
+      // Rank drives how much they studied: an imported partner's own rank,
+      // otherwise the player's, since a gym partner is scaled to the player.
+      // Seeded off the partner id so the same partner has studied the same
+      // card every session.
       {
-        const sparStudyRank = importedPartner?.rank ?? sparPartnerState?.rank ?? importRosterState?.playerRank;
+        const sparStudyRank = importedPartner?.rank ?? importRosterState?.playerRank;
         if (sparStudyRank != null && sparStudyRank > 0) {
           applyAiPatternStudy(
             newState,
@@ -5723,7 +5642,9 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
             enemyName={ringWalkData.enemyName}
             playerColors={ringWalkData.playerColors}
             enemyColors={ringWalkData.enemyColors}
-            boutDetails={ringWalkData.playerSp || ringWalkData.enemySp ? {
+            ringCanvasColor={ringWalkData.ringCanvasColor}
+            stage={ringWalkData.stage}
+            boutDetails={{
               playerLevel: ringWalkData.playerLevel,
               playerWins: ringWalkData.playerWins,
               playerLosses: ringWalkData.playerLosses,
@@ -5739,7 +5660,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
               enemySp: ringWalkData.enemySp,
               enemyRefinement: ringWalkData.enemyRefinement,
               enemyRank: ringWalkData.enemyRank,
-            } : undefined}
+            }}
             playerRank={ringWalkData.playerRank}
             playerNickname={ringWalkData.playerNickname}
             onComplete={() => { clearAllKeys(); setUiMode("fighting"); }}
@@ -5755,6 +5676,7 @@ export default function Game({ autoCreateCareer = false, canEditRoster = false }
             playerColors={ceremonyData.playerColors}
             enemyColors={ceremonyData.enemyColors}
             ringCanvasColor={ceremonyData.ringCanvasColor}
+            stage={ceremonyData.stage}
             onContinue={() => setUiMode("fightEnd")}
           />
         )}

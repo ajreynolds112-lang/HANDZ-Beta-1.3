@@ -188,7 +188,7 @@ function SoundSettings({ onClose, onVolumeChange, onToggleMute }: {
             <ControlRow label="Full Guard" value="Space x2" />
             <ControlRow label="Block Up/Down" value="Space+Arrow" />
             <ControlRow label="Charge Punch" value="A, then Punch" />
-            <ControlRow label="Slip" value="C + Arrow" />
+            <ControlRow label="Slip" value="X + Arrow" />
             {isDirectionalPerfectBlockEnabled() ? (
               <>
                 <ControlRow label="Perfect Block (head)" value="V" />

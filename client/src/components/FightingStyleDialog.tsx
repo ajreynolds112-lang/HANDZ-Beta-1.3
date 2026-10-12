@@ -37,6 +37,8 @@ export default function FightingStyleDialog({ open, onOpenChange, fighter, onSav
 }) {
   const [draft, setDraft] = useState<FightingStyleSave>(() => fightingStyleOf(fighter.fightingStyle));
   const colorsRef = useRef(trainingColors(fighter));
+  // Wear the sparring gear here too when the player has it on for fights.
+  const gearRef = useRef(!!(localSaves.getFighter(fighter.id) ?? fighter).sparringGearInBouts);
   const [slot, setSlot] = useState(0);
   const [preview, setPreview] = useState<Preview>({ ...presetStyle(0), mode: "stance" });
   const [confirming, setConfirming] = useState(false);
@@ -50,7 +52,9 @@ export default function FightingStyleDialog({ open, onOpenChange, fighter, onSav
     if (!open) return;
     const fighter = fighterRef.current;
     colorsRef.current = trainingColors(fighter);
-    const d = fightingStyleOf((localSaves.getFighter(fighter.id) ?? fighter).fightingStyle);
+    const saved = localSaves.getFighter(fighter.id) ?? fighter;
+    gearRef.current = !!saved.sparringGearInBouts;
+    const d = fightingStyleOf(saved.fightingStyle);
     setDraft(d);
     const a = d.active;
     const s = a?.kind === "custom" ? d.custom[a.index] : null;
@@ -81,6 +85,7 @@ export default function FightingStyleDialog({ open, onOpenChange, fighter, onSav
           : focusPb ? (t % PB_SEC < PB_ON ? focusPb : undefined)
           : pbs[Math.floor(t / PB_SEC) % pbs.length],
         pose: a => {
+          a.wearsSparringGear = gearRef.current;
           a.defenseStance = p.defense;
           a.punchStance = p.punches;
           if (p.mode !== "punches") return;
